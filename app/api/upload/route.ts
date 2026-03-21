@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/supabase/auth-utils'
 export async function POST(request: NextRequest) {
   // Validar autenticación
   const { authorized, response: authError } = await requireAuth(request)
-  if (!authorized) return authError
+  if (!authorized && authError) return authError
 
   try {
     const formData = await request.formData()

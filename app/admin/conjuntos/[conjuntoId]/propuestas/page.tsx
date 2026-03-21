@@ -8,7 +8,7 @@ import { FormPropuesta } from '@/components/admin/form-propuesta'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, AlertCircle, FileText } from 'lucide-react'
-import type { Propuesta, Proceso } from '@/lib/types'
+import type { Propuesta, Proceso } from '@/lib/types/index'
 
 export default function GestionPropuestas() {
   const params = useParams()

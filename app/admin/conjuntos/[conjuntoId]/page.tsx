@@ -7,7 +7,7 @@ import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, Plus, Settings, BarChart3 } from 'lucide-react'
-import type { Conjunto, Proceso } from '@/lib/types'
+import type { Conjunto, Proceso } from '@/lib/types/index'
 
 export default function ConjuntoDetail() {
   const params = useParams()

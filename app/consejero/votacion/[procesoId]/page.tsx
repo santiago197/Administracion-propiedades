@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
-import type { Propuesta } from '@/lib/types'
+import type { Propuesta } from '@/lib/types/index'
 
 export default function PaginaVotacion() {
   const params = useParams()

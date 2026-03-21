@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/supabase/auth-utils'
 export async function POST(request: NextRequest) {
   // Validar autenticación
   const { authorized, response: authError } = await requireAuth(request)
-  if (!authorized) return authError
+  if (!authorized && authError) return authError
   try {
     const { proceso_id, consejero_id, propuesta_id } = await request.json()
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   // Validar autenticación
   const { authorized, response: authError } = await requireAuth(request)
-  if (!authorized) return authError
+  if (!authorized && authError) return authError
 
   try {
     const { searchParams } = new URL(request.url)

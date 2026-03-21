@@ -8,7 +8,7 @@ import { FormConsejero } from '@/components/admin/form-consejero'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, Copy, AlertCircle } from 'lucide-react'
-import type { Consejero } from '@/lib/types'
+import type { Consejero } from '@/lib/types/index'
 
 export default function GestionConsejeros() {
   const params = useParams()

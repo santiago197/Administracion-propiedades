@@ -7,9 +7,10 @@ import type {
   Propuesta,
   Criterio,
   Evaluacion,
+  Voto,
   ProcesoStats,
   ResultadoFinal,
-} from '../types'
+} from '../types/index'
 
 // CONJUNTOS
 export async function createConjunto(data: Omit<Conjunto, 'id' | 'created_at' | 'updated_at'>) {

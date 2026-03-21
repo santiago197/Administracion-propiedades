@@ -111,9 +111,9 @@ export default function LoginPage() {
         <div className="mt-6 pt-6 border-t border-border/50">
           <p className="text-xs text-muted-foreground text-center">
             ¿Necesitas una cuenta?{' '}
-            <Link href="/auth/signup" className="text-primary hover:underline font-medium">
-              Contacta al administrador
-            </Link>
+            <span className="text-foreground font-medium">
+              Contacta al administrador del sistema
+            </span>
           </p>
         </div>
 

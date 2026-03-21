@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import type { Criterio, TipoCriterio } from '@/lib/types'
+import type { Criterio, TipoCriterio } from '@/lib/types/index'
 
 const TIPOS_CRITERIO: TipoCriterio[] = ['numerico', 'booleano', 'escala']
 
