@@ -1,32 +1,71 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { NavBar } from '@/components/admin/nav-bar'
-import { Plus, ChevronRight, Calendar, MapPin, Users } from 'lucide-react'
+import { Plus, ChevronRight, Calendar, MapPin, Users, Loader } from 'lucide-react'
 import type { Conjunto } from '@/lib/types'
+import { createClient } from '@/lib/supabase/client'
 
 export default function AdminHome() {
+  const router = useRouter()
   const [conjuntos, setConjuntos] = useState<Conjunto[]>([])
   const [loading, setLoading] = useState(true)
+  const [authorized, setAuthorized] = useState(false)
 
   useEffect(() => {
-    const fetchConjuntos = async () => {
+    const checkAuthAndFetch = async () => {
       try {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        // Si no hay usuario, redirigir a login
+        if (!user) {
+          router.push('/login')
+          return
+        }
+
+        setAuthorized(true)
+
+        // Cargar conjuntos
         const response = await fetch('/api/conjuntos')
+        if (response.status === 401) {
+          router.push('/login')
+          return
+        }
         const data = await response.json()
         setConjuntos(data || [])
       } catch (error) {
         console.error('[v0] Error fetching conjuntos:', error)
+        router.push('/login')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchConjuntos()
-  }, [])
+    checkAuthAndFetch()
+  }, [router])
+
+  // No renderizar nada hasta validar autorización
+  if (!authorized && loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Validando sesión...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!authorized) {
+    return null
+  }
 
   return (
     <div className="min-h-screen bg-background">

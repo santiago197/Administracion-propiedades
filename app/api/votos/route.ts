@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/supabase/auth-utils'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError } = await requireAuth(request)
+  if (!authorized) return authError
   try {
     const { proceso_id, consejero_id, propuesta_id } = await request.json()
 
@@ -32,7 +36,11 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError } = await requireAuth(request)
+  if (!authorized) return authError
+
   try {
     const { searchParams } = new URL(request.url)
     const procesoId = searchParams.get('proceso_id')

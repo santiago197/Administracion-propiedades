@@ -1,12 +1,26 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Settings, Home } from 'lucide-react'
+import { Settings, Home, LogOut } from 'lucide-react'
+import { useState } from 'react'
 
 export function NavBar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.push('/login')
+    } catch (error) {
+      console.error('[v0] Logout error:', error)
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
@@ -41,9 +55,16 @@ export function NavBar() {
           </Link>
         </nav>
 
-        <div className="text-xs text-muted-foreground">
-          Sistema de Selección PH
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="gap-2 text-muted-foreground hover:text-foreground"
+        >
+          <LogOut className="h-4 w-4" />
+          Salir
+        </Button>
       </div>
     </header>
   )

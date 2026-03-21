@@ -1,6 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { requireAuth } from '@/lib/supabase/auth-utils'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError } = await requireAuth(request)
+  if (!authorized) return authError
   try {
     const { searchParams } = new URL(request.url)
     const propuesta_id = searchParams.get('propuesta_id')
@@ -20,7 +24,11 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError } = await requireAuth(request)
+  if (!authorized) return authError
+
   try {
     const body = await request.json()
     // TODO: Implementar createDocumento en queries

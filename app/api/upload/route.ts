@@ -1,7 +1,12 @@
 import { put } from '@vercel/blob'
 import { type NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/supabase/auth-utils'
 
 export async function POST(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError } = await requireAuth(request)
+  if (!authorized) return authError
+
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
