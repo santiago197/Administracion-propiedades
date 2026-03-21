@@ -1,0 +1,206 @@
+'use client'
+
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
+import { Spinner } from '@/components/ui/spinner'
+import type { Consejero, CargoCohnsejero } from '@/lib/types'
+
+const CARGOS: CargoCohnsejero[] = ['presidente', 'vicepresidente', 'secretario', 'vocal', 'fiscal']
+
+interface FormConsejeroProps {
+  conjuntoId: string
+  onSuccess: (consejero: Consejero) => void
+  loading?: boolean
+}
+
+export function FormConsejero({ conjuntoId, onSuccess, loading = false }: FormConsejeroProps) {
+  const [formData, setFormData] = useState({
+    nombre_completo: '',
+    cargo: 'vocal' as CargoCohnsejero,
+    apartamento: '',
+    torre: '',
+    email: '',
+    telefono: '',
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/consejeros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          conjunto_id: conjuntoId,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al crear consejero')
+      }
+
+      const data = await response.json()
+      setFormData({
+        nombre_completo: '',
+        cargo: 'vocal',
+        apartamento: '',
+        torre: '',
+        email: '',
+        telefono: '',
+      })
+      onSuccess(data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido'
+      setError(message)
+      console.error('[v0] Form error:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Card className="border border-border/50 bg-card/50 p-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-4">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="nombre_completo">Nombre Completo</FieldLabel>
+              <Input
+                id="nombre_completo"
+                name="nombre_completo"
+                placeholder="Ej: Juan Pérez García"
+                value={formData.nombre_completo}
+                onChange={handleChange}
+                required
+                disabled={loading || isSubmitting}
+                className="border-border/50"
+              />
+            </Field>
+          </FieldGroup>
+
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="cargo">Cargo</FieldLabel>
+              <select
+                id="cargo"
+                name="cargo"
+                value={formData.cargo}
+                onChange={handleChange}
+                required
+                disabled={loading || isSubmitting}
+                className="flex h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+              >
+                {CARGOS.map((cargo) => (
+                  <option key={cargo} value={cargo} className="bg-card">
+                    {cargo.charAt(0).toUpperCase() + cargo.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </FieldGroup>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="torre">Torre (Opcional)</FieldLabel>
+                <Input
+                  id="torre"
+                  name="torre"
+                  placeholder="Ej: A"
+                  value={formData.torre}
+                  onChange={handleChange}
+                  disabled={loading || isSubmitting}
+                  className="border-border/50"
+                />
+              </Field>
+            </FieldGroup>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="apartamento">Apartamento</FieldLabel>
+                <Input
+                  id="apartamento"
+                  name="apartamento"
+                  placeholder="Ej: 501"
+                  value={formData.apartamento}
+                  onChange={handleChange}
+                  required
+                  disabled={loading || isSubmitting}
+                  className="border-border/50"
+                />
+              </Field>
+            </FieldGroup>
+          </div>
+
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="email">Email (Opcional)</FieldLabel>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="Ej: juan@ejemplo.com"
+                value={formData.email}
+                onChange={handleChange}
+                disabled={loading || isSubmitting}
+                className="border-border/50"
+              />
+            </Field>
+          </FieldGroup>
+
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="telefono">Teléfono (Opcional)</FieldLabel>
+              <Input
+                id="telefono"
+                name="telefono"
+                placeholder="Ej: +57 312 345 6789"
+                value={formData.telefono}
+                onChange={handleChange}
+                disabled={loading || isSubmitting}
+                className="border-border/50"
+              />
+            </Field>
+          </FieldGroup>
+        </div>
+
+        {error && (
+          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
+            {error}
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          disabled={loading || isSubmitting}
+          className="w-full"
+        >
+          {isSubmitting ? (
+            <>
+              <Spinner className="h-4 w-4 mr-2" />
+              Agregando...
+            </>
+          ) : (
+            'Agregar Consejero'
+          )}
+        </Button>
+      </form>
+    </Card>
+  )
+}
