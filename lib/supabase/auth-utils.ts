@@ -50,7 +50,7 @@ export async function getCurrentUser(request: NextRequest) {
  * Middleware para proteger rutas de API.
  * Retorna error 401 si no está autenticado.
  */
-export async function requireAuth(request: NextRequest) {
+export async function requireAuth(request: NextRequest): Promise<{ authorized: boolean; response: NextResponse | null; user: any }> {
   const { user, error } = await getCurrentUser(request)
 
   if (!user) {

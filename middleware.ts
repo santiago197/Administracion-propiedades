@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { updateSession } from '@/lib/supabase/proxy'
+import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -10,32 +10,50 @@ export async function middleware(request: NextRequest) {
     pathname === route || pathname.startsWith(route + '/')
   )
 
-  // Actualizar sesión (esto también retorna la respuesta)
-  const response = await updateSession(request)
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
+          })
+
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   // Si intenta acceder a ruta protegida sin estar autenticado
-  // La protección se valida en el lado del cliente y en cada API
-  if (!isPublicRoute) {
-    // Verificar si hay cookie de sesión
-    const hasSession = request.cookies.has('sb-access-token') || 
-                       request.cookies.has('sb-refresh-token')
-    
-    if (!hasSession) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
+  if (!isPublicRoute && !user) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   // Si está autenticado pero intenta acceder a login, redirigir a admin
-  if (pathname === '/login') {
-    const hasSession = request.cookies.has('sb-access-token') || 
-                       request.cookies.has('sb-refresh-token')
-    
-    if (hasSession) {
-      return NextResponse.redirect(new URL('/admin', request.url))
-    }
+  if (pathname === '/login' && user) {
+    return NextResponse.redirect(new URL('/admin', request.url))
   }
 
-  return response
+  return supabaseResponse
 }
 
 export const config = {

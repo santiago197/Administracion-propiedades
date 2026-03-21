@@ -7,7 +7,7 @@ import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, CheckCircle2, Users2, BarChart3, FileText } from 'lucide-react'
-import type { Conjunto } from '@/lib/types'
+import type { Conjunto } from '@/lib/types/index'
 
 interface ConfigStep {
   id: string

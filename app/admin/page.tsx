@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { NavBar } from '@/components/admin/nav-bar'
 import { Plus, ChevronRight, Calendar, MapPin, Users, Loader } from 'lucide-react'
-import type { Conjunto } from '@/lib/types'
+import type { Conjunto } from '@/lib/types/index'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AdminHome() {

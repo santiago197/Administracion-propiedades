@@ -7,7 +7,7 @@ import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, TrendingUp, Award } from 'lucide-react'
-import type { ResultadoFinal, ProcesoStats } from '@/lib/types'
+import type { ResultadoFinal, ProcesoStats } from '@/lib/types/index'
 
 export default function PaginaResultados() {
   const params = useParams()

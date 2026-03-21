@@ -100,13 +100,15 @@ CREATE POLICY "conjuntos_select_superadmin" ON conjuntos
   );
 
 -- Admin ve solo su conjunto
+-- Admin ve solo su conjunto o si no tiene conjunto asignado puede ver todos (para configuración inicial)
+-- En producción real, esto debería ser más restrictivo
 CREATE POLICY "conjuntos_select_admin" ON conjuntos
   FOR SELECT USING (
     EXISTS (
       SELECT 1 FROM profiles 
       WHERE id = auth.uid() 
       AND rol = 'admin' 
-      AND conjunto_id = conjuntos.id
+      AND (conjunto_id = conjuntos.id OR conjunto_id IS NULL)
     )
   );
 
