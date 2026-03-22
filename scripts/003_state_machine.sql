@@ -7,51 +7,77 @@
 -- ============================================================
 
 -- ============================================================
--- PASO 1: MIGRACIÓN DE DATOS — estados legacy → nuevo esquema
--- ============================================================
--- El estado original 'activa' ya no existe en el nuevo CHECK.
--- Se considera que una propuesta 'activa' ya pasó documentación
--- y validación legal, por lo tanto se mapea a 'en_evaluacion'.
-DO $$
-BEGIN
-  UPDATE propuestas SET estado = 'en_evaluacion' WHERE estado = 'activa';
-  -- 'descalificada' y 'retirada' se mantienen sin cambios.
-  RAISE NOTICE '[003] Migración de estado "activa" → "en_evaluacion" completada.';
-END $$;
-
--- ============================================================
--- PASO 2: EXTENDER CHECK CONSTRAINT DE ESTADOS
--- Agrega los estados intermedios del flujo completo.
--- El constraint anterior solo tenía el subconjunto básico.
+-- PASO 1: SOLTAR EL CHECK CONSTRAINT EXISTENTE
+-- Debe hacerse ANTES de migrar datos para que el UPDATE
+-- no sea bloqueado por el constraint original ('activa',
+-- 'descalificada', 'retirada') que no conoce los nuevos estados.
 -- ============================================================
 ALTER TABLE propuestas
   DROP CONSTRAINT IF EXISTS propuestas_estado_check;
 
+-- También cubre el nombre alternativo usado en algunas versiones
+ALTER TABLE propuestas
+  DROP CONSTRAINT IF EXISTS propuestas_estado_check1;
+
+DO $$
+BEGIN
+  RAISE NOTICE '[003] Constraint propuestas_estado_check eliminado (si existía).';
+END $$;
+
+-- ============================================================
+-- PASO 2: MIGRACIÓN DE DATOS — estados legacy → nuevo esquema
+-- Ahora es seguro hacer el UPDATE porque no hay constraint activo.
+-- ============================================================
+DO $$
+DECLARE
+  v_count INTEGER;
+BEGIN
+  -- 'activa' (estado original v1) → 'en_evaluacion'
+  -- Se asume que las propuestas 'activas' ya pasaron revisión documental
+  -- y validación legal en el flujo anterior.
+  UPDATE propuestas SET estado = 'en_evaluacion' WHERE estado = 'activa';
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RAISE NOTICE '[003] Filas migradas "activa" → "en_evaluacion": %', v_count;
+
+  -- 'descalificada' y 'retirada' se mantienen — son estados válidos en el nuevo esquema.
+END $$;
+
+-- ============================================================
+-- PASO 3: AGREGAR EL NUEVO CHECK CONSTRAINT
+-- Incluye todos los estados del flujo completo.
+-- Se aplica DESPUÉS de la migración de datos para que las
+-- filas ya actualizadas sean válidas en el nuevo constraint.
+-- ============================================================
 ALTER TABLE propuestas
   ADD CONSTRAINT propuestas_estado_check CHECK (
     estado IN (
-      -- Estados de ingreso y revisión documental
+      -- Ingreso y revisión documental
       'registro',           -- Candidato registrado, pendiente de revisión
       'en_revision',        -- Admin inició revisión documental
       'incompleto',         -- Documentación incompleta — se solicita subsanar
       'en_subsanacion',     -- Candidato tiene plazo activo para corregir
-      -- Estados de validación legal
+      -- Validación legal
       'en_validacion',      -- Revisión legal activa (SARLAFT, antecedentes, pólizas)
       'no_apto_legal',      -- ELIMINATORIO: no pasa validación legal
-      -- Estados de evaluación
+      -- Evaluación
       'habilitada',         -- Aprobó legal, habilitado para evaluación
       'en_evaluacion',      -- En evaluación activa por consejeros
-      -- Resultados de evaluación (clasificaciones como estado)
+      -- Resultados de evaluación
       'condicionado',       -- Puntaje 55–69
       'apto',               -- Puntaje 70–84
       'destacado',          -- Puntaje ≥ 85
       'no_apto',            -- Puntaje < 55 — no supera el mínimo
-      -- Estados terminales
+      -- Terminales
       'adjudicado',         -- Seleccionado formalmente por el consejo
       'descalificada',      -- Descalificado por incumplimiento grave
       'retirada'            -- Retirado voluntariamente del proceso
     )
   );
+
+DO $$
+BEGIN
+  RAISE NOTICE '[003] Nuevo constraint propuestas_estado_check aplicado con 15 estados.';
+END $$;
 
 -- ============================================================
 -- PASO 3: TABLA DE HISTORIAL DE ESTADOS
