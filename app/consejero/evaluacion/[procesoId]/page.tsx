@@ -38,7 +38,7 @@ export default function PaginaEvaluacion() {
 
         if (propRes.ok) {
           const props = await propRes.json()
-          setPropuestas(props?.filter((p: Propuesta) => p.estado === 'activa') || [])
+          setPropuestas(props?.filter((p: Propuesta) => p.estado === 'en_evaluacion') || [])
         }
 
         if (critRes.ok) {

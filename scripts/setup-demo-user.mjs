@@ -37,6 +37,11 @@ const demoUsers = [
     password: 'Consejero@2024!Seguro',
     displayName: 'Consejero Demo',
   },
+  {
+    email: 'demo@demo.com',
+    password: 'demo123',
+    displayName: 'Usuario Demo',
+  },
 ]
 
 async function setupDemoUsers() {

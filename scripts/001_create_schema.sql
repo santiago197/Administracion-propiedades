@@ -67,7 +67,15 @@ CREATE TABLE IF NOT EXISTS propuestas (
   direccion TEXT,
   valor_honorarios DECIMAL(15, 2),
   observaciones TEXT,
-  estado VARCHAR(20) DEFAULT 'activa' CHECK (estado IN ('activa', 'descalificada', 'retirada')),
+  estado VARCHAR(20) DEFAULT 'registro' CHECK (estado IN ('registro', 'incompleto', 'no_apto_legal', 'habilitada', 'en_evaluacion', 'no_apto', 'adjudicado', 'descalificada', 'retirada')),
+  clasificacion VARCHAR(20) CHECK (clasificacion IN ('destacado', 'apto', 'condicionado', 'no_apto')),
+  cumple_requisitos_legales BOOLEAN DEFAULT false,
+  observaciones_legales TEXT,
+  puntaje_legal DECIMAL(5, 2) DEFAULT 0,
+  puntaje_tecnico DECIMAL(5, 2) DEFAULT 0,
+  puntaje_financiero DECIMAL(5, 2) DEFAULT 0,
+  puntaje_referencias DECIMAL(5, 2) DEFAULT 0,
+  puntaje_propuesta DECIMAL(5, 2) DEFAULT 0,
   puntaje_evaluacion DECIMAL(5, 2) DEFAULT 0,
   votos_recibidos INTEGER DEFAULT 0,
   puntaje_final DECIMAL(5, 2) DEFAULT 0,
@@ -265,6 +273,7 @@ CREATE TRIGGER set_consejero_codigo_trigger BEFORE INSERT ON consejeros
 
 -- =====================================================
 -- FUNCIÓN: Calcular puntaje ponderado de propuesta
+-- Escala 0-100 con criterios específicos del flujo
 -- =====================================================
 CREATE OR REPLACE FUNCTION calcular_puntaje_propuesta(p_propuesta_id UUID)
 RETURNS DECIMAL(5, 2) AS $$
@@ -285,9 +294,10 @@ BEGIN
     RETURN 0;
   END IF;
   
-  -- Calcular puntaje ponderado promedio
+  -- Calcular puntaje ponderado promedio (escala 0-100)
+  -- Asumiendo que e.valor está en escala 1-5, convertimos a base 100
   SELECT COALESCE(
-    SUM(e.valor * c.peso / v_total_peso) / NULLIF(COUNT(DISTINCT e.consejero_id), 0),
+    SUM((e.valor / c.valor_maximo * 100) * c.peso / v_total_peso) / NULLIF(COUNT(DISTINCT e.consejero_id), 0),
     0
   ) INTO v_puntaje
   FROM evaluaciones e
@@ -295,6 +305,20 @@ BEGIN
   WHERE e.propuesta_id = p_propuesta_id AND c.activo = true;
   
   RETURN ROUND(v_puntaje, 2);
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCIÓN: Clasificar automáticamente al candidato
+-- =====================================================
+CREATE OR REPLACE FUNCTION clasificar_candidato(p_puntaje DECIMAL)
+RETURNS VARCHAR AS $$
+BEGIN
+  IF p_puntaje >= 85 THEN RETURN 'destacado';
+  ELSIF p_puntaje >= 70 THEN RETURN 'apto';
+  ELSIF p_puntaje >= 55 THEN RETURN 'condicionado';
+  ELSE RETURN 'no_apto';
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -307,17 +331,29 @@ DECLARE
   v_peso_evaluacion INTEGER;
   v_peso_votacion INTEGER;
   v_max_votos INTEGER;
-  v_max_puntaje DECIMAL(5, 2);
+  v_total_consejeros INTEGER;
 BEGIN
   -- Obtener pesos del proceso
   SELECT peso_evaluacion, peso_votacion 
   INTO v_peso_evaluacion, v_peso_votacion
   FROM procesos WHERE id = p_proceso_id;
+
+  -- Obtener total de consejeros activos del conjunto
+  SELECT COUNT(*) INTO v_total_consejeros
+  FROM consejeros co
+  JOIN procesos pr ON pr.conjunto_id = co.conjunto_id
+  WHERE pr.id = p_proceso_id AND co.activo = true;
   
-  -- Actualizar puntajes de evaluación
+  -- Actualizar puntajes de evaluación y clasificación inicial
   UPDATE propuestas 
-  SET puntaje_evaluacion = calcular_puntaje_propuesta(id)
-  WHERE proceso_id = p_proceso_id AND estado = 'activa';
+  SET
+    puntaje_evaluacion = calcular_puntaje_propuesta(id),
+    estado = CASE
+      WHEN calcular_puntaje_propuesta(id) < 55 THEN 'no_apto'
+      ELSE 'en_evaluacion'
+    END,
+    clasificacion = clasificar_candidato(calcular_puntaje_propuesta(id))
+  WHERE proceso_id = p_proceso_id AND estado IN ('habilitada', 'en_evaluacion');
   
   -- Contar votos por propuesta
   UPDATE propuestas p
@@ -326,19 +362,16 @@ BEGIN
   )
   WHERE proceso_id = p_proceso_id;
   
-  -- Obtener máximos para normalización
-  SELECT MAX(votos_recibidos), MAX(puntaje_evaluacion)
-  INTO v_max_votos, v_max_puntaje
-  FROM propuestas WHERE proceso_id = p_proceso_id AND estado = 'activa';
-  
-  -- Calcular puntaje final normalizado
+  -- Calcular puntaje final normalizado (escala 0-100)
+  -- El puntaje de evaluación ya está en escala 100.
+  -- Los votos se normalizan según el total de consejeros.
   UPDATE propuestas
   SET puntaje_final = ROUND(
-    (CASE WHEN v_max_puntaje > 0 THEN (puntaje_evaluacion / v_max_puntaje) * 5 ELSE 0 END) * v_peso_evaluacion / 100 +
-    (CASE WHEN v_max_votos > 0 THEN (votos_recibidos::DECIMAL / v_max_votos) * 5 ELSE 0 END) * v_peso_votacion / 100,
+    (puntaje_evaluacion * v_peso_evaluacion / 100) +
+    (CASE WHEN v_total_consejeros > 0 THEN (votos_recibidos::DECIMAL / v_total_consejeros * 100) ELSE 0 END) * v_peso_votacion / 100,
     2
   )
-  WHERE proceso_id = p_proceso_id AND estado = 'activa';
+  WHERE proceso_id = p_proceso_id AND estado != 'no_apto_legal' AND estado != 'retirada' AND estado != 'descalificada';
 END;
 $$ LANGUAGE plpgsql;
 

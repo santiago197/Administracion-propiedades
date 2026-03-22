@@ -207,6 +207,59 @@ export async function getEvaluacionesConsejero(consejero_id: string, proceso_id:
     .eq('proceso_id', proceso_id)
 }
 
+/**
+ * Valida si la documentación de una propuesta está completa.
+ * Si está incompleta, cambia el estado a 'incompleto'.
+ * Si está completa, cambia el estado a 'habilitada'.
+ */
+export async function validarDocumentacionPropuesta(propuesta_id: string) {
+  const supabase = await createServerClient()
+
+  // 1. Obtener documentos requeridos y cargados
+  const { data: documentos, error: docsError } = await supabase
+    .from('documentos')
+    .select('es_obligatorio, estado')
+    .eq('propuesta_id', propuesta_id)
+
+  if (docsError) throw docsError
+
+  const obligatorioFaltante = documentos?.some(d => d.es_obligatorio && d.estado !== 'completo')
+
+  const nuevoEstado = obligatorioFaltante ? 'incompleto' : 'habilitada'
+
+  const { error: updError } = await supabase
+    .from('propuestas')
+    .update({ estado: nuevoEstado })
+    .eq('id', propuesta_id)
+
+  if (updError) throw updError
+
+  return { success: true, estado: nuevoEstado }
+}
+
+/**
+ * Procesa la validación legal de un candidato.
+ * Si no cumple, el estado cambia a 'no_apto_legal' (rechazo automático).
+ */
+export async function procesarValidacionLegal(propuesta_id: string, cumple: boolean, observaciones: string) {
+  const supabase = await createServerClient()
+
+  const nuevoEstado = cumple ? 'en_evaluacion' : 'no_apto_legal'
+
+  const { error: updError } = await supabase
+    .from('propuestas')
+    .update({
+      estado: nuevoEstado,
+      cumple_requisitos_legales: cumple,
+      observaciones_legales: observaciones
+    })
+    .eq('id', propuesta_id)
+
+  if (updError) throw updError
+
+  return { success: true, estado: nuevoEstado }
+}
+
 export async function verificarEvaluacionCompleta(consejero_id: string, proceso_id: string) {
   const supabase = await createServerClient()
 

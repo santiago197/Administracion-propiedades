@@ -2,7 +2,8 @@ export type TipoPersona = 'juridica' | 'natural'
 export type CargoCohnsejero = 'presidente' | 'vicepresidente' | 'secretario' | 'vocal' | 'fiscal'
 export type EstadoConjunto = 'activo' | 'inactivo' | 'archivado'
 export type EstadoProceso = 'configuracion' | 'evaluacion' | 'votacion' | 'finalizado' | 'cancelado'
-export type EstadoPropuesta = 'activa' | 'descalificada' | 'retirada'
+export type EstadoPropuesta = 'registro' | 'incompleto' | 'no_apto_legal' | 'habilitada' | 'en_evaluacion' | 'no_apto' | 'adjudicado' | 'descalificada' | 'retirada'
+export type ClasificacionPropuesta = 'destacado' | 'apto' | 'condicionado' | 'no_apto'
 export type EstadoDocumento = 'pendiente' | 'completo' | 'incompleto' | 'vencido'
 export type TipoDocumento = 'camara_comercio' | 'rut' | 'certificacion' | 'poliza' | 'estados_financieros' | 'referencia' | 'otro'
 export type TipoCriterio = 'numerico' | 'booleano' | 'escala'
@@ -63,6 +64,14 @@ export interface Propuesta {
   valor_honorarios?: number
   observaciones?: string
   estado: EstadoPropuesta
+  clasificacion?: ClasificacionPropuesta
+  cumple_requisitos_legales: boolean
+  observaciones_legales?: string
+  puntaje_legal: number
+  puntaje_tecnico: number
+  puntaje_financiero: number
+  puntaje_referencias: number
+  puntaje_propuesta: number
   puntaje_evaluacion: number
   votos_recibidos: number
   puntaje_final: number

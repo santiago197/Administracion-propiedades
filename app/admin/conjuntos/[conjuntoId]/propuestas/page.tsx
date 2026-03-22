@@ -178,6 +178,10 @@ export default function GestionPropuestas() {
     )
   }
 
+  const totalPropuestas = propuestas.filter(p => p.estado === 'registro' || p.estado === 'habilitada' || p.estado === 'en_evaluacion').length
+  const requiredPropuestas = 3
+  const isComplete = totalPropuestas >= requiredPropuestas
+
   // ------------------------------------------------------------------
   // Vista principal
   // ------------------------------------------------------------------
