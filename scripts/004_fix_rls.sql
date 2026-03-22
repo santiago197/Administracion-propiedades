@@ -175,6 +175,11 @@ DROP POLICY IF EXISTS "consejeros_select" ON consejeros;
 DROP POLICY IF EXISTS "consejeros_insert" ON consejeros;
 DROP POLICY IF EXISTS "consejeros_update" ON consejeros;
 DROP POLICY IF EXISTS "consejeros_delete" ON consejeros;
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS codigo_acceso TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS consejeros_codigo_acceso_unique
+  ON consejeros (codigo_acceso)
+  WHERE codigo_acceso IS NOT NULL;
 
 CREATE POLICY "consejeros_select" ON consejeros
   FOR SELECT USING (

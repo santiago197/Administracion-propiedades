@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Toaster } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from './theme-toggle'
 
@@ -58,24 +59,55 @@ const navItems: NavItem[] = [
   },
 ]
 
+interface UserData {
+  email: string
+  conjuntoNombre: string
+}
+
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [userData, setUserData] = useState<UserData>({ email: '', conjuntoNombre: '' })
+
+  useEffect(() => {
+    async function fetchUserData() {
+      try {
+        const response = await fetch('/api/conjuntos')
+        if (response.ok) {
+          const conjunto = await response.json()
+          setUserData({
+            email: 'admin',
+            conjuntoNombre: conjunto.nombre || 'SelecionAdm'
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error)
+      }
+    }
+    fetchUserData()
+  }, [])
 
   const activePath = useMemo(
     () => (href: string) => pathname === href || pathname.startsWith(`${href}/`),
     [pathname],
   )
 
+  const initials = userData.conjuntoNombre
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2) || 'SA'
+
   const SidebarContent = (
     <div className="flex h-full flex-col bg-card/70">
       <div className="flex items-center gap-2 px-4 py-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-          SA
+          {initials}
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Conjunto</p>
-          <p className="font-semibold leading-tight">SelecionAdm</p>
+          <p className="font-semibold leading-tight">{userData.conjuntoNombre || 'Cargando...'}</p>
         </div>
       </div>
       <Separator />
@@ -138,11 +170,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </Button>
           <div className="hidden md:flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
-              SA
+              {initials}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Panel Administrativo</p>
-              <p className="font-semibold">SelecionAdm</p>
+              <p className="font-semibold">{userData.conjuntoNombre || 'SelecionAdm'}</p>
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -154,10 +186,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-3 rounded-full border px-3 py-2 bg-card/70">
               <div className="text-left text-xs leading-tight">
                 <p className="text-muted-foreground">Admin</p>
-                <p className="font-semibold">Carolina Reyes</p>
+                <p className="font-semibold">{userData.email || 'Usuario'}</p>
               </div>
               <Avatar className="h-8 w-8">
-                <AvatarFallback>CR</AvatarFallback>
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
             </div>
           </div>
@@ -177,6 +209,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <div className="rounded-2xl border bg-card/80 p-4 shadow-sm md:p-6">{children}</div>
         </main>
       </div>
+      <Toaster />
     </div>
   )
 }

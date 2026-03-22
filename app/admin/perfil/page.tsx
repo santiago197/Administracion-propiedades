@@ -9,9 +9,33 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { propertyProfile } from '@/lib/mock/admin-data'
+import { getConjunto } from '@/lib/supabase/queries'
+import { requireAuth } from '@/lib/supabase/auth-utils'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
-export default function PerfilConjuntoPage() {
+export default async function PerfilConjuntoPage() {
+  // Autenticación y obtener conjunto
+  const cookieStore = await cookies()
+  const user = await requireAuth({ cookies: cookieStore } as any)
+  
+  if (!user.authorized || !user.conjuntoId) {
+    redirect('/login')
+  }
+
+  const { data: conjunto, error } = await getConjunto(user.conjuntoId)
+  
+  if (error || !conjunto) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">Error</p>
+          <h1 className="text-2xl font-semibold tracking-tight">No se pudo cargar el conjunto</h1>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
@@ -29,28 +53,31 @@ export default function PerfilConjuntoPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Nombre</label>
-                <Input defaultValue={propertyProfile.nombre} placeholder="Nombre del conjunto" />
+                <Input defaultValue={conjunto.nombre} placeholder="Nombre del conjunto" disabled />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Ciudad</label>
-                <Input defaultValue={propertyProfile.ciudad} placeholder="Ciudad" />
+                <Input defaultValue={conjunto.ciudad || ''} placeholder="Ciudad" disabled />
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Dirección</label>
-                <Input defaultValue={propertyProfile.direccion} placeholder="Dirección" />
+                <Input defaultValue={conjunto.direccion || ''} placeholder="Dirección" disabled />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Año</label>
-                <Input type="number" defaultValue={propertyProfile.anio} />
+                <Input type="number" defaultValue={conjunto.anio} disabled />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Funcionalidad de edición pendiente. Contacta al administrador para cambios.
+            </p>
           </CardContent>
           <CardFooter className="border-t pt-4">
             <div className="flex w-full justify-end gap-3">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Guardar cambios</Button>
+              <Button variant="outline" disabled>Cancelar</Button>
+              <Button disabled>Guardar cambios</Button>
             </div>
           </CardFooter>
         </Card>

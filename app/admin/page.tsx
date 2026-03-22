@@ -7,13 +7,16 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { dashboardCards, processAlerts, processStepper, recentProcesses } from '@/lib/mock/admin-data'
 import { cn } from '@/lib/utils'
+import { getConjunto, getProcesos } from '@/lib/supabase/queries'
+import { requireAuth } from '@/lib/supabase/auth-utils'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 const estadoColor: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  configuración: { label: 'Configuración', variant: 'secondary' },
-  evaluación: { label: 'Evaluación', variant: 'default' },
-  votación: { label: 'Votación', variant: 'outline' },
+  configuracion: { label: 'Configuración', variant: 'secondary' },
+  evaluacion: { label: 'Evaluación', variant: 'default' },
+  votacion: { label: 'Votación', variant: 'outline' },
   finalizado: { label: 'Finalizado', variant: 'secondary' },
 }
 
@@ -30,11 +33,83 @@ const stepStyles: Record<string, string> = {
   bloqueado: 'border-destructive/50 bg-destructive/10 text-destructive',
 }
 
-export default function AdminDashboard() {
-  const procesoActivo = recentProcesses[0]
-  const avanceGlobal = Math.round(
-    (processStepper.filter((s) => s.status === 'completado').length / processStepper.length) * 100,
-  )
+const processStepper = [
+  { name: 'Registro propuesta', status: 'completado' as const, helper: 'Candidatos registrados' },
+  { name: 'Documentación', status: 'en_progreso' as const, helper: 'Soportes obligatorios' },
+  { name: 'Validación legal', status: 'pendiente' as const, helper: 'Bloquea avance si falla' },
+  { name: 'Evaluación', status: 'pendiente' as const, helper: 'Consejo califica criterios' },
+  { name: 'Ranking', status: 'pendiente' as const, helper: 'Clasificación automática' },
+  { name: 'Votación', status: 'pendiente' as const, helper: 'Acta y quorum' },
+  { name: 'Selección', status: 'pendiente' as const, helper: 'Decisión por puntaje + voto' },
+  { name: 'Acta final', status: 'pendiente' as const, helper: 'Publicable / exportable' },
+]
+
+export default async function AdminDashboard() {
+  // Obtener usuario y conjunto
+  const cookieStore = await cookies()
+  const user = await requireAuth({ cookies: cookieStore } as any)
+  
+  if (!user.authorized || !user.conjuntoId) {
+    redirect('/login')
+  }
+
+  // Obtener conjunto
+  const { data: conjunto } = await getConjunto(user.conjuntoId)
+  
+  // Obtener procesos
+  const { data: procesos } = await getProcesos(user.conjuntoId)
+  const procesosActivos = procesos?.filter(p => p.estado !== 'finalizado' && p.estado !== 'cancelado') || []
+  const procesoActivo = procesosActivos[0]
+
+  // Calcular estadísticas básicas
+  const totalProcesos = procesos?.length || 0
+  const procesosEnEvaluacion = procesos?.filter(p => p.estado === 'evaluacion').length || 0
+  const procesosEnVotacion = procesos?.filter(p => p.estado === 'votacion').length || 0
+
+  const dashboardCards = [
+    { 
+      title: 'Procesos activos', 
+      value: procesosActivos.length.toString(), 
+      helper: `${procesosEnEvaluacion} en evaluación, ${procesosEnVotacion} en votación`, 
+      trend: totalProcesos > 0 ? '+' + Math.round((procesosActivos.length / totalProcesos) * 100) + '%' : '0%' 
+    },
+    { 
+      title: 'Conjunto', 
+      value: conjunto?.nombre?.substring(0, 2).toUpperCase() || '--',
+      helper: conjunto?.nombre || 'Sin nombre', 
+      trend: 'Activo' 
+    },
+    { 
+      title: 'Procesos totales', 
+      value: totalProcesos.toString(), 
+      helper: 'Histórico', 
+      trend: totalProcesos > 0 ? '100%' : '0%' 
+    },
+    { 
+      title: 'Estado', 
+      value: procesoActivo ? '🔄' : '✓',
+      helper: procesoActivo ? 'En curso' : 'Sin procesos activos', 
+      trend: procesoActivo ? procesoActivo.estado : 'N/A' 
+    },
+  ]
+
+  const processAlerts = [
+    { 
+      title: 'Documentación', 
+      description: 'Verifica que todas las propuestas tengan soportes completos.', 
+      severity: 'info' as const 
+    },
+    { 
+      title: 'Validación legal', 
+      description: 'Requisito obligatorio antes de habilitar evaluación.', 
+      severity: 'warn' as const 
+    },
+  ]
+
+  const avanceGlobal = procesoActivo ? 
+    (procesoActivo.estado === 'configuracion' ? 25 : 
+     procesoActivo.estado === 'evaluacion' ? 50 : 
+     procesoActivo.estado === 'votacion' ? 75 : 100) : 0
 
   return (
     <div className="space-y-8">
@@ -64,25 +139,31 @@ export default function AdminDashboard() {
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="pb-4">
-            <CardTitle>Proceso activo: {procesoActivo?.nombre ?? '—'}</CardTitle>
-            <CardDescription>Estado: {estadoColor[procesoActivo?.estado ?? '']?.label ?? procesoActivo?.estado}</CardDescription>
+            <CardTitle>Proceso activo: {procesoActivo?.nombre ?? 'Sin procesos activos'}</CardTitle>
+            <CardDescription>
+              {procesoActivo ? `Estado: ${estadoColor[procesoActivo.estado]?.label ?? procesoActivo.estado}` : 'Crea un nuevo proceso para comenzar'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
-              <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Avance global</p>
-                <div className="flex items-center gap-3">
-                  <Progress value={procesoActivo?.avance ?? 0} className="flex-1" />
-                  <span className="text-sm font-semibold">{procesoActivo?.avance ?? 0}%</span>
+            {procesoActivo && (
+              <>
+                <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Avance global</p>
+                    <div className="flex items-center gap-3">
+                      <Progress value={avanceGlobal} className="flex-1" />
+                      <span className="text-sm font-semibold">{avanceGlobal}%</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 text-right text-xs text-muted-foreground">
+                    <span>Evaluación y votación</span>
+                    <Badge variant={estadoColor[procesoActivo.estado]?.variant ?? 'secondary'}>
+                      {estadoColor[procesoActivo.estado]?.label ?? procesoActivo.estado}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-end gap-1 text-right text-xs text-muted-foreground">
-                <span>Evaluación y votación</span>
-                <Badge variant={estadoColor[procesoActivo?.estado ?? '']?.variant ?? 'secondary'}>
-                  {estadoColor[procesoActivo?.estado ?? '']?.label ?? procesoActivo?.estado}
-                </Badge>
-              </div>
-            </div>
+              </>
+            )}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-3">
@@ -174,30 +255,47 @@ export default function AdminDashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Procesos y trazabilidad</CardTitle>
+          <CardTitle>Procesos</CardTitle>
           <CardDescription>Qué propuestas participaron, documentos, evaluación y puntaje.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {recentProcesses.map((proceso) => (
-            <div key={proceso.nombre} className="rounded-lg border bg-muted/40 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold">{proceso.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{proceso.fecha}</p>
+          {procesosActivos.length > 0 ? (
+            procesosActivos.map((proceso) => (
+              <div key={proceso.id} className="rounded-lg border bg-muted/40 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{proceso.nombre}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(proceso.fecha_inicio).toLocaleDateString('es-CO', { month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <Badge variant={estadoColor[proceso.estado]?.variant ?? 'secondary'}>
+                    {estadoColor[proceso.estado]?.label ?? proceso.estado}
+                  </Badge>
                 </div>
-                <Badge variant={estadoColor[proceso.estado]?.variant ?? 'secondary'}>
-                  {estadoColor[proceso.estado]?.label ?? proceso.estado}
-                </Badge>
+                <div className="mt-3 flex items-center gap-3">
+                  <Progress value={
+                    proceso.estado === 'configuracion' ? 25 : 
+                    proceso.estado === 'evaluacion' ? 50 : 
+                    proceso.estado === 'votacion' ? 75 : 100
+                  } className="flex-1" />
+                  <span className="text-sm font-semibold">
+                    {proceso.estado === 'configuracion' ? '25' : 
+                     proceso.estado === 'evaluacion' ? '50' : 
+                     proceso.estado === 'votacion' ? '75' : '100'}%
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Incluye documentación, evaluación, ranking y votación.
+                </p>
               </div>
-              <div className="mt-3 flex items-center gap-3">
-                <Progress value={proceso.avance} className="flex-1" />
-                <span className="text-sm font-semibold">{proceso.avance}%</span>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Incluye documentación, evaluación, ranking y votación.
-              </p>
+            ))
+          ) : (
+            <div className="col-span-full text-center text-muted-foreground py-8">
+              <p>No hay procesos activos.</p>
+              <p className="text-xs mt-1">Crea uno nuevo para comenzar.</p>
             </div>
-          ))}
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { setConsejeroSessionCookie } from '@/lib/consejero-session'
 
 export async function POST(request: Request) {
   try {
@@ -43,10 +44,22 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       consejero_id: consejero.id,
+      conjunto_id: consejero.conjunto_id,
       proceso_id: proceso.id,
+      perfil_url: '/consejero/perfil',
     })
+
+    setConsejeroSessionCookie(response, {
+      consejeroId: consejero.id,
+      conjuntoId: consejero.conjunto_id,
+      procesoId: proceso.id,
+      codigoAcceso: codigo_acceso.toUpperCase(),
+      issuedAt: Date.now(),
+    })
+
+    return response
   } catch (error) {
     console.error('[v0] Validation error:', error)
     return NextResponse.json({ error: 'Error en la validación' }, { status: 500 })

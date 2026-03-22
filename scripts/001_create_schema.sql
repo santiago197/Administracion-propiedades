@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS consejeros (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS codigo_acceso TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS consejeros_codigo_acceso_unique
+  ON consejeros (codigo_acceso)
+  WHERE codigo_acceso IS NOT NULL;
+
 -- 4. TABLA: PROPUESTAS DE ADMINISTRADORES
 -- =====================================================
 CREATE TABLE IF NOT EXISTS propuestas (

@@ -1,5 +1,5 @@
 import { createClient as createServerClient } from './server'
-import { createClient as createBrowserClient } from './client'
+import { randomBytes } from 'node:crypto'
 import type {
   Conjunto,
   Proceso,
@@ -114,9 +114,50 @@ export async function createConsejero(data: Omit<Consejero, 'id' | 'created_at' 
   return supabase.from('consejeros').insert([data]).select().single()
 }
 
-export async function getConsejeros(conjunto_id: string) {
+export async function getConsejeros(conjunto_id: string, includeInactive = false) {
   const supabase = await createServerClient()
-  return supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id).eq('activo', true)
+  let query = supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id)
+  
+  if (!includeInactive) {
+    query = query.eq('activo', true)
+  }
+  
+  return query.order('created_at', { ascending: false })
+}
+
+export async function generateUniqueCodigoAcceso(conjuntoNombre?: string): Promise<string> {
+  const supabase = await createServerClient()
+  const prefijo = conjuntoNombre?.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'CON'
+  const year = new Date().getFullYear().toString().slice(-2)
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  
+  let codigo: string
+  let attempts = 0
+  const maxAttempts = 10
+
+  do {
+    const bytes = randomBytes(6)
+    const random = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('')
+    codigo = `${prefijo}${year}${random}`
+    
+    const { data, error } = await supabase
+      .from('consejeros')
+      .select('id')
+      .eq('codigo_acceso', codigo)
+      .maybeSingle()
+
+    if (error) throw error
+    
+    if (!data) break
+    
+    attempts++
+  } while (attempts < maxAttempts)
+
+  if (attempts >= maxAttempts) {
+    throw new Error('No se pudo generar un código único')
+  }
+
+  return codigo
 }
 
 export async function getConsejero(id: string) {
@@ -125,7 +166,7 @@ export async function getConsejero(id: string) {
 }
 
 export async function getConsejeroByCodigo(codigo: string) {
-  const supabase = await createBrowserClient()
+  const supabase = await createServerClient()
   return supabase.from('consejeros').select('*').eq('codigo_acceso', codigo).single()
 }
 
