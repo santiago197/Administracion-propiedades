@@ -12,6 +12,18 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,6 +31,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useFileUpload } from '@/hooks/use-file-upload'
 import type { Proceso, Propuesta } from '@/lib/types'
 
 type DocumentoRow = {
@@ -32,6 +52,14 @@ type DocumentoRow = {
 }
 
 type EstadoResumen = 'completo' | 'incompleto' | 'vencido'
+type TipoDocumentoValue =
+  | 'camara_comercio'
+  | 'rut'
+  | 'certificacion'
+  | 'poliza'
+  | 'estados_financieros'
+  | 'referencia'
+  | 'otro'
 
 const estadoClase: Record<string, string> = {
   completo: 'bg-emerald-500/10 text-emerald-700',
@@ -45,13 +73,68 @@ function formatDate(date?: string | null) {
   return new Date(date).toLocaleDateString('es-CO')
 }
 
+const tiposDocumento: Array<{ value: TipoDocumentoValue; label: string }> = [
+  { value: 'camara_comercio', label: 'Cámara de comercio' },
+  { value: 'rut', label: 'RUT' },
+  { value: 'certificacion', label: 'Certificación' },
+  { value: 'poliza', label: 'Póliza' },
+  { value: 'estados_financieros', label: 'Estados financieros' },
+  { value: 'referencia', label: 'Referencia' },
+  { value: 'otro', label: 'Otro' },
+]
+
 export default function DocumentosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [openUpload, setOpenUpload] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [conjuntoId, setConjuntoId] = useState<string | null>(null)
   const [procesoId, setProcesoId] = useState<string | null>(null)
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [documentosByPropuesta, setDocumentosByPropuesta] = useState<Record<string, DocumentoRow[]>>({})
+  const { upload, uploading } = useFileUpload()
+  const [uploadForm, setUploadForm] = useState({
+    propuesta_id: '',
+    tipo: 'otro' as TipoDocumentoValue,
+    nombre: '',
+    estado: 'pendiente' as DocumentoRow['estado'],
+    fecha_vencimiento: '',
+    observaciones: '',
+    es_obligatorio: false,
+  })
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+
+  const loadDocumentosByPropuestas = async (propuestasData: Propuesta[]) => {
+    if (propuestasData.length === 0) {
+      setDocumentosByPropuesta({})
+      return
+    }
+
+    const results = await Promise.all(
+      propuestasData.map(async (propuesta) => {
+        const docsRes = await fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
+        if (!docsRes.ok) throw new Error(`No se pudieron obtener documentos de ${propuesta.razon_social}`)
+        const docs = (await docsRes.json()) as DocumentoRow[]
+        return [propuesta.id, docs] as const
+      })
+    )
+
+    setDocumentosByPropuesta(Object.fromEntries(results))
+  }
+
+  const loadProcesoData = async (targetProcesoId: string) => {
+    const propuestasRes = await fetch(`/api/propuestas?proceso_id=${targetProcesoId}`)
+    if (!propuestasRes.ok) throw new Error('No se pudieron obtener las propuestas')
+    const propuestasData = (await propuestasRes.json()) as Propuesta[]
+    setPropuestas(propuestasData)
+    await loadDocumentosByPropuestas(propuestasData)
+
+    setUploadForm((prev) => ({
+      ...prev,
+      propuesta_id: propuestasData[0]?.id ?? '',
+    }))
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -78,21 +161,7 @@ export default function DocumentosPage() {
         }
 
         setProcesoId(procesoActivo.id)
-        const propuestasRes = await fetch(`/api/propuestas?proceso_id=${procesoActivo.id}`)
-        if (!propuestasRes.ok) throw new Error('No se pudieron obtener las propuestas')
-        const propuestasData = (await propuestasRes.json()) as Propuesta[]
-        setPropuestas(propuestasData)
-
-        const results = await Promise.all(
-          propuestasData.map(async (propuesta) => {
-            const docsRes = await fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
-            if (!docsRes.ok) throw new Error(`No se pudieron obtener documentos de ${propuesta.razon_social}`)
-            const docs = (await docsRes.json()) as DocumentoRow[]
-            return [propuesta.id, docs] as const
-          })
-        )
-
-        setDocumentosByPropuesta(Object.fromEntries(results))
+        await loadProcesoData(procesoActivo.id)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error desconocido'
         setError(message)
@@ -103,6 +172,76 @@ export default function DocumentosPage() {
 
     fetchData()
   }, [])
+
+  const handleSubmitUpload = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setSuccessMessage(null)
+
+    if (!uploadForm.propuesta_id) {
+      setError('Debes seleccionar una propuesta')
+      return
+    }
+
+    if (!uploadForm.nombre.trim()) {
+      setError('El nombre del documento es obligatorio')
+      return
+    }
+
+    if (!uploadFile) {
+      setError('Debes seleccionar un archivo')
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      const uploadResult = await upload(uploadFile, `propuestas/${uploadForm.propuesta_id}`)
+
+      const payload = {
+        propuesta_id: uploadForm.propuesta_id,
+        tipo: uploadForm.tipo,
+        nombre: uploadForm.nombre.trim(),
+        estado: uploadForm.estado,
+        fecha_vencimiento: uploadForm.fecha_vencimiento || null,
+        observaciones: uploadForm.observaciones.trim() || null,
+        es_obligatorio: uploadForm.es_obligatorio,
+        archivo_url: uploadResult.url ?? null,
+        archivo_pathname: uploadResult.pathname ?? null,
+      }
+
+      const response = await fetch('/api/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const responseData = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Error al crear documento')
+      }
+
+      await loadDocumentosByPropuestas(propuestas)
+
+      setUploadForm({
+        propuesta_id: propuestas[0]?.id ?? '',
+        tipo: 'otro',
+        nombre: '',
+        estado: 'pendiente',
+        fecha_vencimiento: '',
+        observaciones: '',
+        es_obligatorio: false,
+      })
+      setUploadFile(null)
+      setOpenUpload(false)
+      setSuccessMessage('Documento cargado correctamente')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido'
+      setError(message)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const resumenPorPropuesta = useMemo(() => {
     return propuestas.map((propuesta) => {
@@ -135,10 +274,154 @@ export default function DocumentosPage() {
             Vista por propuesta con indicadores de completitud y vencimiento.
           </p>
         </div>
-        <Button variant="outline" disabled>
-          Subir documento
-        </Button>
+        <Dialog open={openUpload} onOpenChange={setOpenUpload}>
+          <DialogTrigger asChild>
+            <Button variant="outline" disabled={!procesoId || propuestas.length === 0}>
+              Subir documento
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-xl">
+            <form onSubmit={handleSubmitUpload}>
+              <DialogHeader>
+                <DialogTitle>Cargar documento</DialogTitle>
+                <DialogDescription>Adjunta un soporte a una propuesta del proceso activo.</DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="propuesta_id">Propuesta *</Label>
+                  <Select
+                    value={uploadForm.propuesta_id}
+                    onValueChange={(value) => setUploadForm((prev) => ({ ...prev, propuesta_id: value }))}
+                  >
+                    <SelectTrigger id="propuesta_id">
+                      <SelectValue placeholder="Selecciona una propuesta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {propuestas.map((propuesta) => (
+                        <SelectItem key={propuesta.id} value={propuesta.id}>
+                          {propuesta.razon_social}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="tipo">Tipo de documento *</Label>
+                    <Select
+                      value={uploadForm.tipo}
+                      onValueChange={(value: TipoDocumentoValue) =>
+                        setUploadForm((prev) => ({ ...prev, tipo: value }))
+                      }
+                    >
+                      <SelectTrigger id="tipo">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tiposDocumento.map((tipo) => (
+                          <SelectItem key={tipo.value} value={tipo.value}>
+                            {tipo.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="estado">Estado *</Label>
+                    <Select
+                      value={uploadForm.estado}
+                      onValueChange={(value: DocumentoRow['estado']) =>
+                        setUploadForm((prev) => ({ ...prev, estado: value }))
+                      }
+                    >
+                      <SelectTrigger id="estado">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pendiente">Pendiente</SelectItem>
+                        <SelectItem value="completo">Completo</SelectItem>
+                        <SelectItem value="incompleto">Incompleto</SelectItem>
+                        <SelectItem value="vencido">Vencido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="nombre">Nombre del documento *</Label>
+                  <Input
+                    id="nombre"
+                    value={uploadForm.nombre}
+                    onChange={(e) => setUploadForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                    placeholder="Ej. Certificado de Cámara de Comercio"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="archivo">Archivo *</Label>
+                  <Input
+                    id="archivo"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Formatos permitidos: PDF, DOC, DOCX.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="fecha_vencimiento">Fecha de vencimiento</Label>
+                  <Input
+                    id="fecha_vencimiento"
+                    type="date"
+                    value={uploadForm.fecha_vencimiento}
+                    onChange={(e) => setUploadForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="observaciones">Observaciones</Label>
+                  <Textarea
+                    id="observaciones"
+                    value={uploadForm.observaciones}
+                    onChange={(e) => setUploadForm((prev) => ({ ...prev, observaciones: e.target.value }))}
+                    rows={3}
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input"
+                    checked={uploadForm.es_obligatorio}
+                    onChange={(e) => setUploadForm((prev) => ({ ...prev, es_obligatorio: e.target.checked }))}
+                  />
+                  Documento obligatorio
+                </label>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setOpenUpload(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving || uploading}>
+                  {saving || uploading ? 'Cargando...' : 'Guardar documento'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {successMessage ? (
+        <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-700">
+          {successMessage}
+        </div>
+      ) : null}
 
       {loading ? (
         <Card>

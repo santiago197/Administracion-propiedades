@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB para logos
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
@@ -119,13 +120,13 @@ export async function POST(request: NextRequest) {
       // Upload genérico de documentos
       const folder = (formData.get('folder') as string) || 'documentos'
       const timestamp = Date.now()
-      const extension = file.name.split('.').pop() || 'pdf'
-      const fileName = `${folder}/${conjuntoId}/${timestamp}-${file.name}`
+      const safeFileName = file.name.replace(/[^\w.\-]/g, '_')
+      const fileName = `${folder}/${conjuntoId}/${timestamp}-${safeFileName}`
 
       const arrayBuffer = await file.arrayBuffer()
       const buffer = new Uint8Array(arrayBuffer)
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      let { data: uploadData, error: uploadError } = await supabase.storage
         .from('documentos')
         .upload(fileName, buffer, {
           contentType: file.type,
@@ -134,8 +135,39 @@ export async function POST(request: NextRequest) {
 
       if (uploadError) {
         console.error('Error uploading document:', uploadError)
+
+        const isRlsError =
+          uploadError.message?.toLowerCase().includes('row-level security') ||
+          uploadError.message?.toLowerCase().includes('policy')
+
+        if (isRlsError) {
+          try {
+            const adminClient = createAdminClient()
+            const adminUpload = await adminClient.storage
+              .from('documentos')
+              .upload(fileName, buffer, {
+                contentType: file.type,
+                upsert: false,
+              })
+            uploadData = adminUpload.data
+            uploadError = adminUpload.error
+          } catch (adminError) {
+            console.error('Error uploading with admin client:', adminError)
+          }
+        }
+
+        if (uploadError && isRlsError) {
+          return NextResponse.json(
+            {
+              error: 'Error al subir documento por política de Storage',
+              details:
+                'Configura SUPABASE_SERVICE_ROLE_KEY en el entorno del servidor o ajusta RLS en storage.objects para el bucket "documentos".',
+            },
+            { status: 500 }
+          )
+        }
         
-        if (uploadError.message?.includes('not found') || uploadError.message?.includes('does not exist')) {
+        if (uploadError && (uploadError.message?.includes('not found') || uploadError.message?.includes('does not exist'))) {
           return NextResponse.json(
             { 
               error: 'El bucket "documentos" no existe. Por favor configura Supabase Storage.',
@@ -146,9 +178,9 @@ export async function POST(request: NextRequest) {
         }
         
         return NextResponse.json(
-          { 
+          {
             error: 'Error al subir documento',
-            details: uploadError.message 
+            details: uploadError.message,
           },
           { status: 500 }
         )
