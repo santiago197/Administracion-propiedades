@@ -4,12 +4,13 @@
 -- =====================================================
 
 -- 1. TABLA: PERFILES DE USUARIO
+-- 1. TABLA: USUARIOS (Sistema Multi-tenant)
 -- =====================================================
-CREATE TABLE IF NOT EXISTS profiles (
+CREATE TABLE IF NOT EXISTS usuarios (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email VARCHAR(255) NOT NULL,
-  nombre_completo VARCHAR(255),
-  rol VARCHAR(20) NOT NULL DEFAULT 'admin' CHECK (rol IN ('superadmin', 'admin', 'consejero')),
+  nombre VARCHAR(255),
+  rol VARCHAR(20) NOT NULL DEFAULT 'admin' CHECK (rol IN ('superadmin', 'admin', 'evaluador', 'consejero')),
   conjunto_id UUID REFERENCES conjuntos(id) ON DELETE SET NULL,
   activo BOOLEAN DEFAULT true,
   ultimo_acceso TIMESTAMPTZ,
@@ -17,36 +18,36 @@ CREATE TABLE IF NOT EXISTS profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Índices para profiles
-CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
-CREATE INDEX IF NOT EXISTS idx_profiles_conjunto ON profiles(conjunto_id);
-CREATE INDEX IF NOT EXISTS idx_profiles_rol ON profiles(rol);
+-- Índices para usuarios
+CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email);
+CREATE INDEX IF NOT EXISTS idx_usuarios_conjunto ON usuarios(conjunto_id);
+CREATE INDEX IF NOT EXISTS idx_usuarios_rol ON usuarios(rol);
 
--- Habilitar RLS en profiles
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- Habilitar RLS en usuarios
+ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
 
--- Políticas para profiles
-CREATE POLICY "profiles_select_own" ON profiles 
+-- Políticas para usuarios
+CREATE POLICY "usuarios_select_own" ON usuarios
   FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "profiles_update_own" ON profiles 
+CREATE POLICY "usuarios_update_own" ON usuarios
   FOR UPDATE USING (auth.uid() = id);
 
--- Superadmin puede ver todos los perfiles
-CREATE POLICY "profiles_select_superadmin" ON profiles 
+-- Superadmin puede ver todos los usuarios
+CREATE POLICY "usuarios_select_superadmin" ON usuarios
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p 
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() AND p.rol = 'superadmin'
     )
   );
 
--- Trigger para actualizar updated_at en profiles
-CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
+-- Trigger para actualizar updated_at en usuarios
+CREATE TRIGGER update_usuarios_updated_at BEFORE UPDATE ON usuarios
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =====================================================
--- 2. FUNCIÓN: Crear perfil automáticamente al registrarse
+-- 2. FUNCIÓN: Crear usuario automáticamente al registrarse
 -- =====================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -55,12 +56,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, nombre_completo, rol)
+  INSERT INTO public.usuarios (id, email, nombre, rol, activo)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data ->> 'nombre_completo', NEW.email),
-    COALESCE(NEW.raw_user_meta_data ->> 'rol', 'admin')
+    COALESCE(NEW.raw_user_meta_data ->> 'nombre', NEW.email),
+    COALESCE(NEW.raw_user_meta_data ->> 'rol', 'admin'),
+    true
   )
   ON CONFLICT (id) DO NOTHING;
   
@@ -96,7 +98,7 @@ DROP POLICY IF EXISTS "allow_all_audit" ON audit_log;
 -- Superadmin ve todos
 CREATE POLICY "conjuntos_select_superadmin" ON conjuntos
   FOR SELECT USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND rol = 'superadmin')
+    EXISTS (SELECT 1 FROM usuarios WHERE id = auth.uid() AND rol = 'superadmin')
   );
 
 -- Admin ve solo su conjunto
@@ -105,7 +107,7 @@ CREATE POLICY "conjuntos_select_superadmin" ON conjuntos
 CREATE POLICY "conjuntos_select_admin" ON conjuntos
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles 
+      SELECT 1 FROM usuarios
       WHERE id = auth.uid() 
       AND rol = 'admin' 
       AND (conjunto_id = conjuntos.id OR conjunto_id IS NULL)
@@ -115,14 +117,14 @@ CREATE POLICY "conjuntos_select_admin" ON conjuntos
 -- Superadmin puede crear conjuntos
 CREATE POLICY "conjuntos_insert_superadmin" ON conjuntos
   FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND rol = 'superadmin')
+    EXISTS (SELECT 1 FROM usuarios WHERE id = auth.uid() AND rol = 'superadmin')
   );
 
 -- Admin puede crear si no tiene conjunto asignado
 CREATE POLICY "conjuntos_insert_admin" ON conjuntos
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles 
+      SELECT 1 FROM usuarios
       WHERE id = auth.uid() 
       AND rol = 'admin' 
       AND conjunto_id IS NULL
@@ -133,7 +135,7 @@ CREATE POLICY "conjuntos_insert_admin" ON conjuntos
 CREATE POLICY "conjuntos_update" ON conjuntos
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles 
+      SELECT 1 FROM usuarios
       WHERE id = auth.uid() 
       AND (rol = 'superadmin' OR (rol = 'admin' AND conjunto_id = conjuntos.id))
     )
@@ -145,7 +147,7 @@ CREATE POLICY "conjuntos_update" ON conjuntos
 CREATE POLICY "procesos_select" ON procesos
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR p.conjunto_id = procesos.conjunto_id)
     )
@@ -154,7 +156,7 @@ CREATE POLICY "procesos_select" ON procesos
 CREATE POLICY "procesos_insert" ON procesos
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = procesos.conjunto_id))
     )
@@ -163,7 +165,7 @@ CREATE POLICY "procesos_insert" ON procesos
 CREATE POLICY "procesos_update" ON procesos
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = procesos.conjunto_id))
     )
@@ -172,7 +174,7 @@ CREATE POLICY "procesos_update" ON procesos
 CREATE POLICY "procesos_delete" ON procesos
   FOR DELETE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = procesos.conjunto_id))
     )
@@ -184,7 +186,7 @@ CREATE POLICY "procesos_delete" ON procesos
 CREATE POLICY "consejeros_select" ON consejeros
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR p.conjunto_id = consejeros.conjunto_id)
     )
@@ -193,7 +195,7 @@ CREATE POLICY "consejeros_select" ON consejeros
 CREATE POLICY "consejeros_insert" ON consejeros
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = consejeros.conjunto_id))
     )
@@ -202,7 +204,7 @@ CREATE POLICY "consejeros_insert" ON consejeros
 CREATE POLICY "consejeros_update" ON consejeros
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = consejeros.conjunto_id))
     )
@@ -211,7 +213,7 @@ CREATE POLICY "consejeros_update" ON consejeros
 CREATE POLICY "consejeros_delete" ON consejeros
   FOR DELETE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR (p.rol = 'admin' AND p.conjunto_id = consejeros.conjunto_id))
     )
@@ -223,7 +225,7 @@ CREATE POLICY "consejeros_delete" ON consejeros
 CREATE POLICY "propuestas_select" ON propuestas
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR pr.id = propuestas.proceso_id)
@@ -233,7 +235,7 @@ CREATE POLICY "propuestas_select" ON propuestas
 CREATE POLICY "propuestas_insert" ON propuestas
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -244,7 +246,7 @@ CREATE POLICY "propuestas_insert" ON propuestas
 CREATE POLICY "propuestas_update" ON propuestas
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -255,7 +257,7 @@ CREATE POLICY "propuestas_update" ON propuestas
 CREATE POLICY "propuestas_delete" ON propuestas
   FOR DELETE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -269,7 +271,7 @@ CREATE POLICY "propuestas_delete" ON propuestas
 CREATE POLICY "documentos_select" ON documentos
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       JOIN propuestas prop ON prop.proceso_id = pr.id
       WHERE p.id = auth.uid() 
@@ -280,7 +282,7 @@ CREATE POLICY "documentos_select" ON documentos
 CREATE POLICY "documentos_insert" ON documentos
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       JOIN propuestas prop ON prop.proceso_id = pr.id
       WHERE p.id = auth.uid() 
@@ -292,7 +294,7 @@ CREATE POLICY "documentos_insert" ON documentos
 CREATE POLICY "documentos_update" ON documentos
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       JOIN propuestas prop ON prop.proceso_id = pr.id
       WHERE p.id = auth.uid() 
@@ -304,7 +306,7 @@ CREATE POLICY "documentos_update" ON documentos
 CREATE POLICY "documentos_delete" ON documentos
   FOR DELETE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       JOIN propuestas prop ON prop.proceso_id = pr.id
       WHERE p.id = auth.uid() 
@@ -319,7 +321,7 @@ CREATE POLICY "documentos_delete" ON documentos
 CREATE POLICY "criterios_select" ON criterios
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = criterios.proceso_id
@@ -329,7 +331,7 @@ CREATE POLICY "criterios_select" ON criterios
 CREATE POLICY "criterios_insert" ON criterios
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -340,7 +342,7 @@ CREATE POLICY "criterios_insert" ON criterios
 CREATE POLICY "criterios_update" ON criterios
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -351,7 +353,7 @@ CREATE POLICY "criterios_update" ON criterios
 CREATE POLICY "criterios_delete" ON criterios
   FOR DELETE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND p.rol IN ('superadmin', 'admin')
@@ -365,7 +367,7 @@ CREATE POLICY "criterios_delete" ON criterios
 CREATE POLICY "evaluaciones_select" ON evaluaciones
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = evaluaciones.proceso_id
@@ -375,7 +377,7 @@ CREATE POLICY "evaluaciones_select" ON evaluaciones
 CREATE POLICY "evaluaciones_insert" ON evaluaciones
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = evaluaciones.proceso_id
@@ -385,7 +387,7 @@ CREATE POLICY "evaluaciones_insert" ON evaluaciones
 CREATE POLICY "evaluaciones_update" ON evaluaciones
   FOR UPDATE USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = evaluaciones.proceso_id
@@ -398,7 +400,7 @@ CREATE POLICY "evaluaciones_update" ON evaluaciones
 CREATE POLICY "votos_select" ON votos
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = votos.proceso_id
@@ -408,7 +410,7 @@ CREATE POLICY "votos_select" ON votos
 CREATE POLICY "votos_insert" ON votos
   FOR INSERT WITH CHECK (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       JOIN procesos pr ON pr.conjunto_id = p.conjunto_id
       WHERE p.id = auth.uid() 
       AND pr.id = votos.proceso_id
@@ -421,7 +423,7 @@ CREATE POLICY "votos_insert" ON votos
 CREATE POLICY "audit_select" ON audit_log
   FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM profiles p
+      SELECT 1 FROM usuarios p
       WHERE p.id = auth.uid() 
       AND (p.rol = 'superadmin' OR p.conjunto_id = audit_log.conjunto_id)
     )
@@ -439,7 +441,7 @@ CREATE OR REPLACE FUNCTION get_current_user_profile()
 RETURNS TABLE (
   id UUID,
   email VARCHAR,
-  nombre_completo VARCHAR,
+  nombre VARCHAR,
   rol VARCHAR,
   conjunto_id UUID,
   activo BOOLEAN
@@ -452,11 +454,11 @@ BEGIN
   SELECT 
     p.id,
     p.email,
-    p.nombre_completo,
+    p.nombre,
     p.rol,
     p.conjunto_id,
     p.activo
-  FROM profiles p
+  FROM usuarios p
   WHERE p.id = auth.uid();
 END;
 $$;
@@ -470,7 +472,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  UPDATE profiles
+  UPDATE usuarios
   SET ultimo_acceso = NOW()
   WHERE id = auth.uid();
 END;
@@ -491,13 +493,13 @@ DECLARE
   v_caller_rol VARCHAR;
 BEGIN
   -- Verificar que el llamador es superadmin
-  SELECT rol INTO v_caller_rol FROM profiles WHERE id = auth.uid();
+  SELECT rol INTO v_caller_rol FROM usuarios WHERE id = auth.uid();
   
   IF v_caller_rol != 'superadmin' THEN
     RAISE EXCEPTION 'Solo superadmin puede asignar conjuntos';
   END IF;
   
-  UPDATE profiles
+  UPDATE usuarios
   SET conjunto_id = p_conjunto_id
   WHERE id = p_user_id;
   
