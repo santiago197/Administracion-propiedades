@@ -1,150 +1,102 @@
-'use client'
+import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { dashboardCards, recentProcesses } from '@/lib/mock/admin-data'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { NavBar } from '@/components/admin/nav-bar'
-import { Plus, ChevronRight, Calendar, MapPin, Users, Loader } from 'lucide-react'
-import type { Conjunto } from '@/lib/types/index'
-import { createClient } from '@/lib/supabase/client'
+const estadoColor: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+  configuración: { label: 'Configuración', variant: 'secondary' },
+  evaluación: { label: 'Evaluación', variant: 'default' },
+  votación: { label: 'Votación', variant: 'outline' },
+  finalizado: { label: 'Finalizado', variant: 'secondary' },
+}
 
-export default function AdminHome() {
-  const router = useRouter()
-  const [conjuntos, setConjuntos] = useState<Conjunto[]>([])
-  const [loading, setLoading] = useState(true)
-  const [authorized, setAuthorized] = useState(false)
-
-  useEffect(() => {
-    const checkAuthAndFetch = async () => {
-      try {
-        const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        // Si no hay usuario, redirigir a login
-        if (!user) {
-          router.push('/login')
-          return
-        }
-
-        setAuthorized(true)
-
-        // Cargar conjuntos
-        const response = await fetch('/api/conjuntos')
-        if (response.status === 401) {
-          router.push('/login')
-          return
-        }
-        const data = await response.json()
-        setConjuntos(data || [])
-      } catch (error) {
-        console.error('[v0] Error fetching conjuntos:', error)
-        router.push('/login')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkAuthAndFetch()
-  }, [router])
-
-  // No renderizar nada hasta validar autorización
-  if (!authorized && loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Validando sesión...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!authorized) {
-    return null
-  }
-
+export default function AdminDashboard() {
   return (
-    <div className="min-h-screen bg-background">
-      <NavBar />
+    <div className="space-y-8">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">Panel general</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Conjuntos Residenciales</h1>
-            <p className="mt-2 text-muted-foreground">
-              Administra los procesos de selección de administradores
-            </p>
-          </div>
-          <Link href="/admin/nuevo-conjunto">
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo Conjunto
-            </Button>
-          </Link>
-        </div>
-
-        {loading ? (
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i} className="h-32 animate-pulse bg-card/50" />
-            ))}
-          </div>
-        ) : conjuntos.length === 0 ? (
-          <Card className="border-dashed p-12 text-center">
-            <div className="mx-auto max-w-sm">
-              <h2 className="text-xl font-semibold text-foreground mb-2">No hay conjuntos registrados</h2>
-              <p className="text-muted-foreground mb-6">
-                Comienza creando tu primer conjunto residencial para iniciar procesos de selección.
-              </p>
-              <Link href="/admin/nuevo-conjunto">
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Crear Primer Conjunto
-                </Button>
-              </Link>
-            </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {dashboardCards.map((card) => (
+          <Card key={card.title} className="bg-card/70">
+            <CardHeader className="pb-2">
+              <CardDescription>{card.title}</CardDescription>
+              <CardTitle className="text-3xl">{card.value}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{card.helper}</span>
+              <Badge variant="secondary">{card.trend}</Badge>
+            </CardContent>
           </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {conjuntos.map((conjunto) => (
-              <Link key={conjunto.id} href={`/admin/conjuntos/${conjunto.id}`}>
-                <Card className="group border border-border/50 bg-card/50 p-6 hover:border-primary/50 hover:bg-card/80 transition-all cursor-pointer h-full">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors">
-                        {conjunto.nombre}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">Conjunto residencial</p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                  </div>
+        ))}
+      </div>
 
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      <span>{conjunto.ciudad}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>{conjunto.anio}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-border/50">
-                    <p className="text-xs text-muted-foreground">
-                      {conjunto.direccion}
-                    </p>
-                  </div>
-                </Card>
-              </Link>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-4">
+            <CardTitle>Últimos procesos</CardTitle>
+            <CardDescription>Seguimiento rápido de los procesos recientes</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {recentProcesses.map((proceso) => (
+              <div
+                key={proceso.nombre}
+                className="flex flex-col gap-2 rounded-lg border px-4 py-3 md:flex-row md:items-center md:gap-4"
+              >
+                <div className="flex-1">
+                  <p className="font-medium">{proceso.nombre}</p>
+                  <p className="text-xs text-muted-foreground">{proceso.fecha}</p>
+                </div>
+                <div className="flex items-center gap-3 md:w-64">
+                  <Progress value={proceso.avance} className="flex-1" />
+                  <span className="text-sm font-semibold">{proceso.avance}%</span>
+                </div>
+                <Badge variant={estadoColor[proceso.estado]?.variant ?? 'secondary'}>
+                  {estadoColor[proceso.estado]?.label ?? proceso.estado}
+                </Badge>
+              </div>
             ))}
-          </div>
-        )}
-      </main>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Estado general</CardTitle>
+            <CardDescription>Visión rápida del proceso actual</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex items-start gap-3 rounded-lg bg-muted/50 p-3">
+              <div className="mt-1 h-2 w-2 rounded-full bg-emerald-500" />
+              <div>
+                <p className="font-medium">Evaluación en curso</p>
+                <p className="text-muted-foreground">83% de consejeros evaluaron todas las propuestas.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg bg-muted/50 p-3">
+              <div className="mt-1 h-2 w-2 rounded-full bg-amber-500" />
+              <div>
+                <p className="font-medium">Documentos faltantes</p>
+                <p className="text-muted-foreground">5 documentos pendientes por validar.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg bg-muted/50 p-3">
+              <div className="mt-1 h-2 w-2 rounded-full bg-sky-500" />
+              <div>
+                <p className="font-medium">Votación programada</p>
+                <p className="text-muted-foreground">Fecha tentativa: 18 de marzo de 2025.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
