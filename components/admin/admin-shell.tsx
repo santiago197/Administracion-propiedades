@@ -4,21 +4,20 @@ import { useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
+  BarChart3,
   Bell,
   Building2,
+  CheckSquare,
   FileText,
   Flag,
   LayoutDashboard,
-  LineChart,
   Menu,
   ScrollText,
   Settings,
   ShieldCheck,
   Users,
-  Briefcase,
   Layers,
-  BarChart3,
-  ListChecks,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -39,21 +38,22 @@ type NavItem = {
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { title: 'Perfil del Conjunto', href: '/admin/perfil', icon: Building2 },
-  { title: 'Consejeros', href: '/admin/consejeros', icon: Users },
-  { title: 'Administrador', href: '/admin/administrador', icon: Briefcase },
+  { title: 'Consejo', href: '/admin/consejeros', icon: Users, badge: '1 pendiente' },
   { title: 'Procesos de Selección', href: '/admin/procesos', icon: Flag },
   { title: 'Propuestas', href: '/admin/propuestas', icon: Layers },
-  { title: 'Documentos', href: '/admin/documentos', icon: FileText },
-  { title: 'Contratos', href: '/admin/contratos', icon: ScrollText },
-  { title: 'Finanzas', href: '/admin/finanzas', icon: LineChart },
-  { title: 'Reportes', href: '/admin/reportes', icon: BarChart3 },
+  { title: 'Documentación', href: '/admin/documentos', icon: FileText },
+  { title: 'Validación Legal', href: '/admin/validacion-legal', icon: ShieldCheck },
+  { title: 'Evaluación Técnica', href: '/admin/evaluacion', icon: ClipboardList },
+  { title: 'Ranking', href: '/admin/ranking', icon: BarChart3 },
+  { title: 'Votación Consejo', href: '/admin/votacion', icon: CheckSquare },
+  { title: 'Informes / Auditoría', href: '/admin/reportes', icon: ScrollText },
   {
     title: 'Configuración',
     href: '/admin/configuracion/roles',
     icon: Settings,
     children: [
       { title: 'Roles y accesos', href: '/admin/configuracion/roles', icon: ShieldCheck },
-      { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: ListChecks },
+      { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: CheckSquare },
     ],
   },
 ]

@@ -84,6 +84,8 @@ export default function ConsejerosPage() {
                 <TableHead>Cargo</TableHead>
                 <TableHead>Unidad</TableHead>
                 <TableHead>Contacto</TableHead>
+                <TableHead>Evaluó</TableHead>
+                <TableHead>Votó</TableHead>
                 <TableHead className="text-right">Estado</TableHead>
               </TableRow>
             </TableHeader>
@@ -96,6 +98,16 @@ export default function ConsejerosPage() {
                     Torre {c.torre} - Apto {c.apto}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{c.contacto}</TableCell>
+                  <TableCell>
+                    <Badge variant={c.evaluo ? 'secondary' : 'outline'}>
+                      {c.evaluo ? 'Evaluó' : 'Pendiente'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={c.voto ? 'secondary' : 'outline'}>
+                      {c.voto ? 'Votó' : 'Pendiente'}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Badge variant={c.activo ? 'secondary' : 'outline'}>
                       {c.activo ? 'Activo' : 'Inactivo'}
