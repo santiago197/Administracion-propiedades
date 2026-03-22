@@ -18,11 +18,13 @@ export async function GET(request: NextRequest) {
         .eq('id', session.consejeroId)
         .eq('activo', true)
         .single(),
-      supabase
-        .from('procesos')
-        .select('id, conjunto_id, nombre, estado')
-        .eq('id', session.procesoId)
-        .single(),
+      session.procesoId
+        ? supabase
+            .from('procesos')
+            .select('id, conjunto_id, nombre, estado')
+            .eq('id', session.procesoId)
+            .single()
+        : Promise.resolve({ data: null, error: null }),
     ])
 
     if (consejeroError || !consejero) {
@@ -31,10 +33,25 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    if (procesoError || !proceso || proceso.conjunto_id !== consejero.conjunto_id || proceso.conjunto_id !== session.conjuntoId) {
+    if (procesoError || (proceso && (proceso.conjunto_id !== consejero.conjunto_id || proceso.conjunto_id !== session.conjuntoId))) {
       const response = NextResponse.json({ error: 'Proceso no disponible para el consejero' }, { status: 403 })
       clearConsejeroSessionCookie(response)
       return response
+    }
+
+    if (!proceso) {
+      return NextResponse.json({
+        consejero,
+        proceso: null,
+        progreso: {
+          propuestas_requeridas: 0,
+          propuestas_evaluadas: 0,
+          evaluacion_completa: false,
+          ya_voto: false,
+          fecha_voto: null,
+        },
+        mensaje: 'No hay un proceso de evaluación activo para este conjunto en este momento.',
+      })
     }
 
     const [{ count: propuestasPendientes }, { data: evaluaciones }, { data: voto }] = await Promise.all([

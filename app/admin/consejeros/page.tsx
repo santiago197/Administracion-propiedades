@@ -66,6 +66,16 @@ import {
 import { useToast } from '@/components/ui/use-toast'
 import type { Consejero } from '@/lib/types'
 
+const CARGO_OPTIONS = [
+  { value: 'presidente', label: 'Presidente' },
+  { value: 'vicepresidente', label: 'Vicepresidente' },
+  { value: 'secretario', label: 'Secretario' },
+  { value: 'tesorero', label: 'Tesorero' },
+  { value: 'vocal_principal', label: 'Vocal principal' },
+  { value: 'consejero', label: 'Consejero' },
+  { value: 'consejero_suplente', label: 'Consejero suplente' },
+] as const
+
 export default function ConsejerosPage() {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
@@ -78,9 +88,14 @@ export default function ConsejerosPage() {
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedConsejero, setSelectedConsejero] = useState<Consejero | null>(null)
   const [newCode, setNewCode] = useState<string>('')
+
+  const accessUrl =
+    typeof window !== 'undefined'
+      ? new URL('/consejero', window.location.origin).toString()
+      : '/consejero'
   const [formData, setFormData] = useState({
     nombre_completo: '',
-    cargo: 'vocal' as const,
+    cargo: 'consejero' as const,
     torre: '',
     apartamento: '',
     email: '',
@@ -89,7 +104,7 @@ export default function ConsejerosPage() {
   const [editFormData, setEditFormData] = useState({
     id: '',
     nombre_completo: '',
-    cargo: 'vocal' as const,
+    cargo: 'consejero' as const,
     torre: '',
     apartamento: '',
     email: '',
@@ -153,7 +168,7 @@ export default function ConsejerosPage() {
       // Reset form and close dialog
       setFormData({
         nombre_completo: '',
-        cargo: 'vocal',
+        cargo: 'consejero',
         torre: '',
         apartamento: '',
         email: '',
@@ -303,6 +318,14 @@ export default function ConsejerosPage() {
     })
   }
 
+  function copyAccessLink() {
+    navigator.clipboard.writeText(accessUrl)
+    toast({
+      title: 'Enlace copiado',
+      description: 'Comparte este enlace con los consejeros para que puedan acceder.',
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -338,11 +361,9 @@ export default function ConsejerosPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="presidente">Presidente</SelectItem>
-                        <SelectItem value="vicepresidente">Vicepresidente</SelectItem>
-                        <SelectItem value="secretario">Secretario</SelectItem>
-                        <SelectItem value="vocal">Vocal</SelectItem>
-                        <SelectItem value="fiscal">Fiscal</SelectItem>
+                        {CARGO_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -396,6 +417,31 @@ export default function ConsejerosPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Acceso de Consejeros</CardTitle>
+          <CardDescription>
+            Comparte este enlace con los consejeros para que puedan ingresar al sistema y evaluar/votar propuestas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <code
+              id="url"
+              className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm"
+            >
+              {accessUrl}
+            </code>
+            <Button variant="outline" onClick={copyAccessLink}>
+              Copiar enlace
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Cada consejero debe ingresar con su código de acceso único.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -534,11 +580,9 @@ export default function ConsejerosPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="presidente">Presidente</SelectItem>
-                      <SelectItem value="vicepresidente">Vicepresidente</SelectItem>
-                      <SelectItem value="secretario">Secretario</SelectItem>
-                      <SelectItem value="vocal">Vocal</SelectItem>
-                      <SelectItem value="fiscal">Fiscal</SelectItem>
+                        {CARGO_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

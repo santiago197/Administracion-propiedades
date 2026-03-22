@@ -20,7 +20,7 @@ interface ConsejeroPerfilResponse {
     id: string
     nombre: string
     estado: string
-  }
+  } | null
   progreso: {
     propuestas_requeridas: number
     propuestas_evaluadas: number
@@ -28,6 +28,7 @@ interface ConsejeroPerfilResponse {
     ya_voto: boolean
     fecha_voto: string | null
   }
+  mensaje?: string
 }
 
 export default function PerfilConsejeroPage() {
@@ -105,8 +106,16 @@ export default function PerfilConsejeroPage() {
 
         <Card className="border border-border/50 bg-card/50 p-6">
           <p className="text-sm text-muted-foreground">Proceso actual</p>
-          <p className="text-xl font-semibold text-foreground mt-1">{proceso.nombre}</p>
-          <p className="text-sm text-muted-foreground mt-1">Estado: {proceso.estado}</p>
+          {proceso ? (
+            <>
+              <p className="text-xl font-semibold text-foreground mt-1">{proceso.nombre}</p>
+              <p className="text-sm text-muted-foreground mt-1">Estado: {proceso.estado}</p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1">
+              {data.mensaje ?? 'No hay un proceso activo en este momento.'}
+            </p>
+          )}
 
           <div className="mt-4 h-2 w-full rounded-full bg-border">
             <div
@@ -124,14 +133,16 @@ export default function PerfilConsejeroPage() {
           </p>
         </Card>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Link href={`/consejero/evaluacion/${proceso.id}`}>
-            <Button className="w-full">Ir a evaluación</Button>
-          </Link>
-          <Link href={`/consejero/votacion/${proceso.id}`}>
-            <Button variant="outline" className="w-full">Ir a votación</Button>
-          </Link>
-        </div>
+        {proceso && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Link href={`/consejero/evaluacion/${proceso.id}`}>
+              <Button className="w-full">Ir a evaluación</Button>
+            </Link>
+            <Link href={`/consejero/votacion/${proceso.id}`}>
+              <Button variant="outline" className="w-full">Ir a votación</Button>
+            </Link>
+          </div>
+        )}
 
         <Button onClick={cerrarSesion} variant="ghost" className="w-full text-muted-foreground">
           Cerrar sesión de consejero

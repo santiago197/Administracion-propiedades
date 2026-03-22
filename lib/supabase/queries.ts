@@ -127,19 +127,34 @@ export async function getConsejeros(conjunto_id: string, includeInactive = false
 
 export async function generateUniqueCodigoAcceso(conjuntoNombre?: string): Promise<string> {
   const supabase = await createServerClient()
-  const prefijo = conjuntoNombre?.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'CON'
+
+  // Prefijo = primeras 3 letras del nombre del conjunto (solo letras, mayúsculas)
+  const rawPrefix =
+    conjuntoNombre?.replace(/[^A-Za-z]/g, '').toUpperCase() || 'CON'
+  const prefix = rawPrefix.padEnd(3, 'X').slice(0, 3)
+
+  // Año = últimos 2 dígitos
   const year = new Date().getFullYear().toString().slice(-2)
+
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  
+  const codigoLength = 8
+  const randomLength = codigoLength - prefix.length - year.length // Prefijo + Año + Random
+
+  if (randomLength <= 0) {
+    throw new Error('Configuración inválida para la generación de códigos')
+  }
+
   let codigo: string
   let attempts = 0
   const maxAttempts = 10
 
   do {
-    const bytes = randomBytes(6)
+    const bytes = randomBytes(randomLength)
     const random = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('')
-    codigo = `${prefijo}${year}${random}`
-    
+
+    // Final: Prefijo + Año + Random
+    codigo = `${prefix}${year}${random}`
+
     const { data, error } = await supabase
       .from('consejeros')
       .select('id')
@@ -147,9 +162,9 @@ export async function generateUniqueCodigoAcceso(conjuntoNombre?: string): Promi
       .maybeSingle()
 
     if (error) throw error
-    
+
     if (!data) break
-    
+
     attempts++
   } while (attempts < maxAttempts)
 

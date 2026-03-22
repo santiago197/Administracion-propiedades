@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3,
@@ -62,6 +63,7 @@ const navItems: NavItem[] = [
 interface UserData {
   email: string
   conjuntoNombre: string
+  logoUrl?: string
 }
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -77,7 +79,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
           const conjunto = await response.json()
           setUserData({
             email: 'admin',
-            conjuntoNombre: conjunto.nombre || 'SelecionAdm'
+            conjuntoNombre: conjunto.nombre || 'SelecionAdm',
+            logoUrl: conjunto.logo_url
           })
         }
       } catch (error) {
@@ -169,8 +172,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="hidden md:flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
-              {initials}
+            <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm overflow-hidden">
+              {userData.logoUrl ? (
+                <Image
+                  src={userData.logoUrl}
+                  alt="Logo"
+                  width={36}
+                  height={36}
+                  className="object-contain"
+                />
+              ) : (
+                initials
+              )}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Panel Administrativo</p>

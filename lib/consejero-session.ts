@@ -7,7 +7,7 @@ const CONSEJERO_SESSION_MAX_AGE = 60 * 60 * 8 // 8 horas
 export interface ConsejeroSession {
   consejeroId: string
   conjuntoId: string
-  procesoId: string
+  procesoId: string | null
   codigoAcceso: string
   issuedAt: number
 }
@@ -54,7 +54,7 @@ export function parseConsejeroSessionToken(token: string): ConsejeroSession | nu
     if (
       !parsed.consejeroId ||
       !parsed.conjuntoId ||
-      !parsed.procesoId ||
+      (parsed.procesoId !== null && typeof parsed.procesoId !== 'string') ||
       !parsed.codigoAcceso ||
       typeof parsed.issuedAt !== 'number'
     ) {
@@ -64,7 +64,7 @@ export function parseConsejeroSessionToken(token: string): ConsejeroSession | nu
     return {
       consejeroId: parsed.consejeroId,
       conjuntoId: parsed.conjuntoId,
-      procesoId: parsed.procesoId,
+      procesoId: parsed.procesoId ?? null,
       codigoAcceso: parsed.codigoAcceso,
       issuedAt: parsed.issuedAt,
     }

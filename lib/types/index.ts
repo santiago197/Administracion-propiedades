@@ -1,5 +1,12 @@
 export type TipoPersona = 'juridica' | 'natural'
-export type CargoCohnsejero = 'presidente' | 'vicepresidente' | 'secretario' | 'vocal' | 'fiscal'
+export type CargoCohnsejero =
+  | 'presidente'
+  | 'vicepresidente'
+  | 'secretario'
+  | 'tesorero'
+  | 'vocal_principal'
+  | 'consejero'
+  | 'consejero_suplente'
 export type EstadoConjunto = 'activo' | 'inactivo' | 'archivado'
 export type EstadoProceso = 'configuracion' | 'evaluacion' | 'votacion' | 'finalizado' | 'cancelado'
 export type EstadoPropuesta =

@@ -2,6 +2,39 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createConsejero, getConsejeros, getConsejero, updateConsejero, getConjunto, generateUniqueCodigoAcceso } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
+const CARGOS_VALIDOS = [
+  'presidente',
+  'vicepresidente',
+  'secretario',
+  'tesorero',
+  'vocal_principal',
+  'consejero',
+  'consejero_suplente',
+] as const
+
+const CARGOS_LEGACY = ['vocal', 'fiscal'] as const
+type CargoValido = (typeof CARGOS_VALIDOS)[number]
+
+function extractErrorDetail(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const candidate = error as {
+      message?: string
+      details?: string
+      hint?: string
+      code?: string
+    }
+    return (
+      candidate.message ||
+      candidate.details ||
+      candidate.hint ||
+      candidate.code ||
+      JSON.stringify(error)
+    )
+  }
+  return String(error)
+}
+
 export async function GET(request: NextRequest) {
   // Validar autenticación
   const { authorized, response: authError, conjuntoId } = await requireAuth(request)
@@ -69,6 +102,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!CARGOS_VALIDOS.includes(body.cargo as CargoValido)) {
+      return NextResponse.json(
+        {
+          error: 'Cargo inválido',
+          detail: `Valores permitidos: ${CARGOS_VALIDOS.join(', ')}`,
+        },
+        { status: 400 }
+      )
+    }
+
     // Obtener nombre del conjunto para generar código
     const { data: conjunto } = await getConjunto(conjuntoId!)
     const codigo = await generateUniqueCodigoAcceso(conjunto?.nombre)
@@ -88,7 +131,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('[consejeros] Error creating consejero:', error)
-    return NextResponse.json({ error: 'Error al crear consejero' }, { status: 500 })
+    const detail = extractErrorDetail(error)
+    if (detail.includes('consejeros_cargo_check')) {
+      return NextResponse.json(
+        {
+          error: 'Error al crear consejero',
+          detail:
+            'La base de datos aún tiene una restricción de cargo antigua. Ejecuta scripts/004_fix_rls.sql para actualizar consejeros_cargo_check y vuelve a intentar.',
+        },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ error: 'Error al crear consejero', detail }, { status: 500 })
   }
 }
 
@@ -144,6 +198,20 @@ export async function PATCH(request: NextRequest) {
 
     if (Object.keys(filteredUpdates).length === 0) {
       return NextResponse.json({ error: 'No hay campos para actualizar' }, { status: 400 })
+    }
+
+    if (
+      filteredUpdates.cargo !== undefined &&
+      !CARGOS_VALIDOS.includes(filteredUpdates.cargo as CargoValido) &&
+      !CARGOS_LEGACY.includes(filteredUpdates.cargo as (typeof CARGOS_LEGACY)[number])
+    ) {
+      return NextResponse.json(
+        {
+          error: 'Cargo inválido',
+          detail: `Valores permitidos: ${CARGOS_VALIDOS.join(', ')}`,
+        },
+        { status: 400 }
+      )
     }
 
     // Actualizar

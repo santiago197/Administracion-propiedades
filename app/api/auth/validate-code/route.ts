@@ -29,32 +29,26 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener el proceso activo del conjunto
-    const { data: proceso, error: procError } = await supabase
+    // Obtener el proceso activo del conjunto (si existe)
+    const { data: proceso } = await supabase
       .from('procesos')
       .select('id')
       .eq('conjunto_id', consejero.conjunto_id)
       .eq('estado', 'evaluacion')
-      .single()
-
-    if (procError || !proceso) {
-      return NextResponse.json(
-        { error: 'No hay un proceso de evaluación activo' },
-        { status: 404 }
-      )
-    }
+      .maybeSingle()
 
     const response = NextResponse.json({
       consejero_id: consejero.id,
       conjunto_id: consejero.conjunto_id,
-      proceso_id: proceso.id,
+      proceso_id: proceso?.id ?? null,
+      tiene_proceso_activo: Boolean(proceso?.id),
       perfil_url: '/consejero/perfil',
     })
 
     setConsejeroSessionCookie(response, {
       consejeroId: consejero.id,
       conjuntoId: consejero.conjunto_id,
-      procesoId: proceso.id,
+      procesoId: proceso?.id ?? null,
       codigoAcceso: codigo_acceso.toUpperCase(),
       issuedAt: Date.now(),
     })

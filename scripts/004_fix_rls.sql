@@ -176,6 +176,23 @@ DROP POLICY IF EXISTS "consejeros_insert" ON consejeros;
 DROP POLICY IF EXISTS "consejeros_update" ON consejeros;
 DROP POLICY IF EXISTS "consejeros_delete" ON consejeros;
 ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS cargo TEXT;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'consejeros'
+      AND column_name = 'cargo'
+  ) THEN
+    ALTER TABLE consejeros DROP CONSTRAINT IF EXISTS consejeros_cargo_check;
+    ALTER TABLE consejeros
+      ADD CONSTRAINT consejeros_cargo_check
+      CHECK (cargo IN ('presidente', 'vicepresidente', 'secretario', 'tesorero', 'vocal_principal', 'consejero', 'consejero_suplente'));
+  END IF;
+END $$;
+ALTER TABLE consejeros
   ADD COLUMN IF NOT EXISTS codigo_acceso TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS consejeros_codigo_acceso_unique
   ON consejeros (codigo_acceso)
