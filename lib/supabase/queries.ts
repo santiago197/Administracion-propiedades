@@ -124,7 +124,12 @@ export async function updateConsejero(id: string, data: Partial<Consejero>) {
 }
 
 // PROPUESTAS
-export async function createPropuesta(data: Omit<Propuesta, 'id' | 'puntaje_evaluacion' | 'votos_recibidos' | 'puntaje_final' | 'created_at' | 'updated_at'>) {
+export type CreatePropuestaInput = Omit<
+  Propuesta,
+  'id' | 'estado' | 'puntaje_evaluacion' | 'votos_recibidos' | 'puntaje_final' | 'created_at' | 'updated_at'
+>
+
+export async function createPropuesta(data: CreatePropuestaInput) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').insert([data]).select().single()
 }
