@@ -118,6 +118,20 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Upload genérico de documentos
+      if (!ALLOWED_DOCUMENT_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { error: 'Tipo de archivo no permitido. Use PDF, DOC o DOCX' },
+          { status: 400 }
+        )
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: 'El archivo excede el tamaño máximo de 2MB' },
+          { status: 400 }
+        )
+      }
+
       const folder = (formData.get('folder') as string) || 'documentos'
       const timestamp = Date.now()
       const safeFileName = file.name.replace(/[^\w.\-]/g, '_')
@@ -182,6 +196,13 @@ export async function POST(request: NextRequest) {
             error: 'Error al subir documento',
             details: uploadError.message,
           },
+          { status: 500 }
+        )
+      }
+
+      if (!uploadData?.path) {
+        return NextResponse.json(
+          { error: 'No se obtuvo la ruta del archivo cargado' },
           { status: 500 }
         )
       }

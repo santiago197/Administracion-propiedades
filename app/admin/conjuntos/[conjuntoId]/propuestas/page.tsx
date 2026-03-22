@@ -122,8 +122,15 @@ export default function GestionPropuestas() {
   // ------------------------------------------------------------------
   // Derivados
   // ------------------------------------------------------------------
-  const activas = propuestas.filter((p) => p.estado === 'activa')
-  const retiradas = propuestas.filter((p) => p.estado !== 'activa')
+  const activas = propuestas.filter(
+    (p) =>
+      p.estado === 'registro' ||
+      p.estado === 'habilitada' ||
+      p.estado === 'en_evaluacion'
+  )
+  const retiradas = propuestas.filter(
+    (p) => p.estado === 'retirada' || p.estado === 'descalificada'
+  )
   const isComplete = activas.length >= MIN_PROPUESTAS
 
   // ------------------------------------------------------------------
@@ -177,10 +184,6 @@ export default function GestionPropuestas() {
       </div>
     )
   }
-
-  const totalPropuestas = propuestas.filter(p => p.estado === 'registro' || p.estado === 'habilitada' || p.estado === 'en_evaluacion').length
-  const requiredPropuestas = 3
-  const isComplete = totalPropuestas >= requiredPropuestas
 
   // ------------------------------------------------------------------
   // Vista principal
