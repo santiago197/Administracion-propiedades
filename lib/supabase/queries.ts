@@ -6,6 +6,7 @@ import type {
   Consejero,
   Propuesta,
   EstadoPropuesta,
+  Documento,
   Criterio,
   Evaluacion,
   Voto,
@@ -46,6 +47,11 @@ export async function createProceso(data: Omit<Proceso, 'id' | 'created_at' | 'u
 export async function getProcesos(conjunto_id: string) {
   const supabase = await createServerClient()
   return supabase.from('procesos').select('*').eq('conjunto_id', conjunto_id)
+}
+
+export async function getProcesoConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('procesos').select('*').eq('id', id).eq('conjunto_id', conjunto_id).single()
 }
 
 export async function getProceso(id: string) {
@@ -103,7 +109,7 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
 }
 
 // CONSEJEROS
-export async function createConsejero(data: Omit<Consejero, 'id' | 'codigo_acceso' | 'created_at' | 'updated_at'>) {
+export async function createConsejero(data: Omit<Consejero, 'id' | 'created_at' | 'updated_at'>) {
   const supabase = await createServerClient()
   return supabase.from('consejeros').insert([data]).select().single()
 }
@@ -158,6 +164,32 @@ export async function getPropuestas(proceso_id: string) {
   return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
 }
 
+export async function getPropuestaConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('id, proceso_id')
+    .eq('id', id)
+    .single()
+
+  if (propError || !propuesta) {
+    return { data: null, error: propError }
+  }
+
+  const { data: proceso, error: procError } = await supabase
+    .from('procesos')
+    .select('conjunto_id')
+    .eq('id', propuesta.proceso_id)
+    .single()
+
+  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
+    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
+  }
+
+  return { data: propuesta, error: null }
+}
+
 export async function getPropuesta(id: string) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').select('*').eq('id', id).single()
@@ -180,6 +212,89 @@ export async function contarPropuestasActivas(proceso_id: string) {
     .eq('proceso_id', proceso_id)
     .eq('estado', 'en_evaluacion')
   return count || 0
+}
+
+export async function contarPropuestasTotales(proceso_id: string) {
+  const supabase = await createServerClient()
+  const { count } = await supabase
+    .from('propuestas')
+    .select('*', { count: 'exact', head: true })
+    .eq('proceso_id', proceso_id)
+  return count || 0
+}
+
+// DOCUMENTOS
+export async function createDocumento(
+  data: Omit<Documento, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').insert([data]).select().single()
+}
+
+export async function getDocumentos(propuesta_id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').select('*').eq('propuesta_id', propuesta_id)
+}
+
+export async function updateDocumento(id: string, data: Partial<Documento>) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').update(data).eq('id', id).select().single()
+}
+
+export async function deleteDocumento(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').delete().eq('id', id)
+}
+
+export async function validarDocumentacionObligatoria(propuesta_id: string) {
+  const supabase = await createServerClient()
+  const { data: documentos, error } = await supabase
+    .from('documentos')
+    .select('es_obligatorio, estado')
+    .eq('propuesta_id', propuesta_id)
+
+  if (error) throw error
+
+  const faltantes =
+    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo').length || 0
+
+  return { completa: faltantes === 0, faltantes }
+}
+
+export async function getDocumentoConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+
+  const { data: documento, error: docError } = await supabase
+    .from('documentos')
+    .select('id, propuesta_id')
+    .eq('id', id)
+    .single()
+
+  if (docError || !documento) {
+    return { data: null, error: docError }
+  }
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('proceso_id')
+    .eq('id', documento.propuesta_id)
+    .single()
+
+  if (propError || !propuesta) {
+    return { data: null, error: propError }
+  }
+
+  const { data: proceso, error: procError } = await supabase
+    .from('procesos')
+    .select('conjunto_id')
+    .eq('id', propuesta.proceso_id)
+    .single()
+
+  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
+    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
+  }
+
+  return { data: documento, error: null }
 }
 
 // CRITERIOS
@@ -401,11 +516,11 @@ export async function cambiarEstadoPropuesta(
  */
 export async function getHistorialEstados(propuesta_id: string) {
   const supabase = await createServerClient()
-  return supabase
-    .from('historial_estados_propuesta')
-    .select('*')
-    .eq('propuesta_id', propuesta_id)
-    .order('created_at', { ascending: true }) as Promise<{
+      return supabase
+        .from('historial_estados_propuesta')
+        .select('*')
+        .eq('propuesta_id', propuesta_id)
+        .order('created_at', { ascending: true }) as Promise<{
       data: HistorialEstado[] | null
       error: { message: string } | null
     }>

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getPropuesta, updatePropuesta, cambiarEstadoPropuesta } from '@/lib/supabase/queries'
+import { getPropuesta, updatePropuesta, cambiarEstadoPropuesta, getPropuestaConjunto } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -9,10 +9,15 @@ type RouteContext = { params: Promise<{ id: string }> }
 // Obtiene una propuesta por su UUID
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
+
+  const { data: pertenece, error: accesoError } = await getPropuestaConjunto(id, conjuntoId!)
+  if (accesoError || !pertenece) {
+    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  }
 
   const { data, error } = await getPropuesta(id)
 
@@ -33,10 +38,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 // No permite modificar: proceso_id, puntaje_*, votos_recibidos, created_at.
 // ---------------------------------------------------------------------------
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
+
+  const { data: pertenece, error: accesoError } = await getPropuestaConjunto(id, conjuntoId!)
+  if (accesoError || !pertenece) {
+    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  }
 
   let body: Record<string, unknown>
   try {
@@ -123,10 +133,15 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 // Preserva integridad referencial con evaluaciones y votos existentes.
 // ---------------------------------------------------------------------------
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError, user } = await requireAuth(request)
+  const { authorized, response: authError, user, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
+
+  const { data: pertenece, error: accesoError } = await getPropuestaConjunto(id, conjuntoId!)
+  if (accesoError || !pertenece) {
+    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  }
 
   // Leer observación del body (opcional en DELETE, pero obligatorio en la transición)
   let observacion: string | null = null

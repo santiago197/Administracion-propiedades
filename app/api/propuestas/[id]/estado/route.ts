@@ -4,6 +4,7 @@ import {
   getHistorialEstados,
   getTransicionesDisponibles,
   getPropuesta,
+  getPropuestaConjunto,
 } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import type { EstadoPropuesta } from '@/lib/types/index'
@@ -40,10 +41,15 @@ function httpStatusFromPgError(message: string): number {
 //   - historial completo de cambios de estado
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
+
+  const { data: pertenece, error: accesoError } = await getPropuestaConjunto(id, conjuntoId!)
+  if (accesoError || !pertenece) {
+    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  }
 
   // Obtener propuesta y su estado actual
   const { data: propuesta, error: propError } = await getPropuesta(id)
@@ -97,10 +103,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 //   500 — error interno
 // ---------------------------------------------------------------------------
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError, user } = await requireAuth(request)
+  const { authorized, response: authError, user, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
+
+  const { data: pertenece, error: accesoError } = await getPropuestaConjunto(id, conjuntoId!)
+  if (accesoError || !pertenece) {
+    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  }
 
   // Parsear body
   let body: Record<string, unknown>

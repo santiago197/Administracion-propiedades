@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createPropuesta, getPropuestas } from '@/lib/supabase/queries'
+import { createPropuesta, getPropuestas, getProcesoConjunto, contarPropuestasTotales } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 // ---------------------------------------------------------------------------
@@ -7,7 +7,7 @@ import { requireAuth } from '@/lib/supabase/auth-utils'
 // Lista todas las propuestas de un proceso
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { searchParams } = new URL(request.url)
@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
       { error: 'El parámetro proceso_id es requerido' },
       { status: 400 }
     )
+  }
+
+  const { data: proceso, error: procesoError } = await getProcesoConjunto(proceso_id, conjuntoId!)
+  if (procesoError || !proceso) {
+    return NextResponse.json({ error: 'Proceso no encontrado para el usuario' }, { status: 404 })
   }
 
   const { data, error } = await getPropuestas(proceso_id)
@@ -38,7 +43,7 @@ export async function GET(request: NextRequest) {
 // Crea una nueva propuesta. Valida campos requeridos antes de llamar a Supabase.
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   let body: Record<string, unknown>
@@ -92,6 +97,14 @@ export async function POST(request: NextRequest) {
     observaciones: body.observaciones ? String(body.observaciones).trim() : null,
   }
 
+  const { data: proceso, error: procesoError } = await getProcesoConjunto(payload.proceso_id, conjuntoId!)
+  if (procesoError || !proceso) {
+    return NextResponse.json(
+      { error: 'Proceso no pertenece al conjunto del usuario' },
+      { status: 403 }
+    )
+  }
+
   const { data, error } = await createPropuesta(payload)
 
   if (error) {
@@ -103,5 +116,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  return NextResponse.json(data, { status: 201 })
+  // Validación de mínimo 3 propuestas (Ley 675): informar pero no bloquear la creación
+  const total = await contarPropuestasTotales(payload.proceso_id)
+  const warning = total < 3 ? 'El proceso requiere mínimo 3 propuestas para avanzar' : null
+
+  return NextResponse.json(warning ? { ...data, warning } : data, { status: 201 })
 }

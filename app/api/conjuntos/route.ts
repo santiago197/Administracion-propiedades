@@ -1,22 +1,22 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createConjunto, getConjuntos } from '@/lib/supabase/queries'
+import { createConjunto, getConjunto } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 export async function GET(request: NextRequest) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
-  const { data, error } = await getConjuntos()
+  const { data, error } = await getConjunto(conjuntoId!)
 
   if (error) {
     console.error('[conjuntos] GET error:', error)
     return NextResponse.json(
-      { error: 'Error al obtener conjuntos', detail: error.message },
+      { error: 'Error al obtener conjunto', detail: error.message },
       { status: 500 }
     )
   }
 
-  return NextResponse.json(data ?? [])
+  return NextResponse.json(data ?? {})
 }
 
 export async function POST(request: NextRequest) {
