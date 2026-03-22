@@ -5,11 +5,15 @@ import type {
   Proceso,
   Consejero,
   Propuesta,
+  EstadoPropuesta,
   Criterio,
   Evaluacion,
   Voto,
   ProcesoStats,
   ResultadoFinal,
+  HistorialEstado,
+  TransicionEstado,
+  CambioEstadoResult,
 } from '../types/index'
 
 // CONJUNTOS
@@ -76,11 +80,12 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
+  // "Activas" para estadísticas = candidatos en evaluación activa
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,
@@ -126,7 +131,21 @@ export async function updateConsejero(id: string, data: Partial<Consejero>) {
 // PROPUESTAS
 export type CreatePropuestaInput = Omit<
   Propuesta,
-  'id' | 'estado' | 'puntaje_evaluacion' | 'votos_recibidos' | 'puntaje_final' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'estado'
+  | 'clasificacion'
+  | 'cumple_requisitos_legales'
+  | 'observaciones_legales'
+  | 'puntaje_legal'
+  | 'puntaje_tecnico'
+  | 'puntaje_financiero'
+  | 'puntaje_referencias'
+  | 'puntaje_propuesta'
+  | 'puntaje_evaluacion'
+  | 'votos_recibidos'
+  | 'puntaje_final'
+  | 'created_at'
+  | 'updated_at'
 >
 
 export async function createPropuesta(data: CreatePropuestaInput) {
@@ -149,13 +168,17 @@ export async function updatePropuesta(id: string, data: Partial<Propuesta>) {
   return supabase.from('propuestas').update(data).eq('id', id).select().single()
 }
 
+/**
+ * Cuenta propuestas en estados "activos" (no terminales) de un proceso.
+ * Para la evaluación, solo considera las que están en 'en_evaluacion'.
+ */
 export async function contarPropuestasActivas(proceso_id: string) {
   const supabase = await createServerClient()
   const { count } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
   return count || 0
 }
 
@@ -209,13 +232,19 @@ export async function getEvaluacionesConsejero(consejero_id: string, proceso_id:
 
 /**
  * Valida si la documentación de una propuesta está completa.
- * Si está incompleta, cambia el estado a 'incompleto'.
- * Si está completa, cambia el estado a 'habilitada'.
+ * Usa la máquina de estados para la transición — no hace UPDATE directo.
+ * La propuesta debe estar en 'en_revision' para llamar esta función.
+ *
+ * Transiciones posibles:
+ *   en_revision → incompleto  (falta algún documento obligatorio)
+ *   en_revision → en_validacion (documentación completa)
  */
-export async function validarDocumentacionPropuesta(propuesta_id: string) {
+export async function validarDocumentacionPropuesta(
+  propuesta_id: string,
+  usuario_id: string | null = null
+) {
   const supabase = await createServerClient()
 
-  // 1. Obtener documentos requeridos y cargados
   const { data: documentos, error: docsError } = await supabase
     .from('documentos')
     .select('es_obligatorio, estado')
@@ -223,52 +252,82 @@ export async function validarDocumentacionPropuesta(propuesta_id: string) {
 
   if (docsError) throw docsError
 
-  const obligatorioFaltante = documentos?.some(d => d.es_obligatorio && d.estado !== 'completo')
+  const hayObligatoriosFaltantes = documentos?.some(
+    (d) => d.es_obligatorio && d.estado !== 'completo'
+  )
 
-  const nuevoEstado = obligatorioFaltante ? 'incompleto' : 'habilitada'
+  if (hayObligatoriosFaltantes) {
+    const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+      p_propuesta_id: propuesta_id,
+      p_estado_nuevo: 'incompleto',
+      p_usuario_id: usuario_id,
+      p_observacion: 'Documentación obligatoria incompleta detectada en revisión automática',
+      p_metadata: { origen: 'validarDocumentacionPropuesta' },
+    })
+    if (error) throw error
+    return { success: true, estado: 'incompleto' as EstadoPropuesta, detalle: data }
+  }
 
-  const { error: updError } = await supabase
-    .from('propuestas')
-    .update({ estado: nuevoEstado })
-    .eq('id', propuesta_id)
-
-  if (updError) throw updError
-
-  return { success: true, estado: nuevoEstado }
+  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: 'en_validacion',
+    p_usuario_id: usuario_id,
+    p_observacion: null,
+    p_metadata: { origen: 'validarDocumentacionPropuesta' },
+  })
+  if (error) throw error
+  return { success: true, estado: 'en_validacion' as EstadoPropuesta, detalle: data }
 }
 
 /**
- * Procesa la validación legal de un candidato.
- * Si no cumple, el estado cambia a 'no_apto_legal' (rechazo automático).
+ * Registra el resultado de la validación legal (SARLAFT, antecedentes, etc.).
+ * Usa la máquina de estados — no hace UPDATE directo.
+ * La propuesta debe estar en 'en_validacion'.
+ *
+ * Transiciones posibles:
+ *   en_validacion → habilitada     (cumple todos los requisitos)
+ *   en_validacion → no_apto_legal  (ELIMINATORIO)
  */
-export async function procesarValidacionLegal(propuesta_id: string, cumple: boolean, observaciones: string) {
+export async function procesarValidacionLegal(
+  propuesta_id: string,
+  cumple: boolean,
+  observaciones: string,
+  usuario_id: string | null = null
+) {
   const supabase = await createServerClient()
 
-  const nuevoEstado = cumple ? 'en_evaluacion' : 'no_apto_legal'
+  const nuevoEstado: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
 
-  const { error: updError } = await supabase
+  // Actualizar campos legales en la misma transacción lógica
+  await supabase
     .from('propuestas')
     .update({
-      estado: nuevoEstado,
       cumple_requisitos_legales: cumple,
-      observaciones_legales: observaciones
+      observaciones_legales: observaciones,
     })
     .eq('id', propuesta_id)
 
-  if (updError) throw updError
+  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: nuevoEstado,
+    p_usuario_id: usuario_id,
+    p_observacion: observaciones,
+    p_metadata: { origen: 'procesarValidacionLegal', cumple_requisitos: cumple },
+  })
 
-  return { success: true, estado: nuevoEstado }
+  if (error) throw error
+  return { success: true, estado: nuevoEstado, detalle: data }
 }
 
 export async function verificarEvaluacionCompleta(consejero_id: string, proceso_id: string) {
   const supabase = await createServerClient()
 
-  // Obtener total de propuestas activas
+  // Solo las propuestas en 'en_evaluacion' requieren ser evaluadas
   const { count: total_propuestas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
 
   // Obtener propuestas evaluadas por consejero
   const { data: propuestas_evaluadas } = await supabase
@@ -308,15 +367,75 @@ export async function verificarYaVoto(proceso_id: string, consejero_id: string) 
   return (data?.length || 0) > 0
 }
 
+// MÁQUINA DE ESTADOS
+
+/**
+ * Ejecuta un cambio de estado validado a través de la función Postgres
+ * `cambiar_estado_propuesta`. Registra historial y audit_log automáticamente.
+ *
+ * Errores con prefijo conocido:
+ *   PROPUESTA_NOT_FOUND  → 404
+ *   INVALID_TRANSITION   → 422
+ *   OBSERVACION_REQUERIDA → 400
+ */
+export async function cambiarEstadoPropuesta(
+  propuesta_id: string,
+  estado_nuevo: EstadoPropuesta,
+  usuario_id: string | null,
+  observacion: string | null,
+  metadata?: Record<string, unknown>
+) {
+  const supabase = await createServerClient()
+  return supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: estado_nuevo,
+    p_usuario_id:   usuario_id,
+    p_observacion:  observacion,
+    p_metadata:     metadata ?? null,
+  }) as Promise<{ data: CambioEstadoResult | null; error: { message: string } | null }>
+}
+
+/**
+ * Devuelve el historial completo de estados de una propuesta,
+ * ordenado cronológicamente (más antiguo primero).
+ */
+export async function getHistorialEstados(propuesta_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('historial_estados_propuesta')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+    .order('created_at', { ascending: true }) as Promise<{
+      data: HistorialEstado[] | null
+      error: { message: string } | null
+    }>
+}
+
+/**
+ * Consulta la tabla transiciones_estado para devolver
+ * las transiciones disponibles desde el estado actual.
+ * Usado por el frontend para renderizar solo opciones válidas.
+ */
+export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta) {
+  const supabase = await createServerClient()
+  return supabase.rpc('get_transiciones_disponibles', {
+    p_estado_actual: estado_actual,
+  }) as Promise<{
+    data: TransicionEstado[] | null
+    error: { message: string } | null
+  }>
+}
+
 // RESULTADOS
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
+  // Incluir en resultados: candidatos que llegaron al ranking (evaluados o clasificados)
   const { data: propuestas } = await supabase
     .from('vista_propuestas_resumen')
     .select('*')
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
     .order('puntaje_final', { ascending: false })
 
   if (!propuestas) return []

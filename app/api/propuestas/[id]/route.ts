@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getPropuesta, updatePropuesta } from '@/lib/supabase/queries'
+import { getPropuesta, updatePropuesta, cambiarEstadoPropuesta } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -45,7 +45,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: 'Cuerpo de la solicitud inválido' }, { status: 400 })
   }
 
-  // Campos que el admin puede editar libremente
+  // Campos editables por el admin (datos del candidato).
+  // El campo 'estado' NO está aquí: los cambios de estado deben pasar
+  // por PATCH /api/propuestas/[id]/estado para garantizar trazabilidad.
   const EDITABLE_FIELDS = [
     'tipo_persona',
     'razon_social',
@@ -60,11 +62,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     'observaciones',
   ] as const
 
-  // Estado se maneja por separado con validación de enumerado
-  const ALLOWED_ESTADOS = ['activa', 'descalificada', 'retirada'] as const
-  type EstadoPropuesta = (typeof ALLOWED_ESTADOS)[number]
+  // Rechazar explícitamente intentos de cambiar estado por esta ruta
+  if ('estado' in body) {
+    return NextResponse.json(
+      {
+        error: 'Los cambios de estado deben realizarse a través de PATCH /api/propuestas/:id/estado',
+        hint: 'Usa el endpoint dedicado para garantizar validación y trazabilidad completa.',
+      },
+      { status: 400 }
+    )
+  }
 
-  // Construir objeto de actualización con solo campos permitidos
   const updates: Record<string, unknown> = {}
 
   for (const field of EDITABLE_FIELDS) {
@@ -86,19 +94,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         updates[field] = value ? String(value).trim() || null : null
       }
     }
-  }
-
-  // Validar estado si viene en el body
-  if ('estado' in body) {
-    if (!ALLOWED_ESTADOS.includes(body.estado as EstadoPropuesta)) {
-      return NextResponse.json(
-        {
-          error: `Estado inválido. Valores permitidos: ${ALLOWED_ESTADOS.join(', ')}`,
-        },
-        { status: 400 }
-      )
-    }
-    updates.estado = body.estado
   }
 
   if (Object.keys(updates).length === 0) {
@@ -123,36 +118,57 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 // ---------------------------------------------------------------------------
 // DELETE /api/propuestas/[id]
-// Soft-delete: cambia estado a 'retirada'. No borra el registro.
-// Esto preserva integridad referencial con evaluaciones y votos existentes.
+// Soft-delete vía máquina de estados: transición a 'retirada'.
+// Requiere observacion en el body (la transición → retirada lo exige).
+// Preserva integridad referencial con evaluaciones y votos existentes.
 // ---------------------------------------------------------------------------
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { id } = await params
 
-  // Verificar que exista antes de retirar
-  const { data: existing, error: fetchError } = await getPropuesta(id)
-  if (fetchError || !existing) {
-    return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+  // Leer observación del body (opcional en DELETE, pero obligatorio en la transición)
+  let observacion: string | null = null
+  try {
+    const body = await request.json().catch(() => ({}))
+    observacion = body?.observacion ? String(body.observacion).trim() : null
+  } catch {
+    // Body vacío es aceptable; la función SQL lanzará error si falta la observación
   }
 
-  if (existing.estado === 'retirada') {
-    return NextResponse.json(
-      { error: 'La propuesta ya está retirada' },
-      { status: 409 }
-    )
-  }
+  const ip_address = request.headers.get('x-forwarded-for') ?? 'desconocida'
 
-  const { data, error } = await updatePropuesta(id, { estado: 'retirada' })
+  const { data, error } = await cambiarEstadoPropuesta(
+    id,
+    'retirada',
+    user?.id ?? null,
+    observacion,
+    { ip_address, origen: 'DELETE /api/propuestas/[id]' }
+  )
 
   if (error) {
+    const msg = error.message ?? 'Error al retirar propuesta'
+
+    if (msg.includes('PROPUESTA_NOT_FOUND')) {
+      return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
+    }
+    if (msg.includes('INVALID_TRANSITION')) {
+      // Estado terminal — no se puede retirar (ya retirada, adjudicada, etc.)
+      return NextResponse.json(
+        { error: msg.replace(/^INVALID_TRANSITION:\s*/, '') },
+        { status: 409 }
+      )
+    }
+    if (msg.includes('OBSERVACION_REQUERIDA')) {
+      return NextResponse.json(
+        { error: 'Se requiere una observación para retirar la propuesta' },
+        { status: 400 }
+      )
+    }
+
     console.error('[propuestas] DELETE error:', error)
-    return NextResponse.json(
-      { error: 'Error al retirar propuesta', detail: error.message },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 
   return NextResponse.json(data)
