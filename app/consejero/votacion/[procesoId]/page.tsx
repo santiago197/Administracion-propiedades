@@ -33,7 +33,7 @@ export default function PaginaVotacion() {
         const propRes = await fetch(`/api/propuestas?proceso_id=${procesoId}`)
         if (propRes.ok) {
           const props = await propRes.json()
-          setPropuestas(props?.filter((p: Propuesta) => p.estado === 'activa') || [])
+          setPropuestas(props?.filter((p: Propuesta) => p.estado === 'en_evaluacion') || [])
         }
       } catch (error) {
         console.error('[v0] Error fetching propuestas:', error)

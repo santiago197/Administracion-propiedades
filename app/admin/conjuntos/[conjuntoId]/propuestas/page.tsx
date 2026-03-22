@@ -79,7 +79,7 @@ export default function GestionPropuestas() {
     )
   }
 
-  const totalPropuestas = propuestas.filter(p => p.estado === 'activa').length
+  const totalPropuestas = propuestas.filter(p => p.estado === 'registro' || p.estado === 'habilitada' || p.estado === 'en_evaluacion').length
   const requiredPropuestas = 3
   const isComplete = totalPropuestas >= requiredPropuestas
 
@@ -168,7 +168,7 @@ export default function GestionPropuestas() {
             <h2 className="text-xl font-semibold text-foreground mb-4">Propuestas Registradas</h2>
             <div className="space-y-3">
               {propuestas
-                .filter(p => p.estado === 'activa')
+                .filter(p => p.estado === 'registro' || p.estado === 'habilitada' || p.estado === 'en_evaluacion')
                 .map((propuesta) => (
                   <Card
                     key={propuesta.id}
