@@ -30,7 +30,7 @@ export default function ProcesosListingPage() {
 
         // Obtener el perfil para sacar el conjunto_id
         const { data: profile, error: profError } = await supabase
-          .from('profiles')
+          .from('usuarios')
           .select('conjunto_id')
           .eq('id', user.id)
           .single()

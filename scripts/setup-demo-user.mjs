@@ -57,7 +57,8 @@ async function setupDemoUsers() {
         password: user.password,
         email_confirm: true, // Confirmar email automáticamente
         user_metadata: {
-          display_name: user.displayName,
+          nombre: user.displayName,
+          rol: user.email.includes('admin') ? 'admin' : (user.email.includes('consejero') ? 'consejero' : 'evaluador')
         },
       })
 

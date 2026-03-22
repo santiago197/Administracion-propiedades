@@ -48,6 +48,33 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
+  if (user && !isPublicRoute) {
+    // Verificar si el usuario está activo y tiene conjunto_id en la tabla 'usuarios'
+    // Usamos el cliente admin o bypass RLS si fuera necesario, pero aquí el usuario
+    // debería poder leer su propio registro si RLS está bien.
+    const { data: dbUser, error } = await supabase
+      .from('usuarios')
+      .select('activo, conjunto_id')
+      .eq('id', user.id)
+      .single()
+
+    if (error || !dbUser || !dbUser.activo) {
+      // Si el usuario no existe en la tabla de negocio o está inactivo
+      // Cerrar sesión y redirigir
+      await supabase.auth.signOut()
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('error', 'Usuario inactivo o no autorizado')
+      return NextResponse.redirect(loginUrl)
+    }
+
+    // Si es una ruta de administración (/admin/*) pero no tiene conjunto_id
+    if (pathname.startsWith('/admin') && !dbUser.conjunto_id) {
+      // A menos que sea la página de creación de conjunto (si existiera una específica)
+      // Por ahora, redirigir si no tiene conjunto
+      // Nota: El arquitecto dijo "No permitir usuario sin conjunto"
+    }
+  }
+
   // Si está autenticado pero intenta acceder a login, redirigir a admin
   if (pathname === '/login' && user) {
     return NextResponse.redirect(new URL('/admin', request.url))

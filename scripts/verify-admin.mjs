@@ -50,9 +50,9 @@ async function verifyAdmin() {
   } else {
     console.log(`✅ Usuario "admin@ejemplo.com" existe (ID: ${adminUser.id})`)
 
-    // 3. Verificar perfil en public.profiles
+    // 3. Verificar perfil en public.usuarios
     const { data: profile, error: profError } = await supabase
-      .from('profiles')
+      .from('usuarios')
       .select('*')
       .eq('id', adminUser.id)
       .single()
@@ -63,13 +63,14 @@ async function verifyAdmin() {
       // Intentar crear el perfil si no existe
       console.log('🛠️ Intentando crear perfil para el admin...')
       const { error: insertError } = await supabase
-        .from('profiles')
+        .from('usuarios')
         .insert({
           id: adminUser.id,
           email: adminUser.email,
-          nombre_completo: 'Administrador Sistema',
+          nombre: 'Administrador Sistema',
           rol: 'admin',
-          conjunto_id: conjuntos?.[0]?.id || null
+          conjunto_id: conjuntos?.[0]?.id || null,
+          activo: true
         })
 
       if (insertError) {
@@ -84,7 +85,7 @@ async function verifyAdmin() {
       if (conjuntos?.[0] && profile.conjunto_id !== conjuntos[0].id) {
         console.log(`🛠️ Actualizando conjunto_id en el perfil a ${conjuntos[0].id}...`)
         const { error: updError } = await supabase
-          .from('profiles')
+          .from('usuarios')
           .update({ conjunto_id: conjuntos[0].id })
           .eq('id', adminUser.id)
 

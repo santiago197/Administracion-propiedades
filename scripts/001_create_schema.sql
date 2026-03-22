@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS procesos (
   peso_evaluacion INTEGER DEFAULT 70 CHECK (peso_evaluacion >= 0 AND peso_evaluacion <= 100),
   peso_votacion INTEGER DEFAULT 30 CHECK (peso_votacion >= 0 AND peso_votacion <= 100),
   estado VARCHAR(20) DEFAULT 'configuracion' CHECK (estado IN ('configuracion', 'evaluacion', 'votacion', 'finalizado', 'cancelado')),
+  created_by UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT peso_total_check CHECK (peso_evaluacion + peso_votacion = 100)
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS propuestas (
   puntaje_evaluacion DECIMAL(5, 2) DEFAULT 0,
   votos_recibidos INTEGER DEFAULT 0,
   puntaje_final DECIMAL(5, 2) DEFAULT 0,
+  created_by UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
