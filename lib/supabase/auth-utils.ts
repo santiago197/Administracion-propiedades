@@ -50,7 +50,9 @@ export async function getCurrentUser(request: NextRequest) {
  * Middleware para proteger rutas de API.
  * Retorna error 401 si no está autenticado.
  */
-export async function requireAuth(request: NextRequest): Promise<{ authorized: boolean; response: NextResponse | null; user: any }> {
+export async function requireAuth(
+  request: NextRequest
+): Promise<{ authorized: boolean; response: NextResponse | null; user: any; conjuntoId: string | null }> {
   const { user, error } = await getCurrentUser(request)
 
   if (!user) {
@@ -61,13 +63,60 @@ export async function requireAuth(request: NextRequest): Promise<{ authorized: b
         { status: 401 }
       ),
       user: null,
+      conjuntoId: null,
     }
   }
 
-  return {
-    authorized: true,
-    response: null,
-    user,
+  try {
+    const supabase = await getSupabaseClient()
+    const { data: perfil, error: perfilError } = await supabase
+      .from('usuarios')
+      .select('conjunto_id')
+      .eq('id', user.id)
+      .single()
+
+    if (perfilError) {
+      console.error('[v0] Error obteniendo perfil de usuario:', perfilError)
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { error: 'No autorizado' },
+          { status: 401 }
+        ),
+        user: null,
+        conjuntoId: null,
+      }
+    }
+
+    if (!perfil?.conjunto_id) {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { error: 'Usuario sin conjunto asignado' },
+          { status: 403 }
+        ),
+        user,
+        conjuntoId: null,
+      }
+    }
+
+    return {
+      authorized: true,
+      response: null,
+      user,
+      conjuntoId: perfil.conjunto_id as string,
+    }
+  } catch (err) {
+    console.error('[v0] Error validando conjunto de usuario:', err)
+    return {
+      authorized: false,
+      response: NextResponse.json(
+        { error: 'Error al validar sesión' },
+        { status: 500 }
+      ),
+      user: null,
+      conjuntoId: null,
+    }
   }
 }
 

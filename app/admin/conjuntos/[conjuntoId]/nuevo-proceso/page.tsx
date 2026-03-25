@@ -29,9 +29,8 @@ export default function NuevoProceso() {
       try {
         const response = await fetch('/api/conjuntos')
         if (response.ok) {
-          const conjuntos = await response.json()
-          const found = conjuntos.find((c: Conjunto) => c.id === conjuntoId)
-          setConjunto(found || null)
+          const data: Conjunto = await response.json()
+          setConjunto(data?.id === conjuntoId ? data : null)
         }
       } catch (error) {
         console.error('[v0] Error fetching conjunto:', error)
@@ -62,7 +61,8 @@ export default function NuevoProceso() {
       })
 
       if (response.ok) {
-        router.push(`/admin/conjuntos/${conjuntoId}`)
+        const nuevoProceso = await response.json()
+        router.push(`/admin/conjuntos/${conjuntoId}/procesos/${nuevoProceso.id}`)
       } else {
         const data = await response.json()
         alert(data.error || 'Error al crear el proceso')

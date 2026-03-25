@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { getProcesoStats } from '@/lib/supabase/queries'
+import { getProcesoConjunto, getProcesoStats } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 export async function GET(request: NextRequest) {
   // Validar autenticación
-  const { authorized, response: authError } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'proceso_id es requerido' }, { status: 400 })
     }
 
-    const data = await getProcesoStats(proceso_id)
+    const { data: proceso, error: procesoError } = await getProcesoConjunto(proceso_id, conjuntoId!)
+    if (procesoError || !proceso) {
+      return NextResponse.json({ error: 'Proceso no encontrado' }, { status: 404 })
+    }
+
+    const data = await getProcesoStats(proceso.id)
     return NextResponse.json(data)
   } catch (error) {
     console.error('[v0] Error fetching proceso stats:', error)

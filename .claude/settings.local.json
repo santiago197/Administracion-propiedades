@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find c:/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/components/admin/RegistroAutomaticoProveedores -type f -name *)",
+      "Bash(find c:/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app -type f -path *registro*proveedor* -o -type f -path *flujo*carga*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(pnpm build:*)"
+    ]
+  }
+}

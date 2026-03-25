@@ -5,7 +5,16 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
   // Rutas públicas (sin autenticación requerida)
-  const publicRoutes = ['/', '/login', '/api/auth/login', '/api/auth/logout', '/consejero']
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/consejero',
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/validate-code',
+    '/api/evaluacion',
+    '/api/consejero',
+  ]
   const isPublicRoute = publicRoutes.some(route => 
     pathname === route || pathname.startsWith(route + '/')
   )
@@ -49,18 +58,37 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && !isPublicRoute) {
-    // Verificar si el usuario está activo y tiene conjunto_id en la tabla 'usuarios'
-    // Usamos el cliente admin o bypass RLS si fuera necesario, pero aquí el usuario
-    // debería poder leer su propio registro si RLS está bien.
+    // Buscar el registro en usuarios por el id de auth (PK esperada en la tabla)
     const { data: dbUser, error } = await supabase
       .from('usuarios')
-      .select('activo, conjunto_id')
+      .select('id, activo, conjunto_id')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (error || !dbUser || !dbUser.activo) {
-      // Si el usuario no existe en la tabla de negocio o está inactivo
-      // Cerrar sesión y redirigir
+    if (error) {
+      console.error('[auth] Error consultando usuarios:', {
+        error,
+        userId: user.id,
+        path: pathname,
+      })
+      await supabase.auth.signOut()
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('error', 'Error consultando usuario en el sistema')
+      return NextResponse.redirect(loginUrl)
+    }
+
+    if (!dbUser) {
+      console.warn('[auth] Registro de usuario no encontrado', {
+        userId: user.id,
+        path: pathname,
+      })
+      await supabase.auth.signOut()
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('error', 'Usuario no registrado en el sistema (tabla usuarios)')
+      return NextResponse.redirect(loginUrl)
+    }
+
+    if (dbUser && dbUser.activo === false) {
       await supabase.auth.signOut()
       const loginUrl = new URL('/login', request.url)
       loginUrl.searchParams.set('error', 'Usuario inactivo o no autorizado')
@@ -69,9 +97,14 @@ export async function middleware(request: NextRequest) {
 
     // Si es una ruta de administración (/admin/*) pero no tiene conjunto_id
     if (pathname.startsWith('/admin') && !dbUser.conjunto_id) {
-      // A menos que sea la página de creación de conjunto (si existiera una específica)
-      // Por ahora, redirigir si no tiene conjunto
-      // Nota: El arquitecto dijo "No permitir usuario sin conjunto"
+      console.warn('[auth] Usuario sin conjunto asignado', {
+        userId: user.id,
+        path: pathname,
+      })
+      await supabase.auth.signOut()
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('error', 'Usuario sin conjunto asignado')
+      return NextResponse.redirect(loginUrl)
     }
   }
 

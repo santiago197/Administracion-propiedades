@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS consejeros (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conjunto_id UUID NOT NULL REFERENCES conjuntos(id) ON DELETE CASCADE,
   nombre_completo VARCHAR(255) NOT NULL,
-  cargo VARCHAR(50) NOT NULL CHECK (cargo IN ('presidente', 'vicepresidente', 'secretario', 'vocal', 'fiscal')),
+  cargo VARCHAR(50) NOT NULL CHECK (cargo IN ('presidente', 'vicepresidente', 'secretario', 'tesorero', 'vocal_principal', 'consejero', 'consejero_suplente')),
   torre VARCHAR(50),
   apartamento VARCHAR(50) NOT NULL,
   email VARCHAR(255),
@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS consejeros (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS cargo TEXT;
+
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS codigo_acceso TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS consejeros_codigo_acceso_unique
+  ON consejeros (codigo_acceso)
+  WHERE codigo_acceso IS NOT NULL;
 
 -- 4. TABLA: PROPUESTAS DE ADMINISTRADORES
 -- =====================================================
