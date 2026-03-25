@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -39,6 +39,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useFileUpload } from '@/hooks/use-file-upload'
+import { useRutAutocompletado } from '@/components/admin/RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
+import { Spinner } from '@/components/ui/spinner'
 import type { Proceso, Propuesta } from '@/lib/types'
 
 type DocumentoRow = {
@@ -94,6 +96,8 @@ export default function DocumentosPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [documentosByPropuesta, setDocumentosByPropuesta] = useState<Record<string, DocumentoRow[]>>({})
   const { upload, uploading } = useFileUpload()
+  const { extraerRut, limpiar: limpiarRut, extrayendo: extrayendoRut, progreso: progresoRut, error: errorRut, datos: datosRut } = useRutAutocompletado()
+  const rutFileRef = useRef<HTMLInputElement>(null)
   const [uploadForm, setUploadForm] = useState({
     propuesta_id: '',
     tipo: 'otro' as TipoDocumentoValue,
@@ -104,6 +108,22 @@ export default function DocumentosPage() {
     es_obligatorio: false,
   })
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+
+  const propuestaSeleccionada = propuestas.find((p) => p.id === uploadForm.propuesta_id) ?? null
+
+  const nitCoincide =
+    datosRut && propuestaSeleccionada
+      ? propuestaSeleccionada.nit_cedula.replace(/[^0-9]/g, '').startsWith(datosRut.nit.replace(/[^0-9]/g, ''))
+      : null
+
+  const handleArchivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null
+    setUploadFile(file)
+    limpiarRut()
+    if (file && uploadForm.tipo === 'rut') {
+      await extraerRut(file)
+    }
+  }
 
   const loadDocumentosByPropuestas = async (propuestasData: Propuesta[]) => {
     if (propuestasData.length === 0) {
@@ -274,7 +294,7 @@ export default function DocumentosPage() {
             Vista por propuesta con indicadores de completitud y vencimiento.
           </p>
         </div>
-        <Dialog open={openUpload} onOpenChange={setOpenUpload}>
+        <Dialog open={openUpload} onOpenChange={(open) => { setOpenUpload(open); if (!open) { limpiarRut(); setUploadFile(null) } }}>
           <DialogTrigger asChild>
             <Button variant="outline" disabled={!procesoId || propuestas.length === 0}>
               Subir documento
@@ -312,9 +332,10 @@ export default function DocumentosPage() {
                     <Label htmlFor="tipo">Tipo de documento *</Label>
                     <Select
                       value={uploadForm.tipo}
-                      onValueChange={(value: TipoDocumentoValue) =>
+                      onValueChange={(value: TipoDocumentoValue) => {
                         setUploadForm((prev) => ({ ...prev, tipo: value }))
-                      }
+                        limpiarRut()
+                      }}
                     >
                       <SelectTrigger id="tipo">
                         <SelectValue />
@@ -364,14 +385,64 @@ export default function DocumentosPage() {
                 <div className="space-y-2">
                   <Label htmlFor="archivo">Archivo *</Label>
                   <Input
+                    ref={rutFileRef}
                     id="archivo"
                     type="file"
                     accept=".pdf,.doc,.docx"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                    onChange={handleArchivoChange}
                     required
                   />
                   <p className="text-xs text-muted-foreground">Formatos permitidos: PDF, DOC, DOCX.</p>
                 </div>
+
+                {/* Panel de validación RUT (solo cuando tipo = 'rut') */}
+                {uploadForm.tipo === 'rut' && (
+                  <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-2">
+                    {extrayendoRut && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Spinner className="h-4 w-4 shrink-0" />
+                        <span>{progresoRut || 'Procesando RUT...'}</span>
+                      </div>
+                    )}
+
+                    {errorRut && (
+                      <p className="text-xs text-destructive">{errorRut}. Puede continuar con la carga manual.</p>
+                    )}
+
+                    {datosRut && !extrayendoRut && (
+                      <div className="space-y-1.5">
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">RUT extraído:</span>{' '}
+                          {datosRut.razonSocial} · NIT {datosRut.nitCompleto}
+                        </div>
+
+                        {nitCoincide === true && (
+                          <p className="text-xs text-emerald-700">
+                            NIT coincide con la propuesta seleccionada.
+                          </p>
+                        )}
+
+                        {nitCoincide === false && (
+                          <p className="text-xs text-amber-700">
+                            El NIT del RUT ({datosRut.nitCompleto}) no coincide con el registrado en la propuesta ({propuestaSeleccionada?.nit_cedula}). Verifique antes de guardar.
+                          </p>
+                        )}
+
+                        {datosRut.hayAlertaPep && (
+                          <p className="text-xs text-amber-700">
+                            Alerta PEP: se detectaron personas expuestas políticamente. Revise en validación legal.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {!uploadFile && !extrayendoRut && !datosRut && (
+                      <p className="text-xs text-muted-foreground">
+                        Al seleccionar el PDF del RUT se extraerán y validarán los datos automáticamente.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="fecha_vencimiento">Fecha de vencimiento</Label>

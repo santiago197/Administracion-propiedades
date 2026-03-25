@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import type { Propuesta, TipoPersona } from '@/lib/types/index'
+import { useRutAutocompletado } from './RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
 
 // ---------------------------------------------------------------------------
 // Tipos internos del formulario
@@ -79,37 +80,63 @@ function validateForm(data: FormFields): Partial<Record<keyof FormFields, string
 // ---------------------------------------------------------------------------
 export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
   const [formData, setFormData] = useState<FormFields>(EMPTY_FORM)
-  const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<keyof FormFields, string>>
-  >({})
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormFields, string>>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [rutAutocompletado, setRutAutocompletado] = useState(false)
+
+  const rutInputRef = useRef<HTMLInputElement>(null)
+  const { extraerRut, extrayendo, progreso, error: errorRut, datos: datosRut, limpiar } = useRutAutocompletado()
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
-    // Limpiar el error del campo al editar
     if (fieldErrors[name as keyof FormFields]) {
       setFieldErrors((prev) => ({ ...prev, [name]: undefined }))
     }
+  }
+
+  const handleRutFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const datos = await extraerRut(file)
+    if (!datos) return
+
+    setFormData((prev) => ({
+      ...prev,
+      tipo_persona: datos.tipoPersona,
+      razon_social: datos.razonSocial || prev.razon_social,
+      nit_cedula: datos.nitCompleto || prev.nit_cedula,
+      representante_legal: datos.representanteLegal || prev.representante_legal,
+      email: datos.email || prev.email,
+      telefono: datos.telefono || prev.telefono,
+      direccion: datos.direccion || prev.direccion,
+    }))
+
+    setFieldErrors({})
+    setRutAutocompletado(true)
+  }
+
+  const handleDescartarRut = () => {
+    limpiar()
+    setRutAutocompletado(false)
+    setFormData(EMPTY_FORM)
+    if (rutInputRef.current) rutInputRef.current.value = ''
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitError(null)
 
-    // --- Validación del cliente ---
     const errors = validateForm(formData)
     if (errors) {
       setFieldErrors(errors)
       return
     }
     setFieldErrors({})
-
     setIsSubmitting(true)
 
     try {
@@ -138,18 +165,16 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
         }),
       })
 
-      // --- Leer el cuerpo de la respuesta SIEMPRE antes de decidir ---
       const responseData = await res.json()
 
       if (!res.ok) {
-        // El servidor devuelve { error: string, detail?: string }
-        const serverMessage =
-          responseData?.error ?? `Error del servidor (${res.status})`
+        const serverMessage = responseData?.error ?? `Error del servidor (${res.status})`
         throw new Error(serverMessage)
       }
 
-      // Éxito: limpiar formulario y notificar al padre
       setFormData(EMPTY_FORM)
+      limpiar()
+      setRutAutocompletado(false)
       onSuccess(responseData as Propuesta)
     } catch (err) {
       const message =
@@ -167,6 +192,65 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
     <Card className="border border-border/50 bg-card/50 p-6">
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
+        {/* ── Sección RUT ── */}
+        <div className="rounded-md border border-border/50 bg-muted/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">Autocompletar desde RUT</p>
+            {rutAutocompletado && (
+              <button
+                type="button"
+                onClick={handleDescartarRut}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Descartar
+              </button>
+            )}
+          </div>
+
+          {!rutAutocompletado ? (
+            <>
+              <Input
+                ref={rutInputRef}
+                type="file"
+                accept=".pdf"
+                disabled={extrayendo}
+                onChange={handleRutFileChange}
+                className="border-border/50 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Sube el PDF del RUT para completar automáticamente los campos del formulario.
+              </p>
+            </>
+          ) : null}
+
+          {extrayendo && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner className="h-4 w-4 shrink-0" />
+              <span>{progreso || 'Procesando...'}</span>
+            </div>
+          )}
+
+          {errorRut && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-2 text-xs text-destructive">
+              {errorRut}
+            </div>
+          )}
+
+          {rutAutocompletado && datosRut && (
+            <div className="space-y-2">
+              <div className="rounded-md bg-emerald-500/10 border border-emerald-500/20 p-2 text-xs text-emerald-700">
+                Campos completados desde RUT · NIT extraído: <span className="font-medium">{datosRut.nitCompleto}</span>
+              </div>
+
+              {datosRut.hayAlertaPep && (
+                <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2 text-xs text-amber-700">
+                  Alerta PEP: se detectaron personas expuestas políticamente en representantes o socios. Verifique en validación legal.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Tipo de persona */}
         <FieldGroup>
           <Field>
@@ -179,12 +263,8 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               disabled={isSubmitting}
               className="flex h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
             >
-              <option value="juridica" className="bg-card">
-                Persona Jurídica
-              </option>
-              <option value="natural" className="bg-card">
-                Persona Natural
-              </option>
+              <option value="juridica" className="bg-card">Persona Jurídica</option>
+              <option value="natural" className="bg-card">Persona Natural</option>
             </select>
           </Field>
         </FieldGroup>
@@ -193,9 +273,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="razon_social">
-              {formData.tipo_persona === 'juridica'
-                ? 'Razón Social'
-                : 'Nombre Completo'}
+              {formData.tipo_persona === 'juridica' ? 'Razón Social' : 'Nombre Completo'}
               <span className="text-destructive ml-1">*</span>
             </FieldLabel>
             <Input
@@ -209,14 +287,10 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.razon_social}
               onChange={handleChange}
               disabled={isSubmitting}
-              className={`border-border/50 ${
-                fieldErrors.razon_social ? 'border-destructive' : ''
-              }`}
+              className={`border-border/50 ${fieldErrors.razon_social ? 'border-destructive' : ''}`}
             />
             {fieldErrors.razon_social && (
-              <p className="text-xs text-destructive mt-1">
-                {fieldErrors.razon_social}
-              </p>
+              <p className="text-xs text-destructive mt-1">{fieldErrors.razon_social}</p>
             )}
           </Field>
         </FieldGroup>
@@ -235,14 +309,10 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.nit_cedula}
               onChange={handleChange}
               disabled={isSubmitting}
-              className={`border-border/50 ${
-                fieldErrors.nit_cedula ? 'border-destructive' : ''
-              }`}
+              className={`border-border/50 ${fieldErrors.nit_cedula ? 'border-destructive' : ''}`}
             />
             {fieldErrors.nit_cedula && (
-              <p className="text-xs text-destructive mt-1">
-                {fieldErrors.nit_cedula}
-              </p>
+              <p className="text-xs text-destructive mt-1">{fieldErrors.nit_cedula}</p>
             )}
           </Field>
         </FieldGroup>
@@ -251,9 +321,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
         {formData.tipo_persona === 'juridica' && (
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="representante_legal">
-                Representante Legal
-              </FieldLabel>
+              <FieldLabel htmlFor="representante_legal">Representante Legal</FieldLabel>
               <Input
                 id="representante_legal"
                 name="representante_legal"
@@ -288,9 +356,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </FieldGroup>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="unidades_administradas">
-                Unidades Administradas
-              </FieldLabel>
+              <FieldLabel htmlFor="unidades_administradas">Unidades Administradas</FieldLabel>
               <Input
                 id="unidades_administradas"
                 name="unidades_administradas"
@@ -321,9 +387,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.email}
               onChange={handleChange}
               disabled={isSubmitting}
-              className={`border-border/50 ${
-                fieldErrors.email ? 'border-destructive' : ''
-              }`}
+              className={`border-border/50 ${fieldErrors.email ? 'border-destructive' : ''}`}
             />
             {fieldErrors.email && (
               <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
@@ -366,9 +430,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
         {/* Valor honorarios */}
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="valor_honorarios">
-              Valor de Honorarios Mensuales
-            </FieldLabel>
+            <FieldLabel htmlFor="valor_honorarios">Valor de Honorarios Mensuales</FieldLabel>
             <Input
               id="valor_honorarios"
               name="valor_honorarios"
@@ -401,7 +463,6 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </Field>
         </FieldGroup>
 
-        {/* Error general del servidor */}
         {submitError && (
           <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
             {submitError}
