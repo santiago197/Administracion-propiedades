@@ -701,6 +701,128 @@ export default function DocumentosPage() {
               </Table>
             </CardContent>
           </Card>
+
+          {datosRut && propuestaSeleccionada && rutForm && (
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle>Datos extraídos del RUT</CardTitle>
+                <CardDescription>
+                  {datosRut.razonSocial} · NIT {datosRut.nitCompleto}
+                  {nitCoincide === true && ' — NIT coincide con la propuesta seleccionada.'}
+                  {nitCoincide === false &&
+                    ` — El NIT no coincide con el registrado en la propuesta (${propuestaSeleccionada.nit_cedula}).`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Razón social</Label>
+                    <Input
+                      value={rutForm.razonSocial}
+                      onChange={(e) => setRutForm({ ...rutForm, razonSocial: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-2 col-span-2">
+                      <Label>NIT</Label>
+                      <Input value={rutForm.nit} readOnly />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>DV</Label>
+                      <Input value={rutForm.dv} readOnly />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de contribuyente</Label>
+                    <Input
+                      value={rutForm.tipoContribuyente}
+                      onChange={(e) => setRutForm({ ...rutForm, tipoContribuyente: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Revisor fiscal principal</Label>
+                    <Input
+                      placeholder="Nombre completo"
+                      value={rutForm.revisorNombre}
+                      onChange={(e) => setRutForm({ ...rutForm, revisorNombre: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contador</Label>
+                    <Input
+                      placeholder="Nombre completo"
+                      value={rutForm.contadorNombre}
+                      onChange={(e) => setRutForm({ ...rutForm, contadorNombre: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {datosRut.representantes.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Representantes legales
+                    </p>
+                    <div className="space-y-1">
+                      {datosRut.representantes.map((r, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <span className="font-medium">{r.nombre}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {r.tipoRepresentacion}
+                            </span>
+                          </div>
+                          {(r.isPep || r.hasVinculoPep) && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-xs"
+                            >
+                              PEP
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {datosRut.socios.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Socios / Beneficiarios
+                    </p>
+                    <div className="space-y-1">
+                      {datosRut.socios.map((s, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <span className="font-medium">{s.nombre || '—'}</span>
+                            {s.porcentaje && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {s.porcentaje}%
+                              </span>
+                            )}
+                          </div>
+                          {(s.isPep || s.hasVinculoPep) && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-xs"
+                            >
+                              PEP
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
       <p className="text-xs text-muted-foreground">
