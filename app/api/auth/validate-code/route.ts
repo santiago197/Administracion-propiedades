@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { setConsejeroSessionCookie } from '@/lib/consejero-session'
 
 export async function POST(request: Request) {
   try {
@@ -29,31 +28,25 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener el proceso activo del conjunto (si existe)
-    const { data: proceso } = await supabase
+    // Obtener el proceso activo del conjunto
+    const { data: proceso, error: procError } = await supabase
       .from('procesos')
       .select('id')
       .eq('conjunto_id', consejero.conjunto_id)
       .eq('estado', 'evaluacion')
-      .maybeSingle()
+      .single()
 
-    const response = NextResponse.json({
+    if (procError || !proceso) {
+      return NextResponse.json(
+        { error: 'No hay un proceso de evaluación activo' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
       consejero_id: consejero.id,
-      conjunto_id: consejero.conjunto_id,
-      proceso_id: proceso?.id ?? null,
-      tiene_proceso_activo: Boolean(proceso?.id),
-      perfil_url: '/consejero/perfil',
+      proceso_id: proceso.id,
     })
-
-    setConsejeroSessionCookie(response, {
-      consejeroId: consejero.id,
-      conjuntoId: consejero.conjunto_id,
-      procesoId: proceso?.id ?? null,
-      codigoAcceso: codigo_acceso.toUpperCase(),
-      issuedAt: Date.now(),
-    })
-
-    return response
   } catch (error) {
     console.error('[v0] Validation error:', error)
     return NextResponse.json({ error: 'Error en la validación' }, { status: 500 })

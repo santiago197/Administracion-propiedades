@@ -17,7 +17,6 @@ export default function GestionConsejeros() {
   const [consejeros, setConsejeros] = useState<Consejero[]>([])
   const [loading, setLoading] = useState(true)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
-  const [copiedLink, setCopiedLink] = useState(false)
 
   useEffect(() => {
     const fetchConsejeros = async () => {
@@ -43,36 +42,6 @@ export default function GestionConsejeros() {
     navigator.clipboard.writeText(code)
     setCopiedCode(code)
     setTimeout(() => setCopiedCode(null), 2000)
-  }
-
-  const accessUrl =
-    typeof window !== 'undefined'
-      ? new URL('/consejero', window.location.origin).toString()
-      : '/consejero'
-
-  const copyAccessLink = async () => {
-    await navigator.clipboard.writeText(accessUrl)
-    setCopiedLink(true)
-    setTimeout(() => setCopiedLink(false), 2000)
-  }
-
-  const regenerateCode = async (consejeroId: string) => {
-    const response = await fetch('/api/consejeros', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'regenerar_codigo', consejero_id: consejeroId }),
-    })
-
-    if (!response.ok) {
-      const result = await response.json()
-      throw new Error(result.error ?? 'No se pudo generar el código')
-    }
-
-    const result = await response.json()
-    await fetch(`/api/consejeros?conjunto_id=${conjuntoId}`)
-      .then((res) => res.json())
-      .then((data) => setConsejeros(data || []))
-    copyToClipboard(result.codigo)
   }
 
   const totalConsejeros = consejeros.length
@@ -121,27 +90,6 @@ export default function GestionConsejeros() {
             </div>
           </Card>
         )}
-
-        <Card className="mb-8 border border-border/50 bg-card/50 p-6">
-          <h2 className="text-lg font-semibold text-foreground">Acceso de Consejeros</h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            Comparte este enlace con los consejeros para que puedan ingresar al sistema y evaluar/votar propuestas
-          </p>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <code id="url" className="flex-1 rounded-md border border-border/50 bg-muted px-3 py-2 text-sm">
-              {accessUrl}
-            </code>
-            <Button variant="outline" onClick={copyAccessLink}>
-              Copiar enlace
-            </Button>
-          </div>
-          {copiedLink && (
-            <p className="mt-2 text-xs text-primary">Enlace copiado</p>
-          )}
-          <p className="mt-2 text-xs text-muted-foreground">
-            Cada consejero debe ingresar con su código de acceso único
-          </p>
-        </Card>
 
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="lg:col-span-2">
@@ -202,31 +150,16 @@ export default function GestionConsejeros() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {consejero.codigo_acceso ? (
-                        <>
-                          <code className="text-xs font-mono bg-muted px-2 py-1 rounded border border-border/50">
-                            {consejero.codigo_acceso}
-                          </code>
-                          <button
-                            onClick={() => copyToClipboard(consejero.codigo_acceso)}
-                            className="p-2 hover:bg-muted rounded transition-colors"
-                            title="Copiar código"
-                          >
-                            <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Sin código</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => regenerateCode(consejero.id)}
-                          >
-                            Generar código
-                          </Button>
-                        </div>
-                      )}
+                      <code className="text-xs font-mono bg-muted px-2 py-1 rounded border border-border/50">
+                        {consejero.codigo_acceso}
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard(consejero.codigo_acceso)}
+                        className="p-2 hover:bg-muted rounded transition-colors"
+                        title="Copiar código"
+                      >
+                        <Copy className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                      </button>
                     </div>
                   </div>
                   {copiedCode === consejero.codigo_acceso && (

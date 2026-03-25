@@ -1,21 +1,16 @@
 import { createClient as createServerClient } from './server'
-import { randomBytes } from 'node:crypto'
+import { createClient as createBrowserClient } from './client'
 import type {
   Conjunto,
   Proceso,
   Consejero,
   Propuesta,
-  EstadoPropuesta,
-  Documento,
   Criterio,
   Evaluacion,
   Voto,
   Documento,
   ProcesoStats,
   ResultadoFinal,
-  HistorialEstado,
-  TransicionEstado,
-  CambioEstadoResult,
 } from '../types/index'
 
 // CONJUNTOS
@@ -50,11 +45,6 @@ export async function getProcesos(conjunto_id: string) {
   return supabase.from('procesos').select('*').eq('conjunto_id', conjunto_id)
 }
 
-export async function getProcesoConjunto(id: string, conjunto_id: string) {
-  const supabase = await createServerClient()
-  return supabase.from('procesos').select('*').eq('id', id).eq('conjunto_id', conjunto_id).single()
-}
-
 export async function getProceso(id: string) {
   const supabase = await createServerClient()
   return supabase.from('procesos').select('*').eq('id', id).single()
@@ -87,12 +77,11 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
-  // "Activas" para estadísticas = candidatos en evaluación activa
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .eq('estado', 'activa')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,
@@ -110,70 +99,14 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
 }
 
 // CONSEJEROS
-export async function createConsejero(data: Omit<Consejero, 'id' | 'created_at' | 'updated_at'>) {
+export async function createConsejero(data: Omit<Consejero, 'id' | 'codigo_acceso' | 'created_at' | 'updated_at'>) {
   const supabase = await createServerClient()
   return supabase.from('consejeros').insert([data]).select().single()
 }
 
-export async function getConsejeros(conjunto_id: string, includeInactive = false) {
+export async function getConsejeros(conjunto_id: string) {
   const supabase = await createServerClient()
-  let query = supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id)
-  
-  if (!includeInactive) {
-    query = query.eq('activo', true)
-  }
-  
-  return query.order('created_at', { ascending: false })
-}
-
-export async function generateUniqueCodigoAcceso(conjuntoNombre?: string): Promise<string> {
-  const supabase = await createServerClient()
-
-  // Prefijo = primeras 3 letras del nombre del conjunto (solo letras, mayúsculas)
-  const rawPrefix =
-    conjuntoNombre?.replace(/[^A-Za-z]/g, '').toUpperCase() || 'CON'
-  const prefix = rawPrefix.padEnd(3, 'X').slice(0, 3)
-
-  // Año = últimos 2 dígitos
-  const year = new Date().getFullYear().toString().slice(-2)
-
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  const codigoLength = 8
-  const randomLength = codigoLength - prefix.length - year.length // Prefijo + Año + Random
-
-  if (randomLength <= 0) {
-    throw new Error('Configuración inválida para la generación de códigos')
-  }
-
-  let codigo: string
-  let attempts = 0
-  const maxAttempts = 10
-
-  do {
-    const bytes = randomBytes(randomLength)
-    const random = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('')
-
-    // Final: Prefijo + Año + Random
-    codigo = `${prefix}${year}${random}`
-
-    const { data, error } = await supabase
-      .from('consejeros')
-      .select('id')
-      .eq('codigo_acceso', codigo)
-      .maybeSingle()
-
-    if (error) throw error
-
-    if (!data) break
-
-    attempts++
-  } while (attempts < maxAttempts)
-
-  if (attempts >= maxAttempts) {
-    throw new Error('No se pudo generar un código único')
-  }
-
-  return codigo
+  return supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id).eq('activo', true)
 }
 
 export async function getConsejero(id: string) {
@@ -182,7 +115,7 @@ export async function getConsejero(id: string) {
 }
 
 export async function getConsejeroByCodigo(codigo: string) {
-  const supabase = await createServerClient()
+  const supabase = await createBrowserClient()
   return supabase.from('consejeros').select('*').eq('codigo_acceso', codigo).single()
 }
 
@@ -192,26 +125,7 @@ export async function updateConsejero(id: string, data: Partial<Consejero>) {
 }
 
 // PROPUESTAS
-export type CreatePropuestaInput = Omit<
-  Propuesta,
-  | 'id'
-  | 'estado'
-  | 'clasificacion'
-  | 'cumple_requisitos_legales'
-  | 'observaciones_legales'
-  | 'puntaje_legal'
-  | 'puntaje_tecnico'
-  | 'puntaje_financiero'
-  | 'puntaje_referencias'
-  | 'puntaje_propuesta'
-  | 'puntaje_evaluacion'
-  | 'votos_recibidos'
-  | 'puntaje_final'
-  | 'created_at'
-  | 'updated_at'
->
-
-export async function createPropuesta(data: CreatePropuestaInput) {
+export async function createPropuesta(data: Omit<Propuesta, 'id' | 'puntaje_evaluacion' | 'votos_recibidos' | 'puntaje_final' | 'created_at' | 'updated_at'>) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').insert([data]).select().single()
 }
@@ -219,32 +133,6 @@ export async function createPropuesta(data: CreatePropuestaInput) {
 export async function getPropuestas(proceso_id: string) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
-}
-
-export async function getPropuestaConjunto(id: string, conjunto_id: string) {
-  const supabase = await createServerClient()
-
-  const { data: propuesta, error: propError } = await supabase
-    .from('propuestas')
-    .select('id, proceso_id')
-    .eq('id', id)
-    .single()
-
-  if (propError || !propuesta) {
-    return { data: null, error: propError }
-  }
-
-  const { data: proceso, error: procError } = await supabase
-    .from('procesos')
-    .select('conjunto_id')
-    .eq('id', propuesta.proceso_id)
-    .single()
-
-  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
-    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
-  }
-
-  return { data: propuesta, error: null }
 }
 
 export async function getPropuesta(id: string) {
@@ -257,101 +145,14 @@ export async function updatePropuesta(id: string, data: Partial<Propuesta>) {
   return supabase.from('propuestas').update(data).eq('id', id).select().single()
 }
 
-/**
- * Cuenta propuestas en estados "activos" (no terminales) de un proceso.
- * Para la evaluación, solo considera las que están en 'en_evaluacion'.
- */
 export async function contarPropuestasActivas(proceso_id: string) {
   const supabase = await createServerClient()
   const { count } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .eq('estado', 'activa')
   return count || 0
-}
-
-export async function contarPropuestasTotales(proceso_id: string) {
-  const supabase = await createServerClient()
-  const { count } = await supabase
-    .from('propuestas')
-    .select('*', { count: 'exact', head: true })
-    .eq('proceso_id', proceso_id)
-  return count || 0
-}
-
-// DOCUMENTOS
-export async function createDocumento(
-  data: Omit<Documento, 'id' | 'created_at' | 'updated_at'>
-) {
-  const supabase = await createServerClient()
-  return supabase.from('documentos').insert([data]).select().single()
-}
-
-export async function getDocumentos(propuesta_id: string) {
-  const supabase = await createServerClient()
-  return supabase.from('documentos').select('*').eq('propuesta_id', propuesta_id)
-}
-
-export async function updateDocumento(id: string, data: Partial<Documento>) {
-  const supabase = await createServerClient()
-  return supabase.from('documentos').update(data).eq('id', id).select().single()
-}
-
-export async function deleteDocumento(id: string) {
-  const supabase = await createServerClient()
-  return supabase.from('documentos').delete().eq('id', id)
-}
-
-export async function validarDocumentacionObligatoria(propuesta_id: string) {
-  const supabase = await createServerClient()
-  const { data: documentos, error } = await supabase
-    .from('documentos')
-    .select('es_obligatorio, estado')
-    .eq('propuesta_id', propuesta_id)
-
-  if (error) throw error
-
-  const faltantes =
-    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo').length || 0
-
-  return { completa: faltantes === 0, faltantes }
-}
-
-export async function getDocumentoConjunto(id: string, conjunto_id: string) {
-  const supabase = await createServerClient()
-
-  const { data: documento, error: docError } = await supabase
-    .from('documentos')
-    .select('id, propuesta_id')
-    .eq('id', id)
-    .single()
-
-  if (docError || !documento) {
-    return { data: null, error: docError }
-  }
-
-  const { data: propuesta, error: propError } = await supabase
-    .from('propuestas')
-    .select('proceso_id')
-    .eq('id', documento.propuesta_id)
-    .single()
-
-  if (propError || !propuesta) {
-    return { data: null, error: propError }
-  }
-
-  const { data: proceso, error: procError } = await supabase
-    .from('procesos')
-    .select('conjunto_id')
-    .eq('id', propuesta.proceso_id)
-    .single()
-
-  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
-    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
-  }
-
-  return { data: documento, error: null }
 }
 
 // CRITERIOS
@@ -404,19 +205,13 @@ export async function getEvaluacionesConsejero(consejero_id: string, proceso_id:
 
 /**
  * Valida si la documentación de una propuesta está completa.
- * Usa la máquina de estados para la transición — no hace UPDATE directo.
- * La propuesta debe estar en 'en_revision' para llamar esta función.
- *
- * Transiciones posibles:
- *   en_revision → incompleto  (falta algún documento obligatorio)
- *   en_revision → en_validacion (documentación completa)
+ * Si está incompleta, cambia el estado a 'incompleto'.
+ * Si está completa, cambia el estado a 'habilitada'.
  */
-export async function validarDocumentacionPropuesta(
-  propuesta_id: string,
-  usuario_id: string | null = null
-) {
+export async function validarDocumentacionPropuesta(propuesta_id: string) {
   const supabase = await createServerClient()
 
+  // 1. Obtener documentos requeridos y cargados
   const { data: documentos, error: docsError } = await supabase
     .from('documentos')
     .select('es_obligatorio, estado')
@@ -424,71 +219,41 @@ export async function validarDocumentacionPropuesta(
 
   if (docsError) throw docsError
 
-  const hayObligatoriosFaltantes = documentos?.some(
-    (d) => d.es_obligatorio && d.estado !== 'completo'
-  )
+  const obligatorioFaltante = documentos?.some(d => d.es_obligatorio && d.estado !== 'completo')
 
-  if (hayObligatoriosFaltantes) {
-    const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
-      p_propuesta_id: propuesta_id,
-      p_estado_nuevo: 'incompleto',
-      p_usuario_id: usuario_id,
-      p_observacion: 'Documentación obligatoria incompleta detectada en revisión automática',
-      p_metadata: { origen: 'validarDocumentacionPropuesta' },
-    })
-    if (error) throw error
-    return { success: true, estado: 'incompleto' as EstadoPropuesta, detalle: data }
-  }
+  const nuevoEstado = obligatorioFaltante ? 'incompleto' : 'habilitada'
 
-  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
-    p_propuesta_id: propuesta_id,
-    p_estado_nuevo: 'en_validacion',
-    p_usuario_id: usuario_id,
-    p_observacion: null,
-    p_metadata: { origen: 'validarDocumentacionPropuesta' },
-  })
-  if (error) throw error
-  return { success: true, estado: 'en_validacion' as EstadoPropuesta, detalle: data }
+  const { error: updError } = await supabase
+    .from('propuestas')
+    .update({ estado: nuevoEstado })
+    .eq('id', propuesta_id)
+
+  if (updError) throw updError
+
+  return { success: true, estado: nuevoEstado }
 }
 
 /**
- * Registra el resultado de la validación legal (SARLAFT, antecedentes, etc.).
- * Usa la máquina de estados — no hace UPDATE directo.
- * La propuesta debe estar en 'en_validacion'.
- *
- * Transiciones posibles:
- *   en_validacion → habilitada     (cumple todos los requisitos)
- *   en_validacion → no_apto_legal  (ELIMINATORIO)
+ * Procesa la validación legal de un candidato.
+ * Si no cumple, el estado cambia a 'no_apto_legal' (rechazo automático).
  */
-export async function procesarValidacionLegal(
-  propuesta_id: string,
-  cumple: boolean,
-  observaciones: string,
-  usuario_id: string | null = null
-) {
+export async function procesarValidacionLegal(propuesta_id: string, cumple: boolean, observaciones: string) {
   const supabase = await createServerClient()
 
-  const nuevoEstado: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
+  const nuevoEstado = cumple ? 'en_evaluacion' : 'no_apto_legal'
 
-  // Actualizar campos legales en la misma transacción lógica
-  await supabase
+  const { error: updError } = await supabase
     .from('propuestas')
     .update({
+      estado: nuevoEstado,
       cumple_requisitos_legales: cumple,
-      observaciones_legales: observaciones,
+      observaciones_legales: observaciones
     })
     .eq('id', propuesta_id)
 
-  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
-    p_propuesta_id: propuesta_id,
-    p_estado_nuevo: nuevoEstado,
-    p_usuario_id: usuario_id,
-    p_observacion: observaciones,
-    p_metadata: { origen: 'procesarValidacionLegal', cumple_requisitos: cumple },
-  })
+  if (updError) throw updError
 
-  if (error) throw error
-  return { success: true, estado: nuevoEstado, detalle: data }
+  return { success: true, estado: nuevoEstado }
 }
 
 // DOCUMENTOS
@@ -555,12 +320,12 @@ export async function getTiposDocumento() {
 export async function verificarEvaluacionCompleta(consejero_id: string, proceso_id: string) {
   const supabase = await createServerClient()
 
-  // Solo las propuestas en 'en_evaluacion' requieren ser evaluadas
+  // Obtener total de propuestas activas
   const { count: total_propuestas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .eq('estado', 'activa')
 
   // Obtener propuestas evaluadas por consejero
   const { data: propuestas_evaluadas } = await supabase
@@ -600,75 +365,15 @@ export async function verificarYaVoto(proceso_id: string, consejero_id: string) 
   return (data?.length || 0) > 0
 }
 
-// MÁQUINA DE ESTADOS
-
-/**
- * Ejecuta un cambio de estado validado a través de la función Postgres
- * `cambiar_estado_propuesta`. Registra historial y audit_log automáticamente.
- *
- * Errores con prefijo conocido:
- *   PROPUESTA_NOT_FOUND  → 404
- *   INVALID_TRANSITION   → 422
- *   OBSERVACION_REQUERIDA → 400
- */
-export async function cambiarEstadoPropuesta(
-  propuesta_id: string,
-  estado_nuevo: EstadoPropuesta,
-  usuario_id: string | null,
-  observacion: string | null,
-  metadata?: Record<string, unknown>
-) {
-  const supabase = await createServerClient()
-  return supabase.rpc('cambiar_estado_propuesta', {
-    p_propuesta_id: propuesta_id,
-    p_estado_nuevo: estado_nuevo,
-    p_usuario_id:   usuario_id,
-    p_observacion:  observacion,
-    p_metadata:     metadata ?? null,
-  }) as Promise<{ data: CambioEstadoResult | null; error: { message: string } | null }>
-}
-
-/**
- * Devuelve el historial completo de estados de una propuesta,
- * ordenado cronológicamente (más antiguo primero).
- */
-export async function getHistorialEstados(propuesta_id: string) {
-  const supabase = await createServerClient()
-      return supabase
-        .from('historial_estados_propuesta')
-        .select('*')
-        .eq('propuesta_id', propuesta_id)
-        .order('created_at', { ascending: true }) as Promise<{
-      data: HistorialEstado[] | null
-      error: { message: string } | null
-    }>
-}
-
-/**
- * Consulta la tabla transiciones_estado para devolver
- * las transiciones disponibles desde el estado actual.
- * Usado por el frontend para renderizar solo opciones válidas.
- */
-export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta) {
-  const supabase = await createServerClient()
-  return supabase.rpc('get_transiciones_disponibles', {
-    p_estado_actual: estado_actual,
-  }) as Promise<{
-    data: TransicionEstado[] | null
-    error: { message: string } | null
-  }>
-}
-
 // RESULTADOS
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
-  // Incluir en resultados: candidatos que llegaron al ranking (evaluados o clasificados)
   const { data: propuestas } = await supabase
     .from('vista_propuestas_resumen')
     .select('*')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .eq('estado', 'activa')
     .order('puntaje_final', { ascending: false })
 
   if (!propuestas) return []

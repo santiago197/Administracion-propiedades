@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { procesarValidacionLegal, getPropuestaConjunto } from '@/lib/supabase/queries'
+import { procesarValidacionLegal } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 export async function POST(request: NextRequest) {
   // Validar autenticación
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -12,11 +12,6 @@ export async function POST(request: NextRequest) {
 
     if (!propuesta_id) {
       return NextResponse.json({ error: 'propuesta_id es requerido' }, { status: 400 })
-    }
-
-    const { data: pertenece, error: accesoError } = await getPropuestaConjunto(propuesta_id, conjuntoId!)
-    if (accesoError || !pertenece) {
-      return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
     }
 
     const { success, estado } = await procesarValidacionLegal(propuesta_id, cumple, observaciones)

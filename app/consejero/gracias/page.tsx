@@ -38,11 +38,6 @@ export default function GraciasPagina() {
               Volver a Inicio
             </Button>
           </Link>
-          <Link href="/consejero/perfil">
-            <Button variant="outline" className="w-full mt-3">
-              Ver mi perfil
-            </Button>
-          </Link>
         </Card>
       </div>
     </div>
