@@ -41,7 +41,7 @@ import {
 import { useFileUpload } from '@/hooks/use-file-upload'
 import { useRutAutocompletado } from '@/components/admin/RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
 import { Spinner } from '@/components/ui/spinner'
-import type { Proceso, Propuesta } from '@/lib/types'
+import type { Proceso, Propuesta, PropuestaRutDatos } from '@/lib/types'
 
 type DocumentoRow = {
   id: string
@@ -70,6 +70,20 @@ type RutFormState = {
   tipoContribuyente: string
   revisorNombre: string
   contadorNombre: string
+}
+
+type RutRepresentanteItem = {
+  nombre: string
+  tipoRepresentacion: string
+  isPep: boolean
+  hasVinculoPep: boolean
+}
+
+type RutSocioItem = {
+  nombre: string
+  porcentaje: string
+  isPep: boolean
+  hasVinculoPep: boolean
 }
 
 const estadoClase: Record<string, string> = {
@@ -106,6 +120,10 @@ export default function DocumentosPage() {
   const [documentosByPropuesta, setDocumentosByPropuesta] = useState<Record<string, DocumentoRow[]>>({})
   const [selectedPropuestaId, setSelectedPropuestaId] = useState<string | null>(null)
   const [rutForm, setRutForm] = useState<RutFormState | null>(null)
+  const [rutRepresentantes, setRutRepresentantes] = useState<RutRepresentanteItem[]>([])
+  const [rutSocios, setRutSocios] = useState<RutSocioItem[]>([])
+  const [savingRut, setSavingRut] = useState(false)
+  const [nitCoincidePersistente, setNitCoincidePersistente] = useState<boolean | null>(null)
   const { upload, uploading } = useFileUpload()
   const { extraerRut, limpiar: limpiarRut, extrayendo: extrayendoRut, progreso: progresoRut, error: errorRut, datos: datosRut } = useRutAutocompletado()
   const rutFileRef = useRef<HTMLInputElement>(null)
@@ -122,10 +140,12 @@ export default function DocumentosPage() {
 
   const propuestaSeleccionada = propuestas.find((p) => p.id === uploadForm.propuesta_id) ?? null
 
-  const nitCoincide =
+  const nitCoincideExtraido =
     datosRut && propuestaSeleccionada
       ? propuestaSeleccionada.nit_cedula.replace(/[^0-9]/g, '').startsWith(datosRut.nit.replace(/[^0-9]/g, ''))
       : null
+
+  const nitCoincide = nitCoincideExtraido ?? nitCoincidePersistente
 
   // Inicializar formulario editable del RUT a partir de los datos extraídos
   useEffect(() => {
@@ -139,8 +159,13 @@ export default function DocumentosPage() {
         revisorNombre: '',
         contadorNombre: '',
       })
+      setRutRepresentantes(datosRut.representantes ?? [])
+      setRutSocios(datosRut.socios ?? [])
+      setNitCoincidePersistente(null)
     } else {
       setRutForm(null)
+      setRutRepresentantes([])
+      setRutSocios([])
     }
   }, [datosRut])
 
@@ -152,6 +177,82 @@ export default function DocumentosPage() {
       await extraerRut(file)
     }
   }
+
+  useEffect(() => {
+    if (!uploadForm.propuesta_id || datosRut) {
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadRutDesdeDB = async () => {
+      try {
+        const res = await fetch(`/api/propuestas/rut-datos?propuesta_id=${uploadForm.propuesta_id}`, {
+          signal: controller.signal,
+        })
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as PropuestaRutDatos | null
+        if (!data || cancelled) return
+
+        setRutForm({
+          nit: data.nit_extraido ?? '',
+          dv: data.dv_extraido ?? '',
+          razonSocial: data.razon_social_extraida ?? '',
+          tipoContribuyente: data.tipo_contribuyente ?? '',
+          revisorNombre:
+            data.revisor_fiscal_principal && typeof data.revisor_fiscal_principal === 'object'
+              ? String(
+                  (data.revisor_fiscal_principal as any).sociedadDesignada ??
+                    (data.revisor_fiscal_principal as any).nombre ??
+                    ''
+                )
+              : '',
+          contadorNombre:
+            data.contador && typeof data.contador === 'object'
+              ? String((data.contador as any).nombre ?? '')
+              : '',
+        })
+
+        setRutRepresentantes(
+          (data.representantes_legales ?? []).map((r) => ({
+            nombre:
+              (r as any).razonSocial ||
+              [r.primerNombre, r.otrosNombres, r.primerApellido, r.segundoApellido]
+                .filter(Boolean)
+                .join(' ') ||
+              '',
+            tipoRepresentacion: r.tipoRepresentacion,
+            isPep: r.isPep,
+            hasVinculoPep: r.hasVinculoPep,
+          }))
+        )
+
+        setRutSocios(
+          (data.socios ?? []).map((s) => ({
+            nombre:
+              s.razonSocial ||
+              [s.primerNombre, s.primerApellido].filter(Boolean).join(' ') ||
+              '',
+            porcentaje: s.porcentajeParticipacion || '',
+            isPep: s.isPep,
+            hasVinculoPep: s.hasVinculoPep,
+          }))
+        )
+
+        setNitCoincidePersistente(data.nit_coincide ?? null)
+      } catch (error) {
+        if (controller.signal.aborted || cancelled) return
+      }
+    }
+
+    loadRutDesdeDB()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [uploadForm.propuesta_id, datosRut])
 
   const loadDocumentosByPropuestas = async (propuestasData: Propuesta[]) => {
     if (propuestasData.length === 0) {
@@ -290,6 +391,76 @@ export default function DocumentosPage() {
       setError(message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleGuardarRut = async () => {
+    if (!propuestaSeleccionada || !rutForm) return
+
+    setSavingRut(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const hayAlertaPep =
+        rutRepresentantes.some((r) => r.isPep || r.hasVinculoPep) ||
+        rutSocios.some((s) => s.isPep || s.hasVinculoPep)
+
+      const payload = {
+        propuesta_id: propuestaSeleccionada.id,
+        nit_extraido: rutForm.nit || null,
+        dv_extraido: rutForm.dv || null,
+        razon_social_extraida: rutForm.razonSocial || null,
+        tipo_contribuyente: rutForm.tipoContribuyente || null,
+        representantes_legales: rutRepresentantes.map((r) => ({
+          tipoRepresentacion: r.tipoRepresentacion,
+          tipoDocumento: '',
+          numeroIdentificacion: '',
+          primerNombre: r.nombre,
+          primerApellido: '',
+          segundoApellido: null,
+          otrosNombres: null,
+          fechaInicioVinculacion: null,
+          isPep: r.isPep,
+          hasVinculoPep: r.hasVinculoPep,
+        })),
+        socios: rutSocios.map((s) => ({
+          tipoDocumento: '',
+          numeroIdentificacion: '',
+          primerNombre: null,
+          primerApellido: null,
+          razonSocial: s.nombre,
+          porcentajeParticipacion: s.porcentaje || null,
+          isPep: s.isPep,
+          hasVinculoPep: s.hasVinculoPep,
+        })),
+        revisor_fiscal_principal: rutForm.revisorNombre
+          ? { nombre: rutForm.revisorNombre }
+          : null,
+        revisor_fiscal_suplente: null,
+        contador: rutForm.contadorNombre ? { nombre: rutForm.contadorNombre } : null,
+        responsabilidades: [] as any[],
+        hay_alerta_pep: hayAlertaPep,
+        nit_coincide: nitCoincide,
+      }
+
+      const res = await fetch('/api/propuestas/rut-datos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(body.error || 'Error al guardar datos del RUT')
+      }
+
+      setSuccessMessage('Datos del RUT guardados correctamente')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar datos del RUT'
+      setError(message)
+    } finally {
+      setSavingRut(false)
     }
   }
 
@@ -702,12 +873,13 @@ export default function DocumentosPage() {
             </CardContent>
           </Card>
 
-          {datosRut && propuestaSeleccionada && rutForm && (
+          {propuestaSeleccionada && rutForm && (
             <Card className="mt-4">
               <CardHeader>
-                <CardTitle>Datos extraídos del RUT</CardTitle>
+                <CardTitle>Información general del RUT</CardTitle>
                 <CardDescription>
-                  {datosRut.razonSocial} · NIT {datosRut.nitCompleto}
+                  {rutForm.razonSocial || propuestaSeleccionada.razon_social}
+                  {rutForm.nit && ` · NIT ${rutForm.nit}${rutForm.dv ? `-${rutForm.dv}` : ''}`}
                   {nitCoincide === true && ' — NIT coincide con la propuesta seleccionada.'}
                   {nitCoincide === false &&
                     ` — El NIT no coincide con el registrado en la propuesta (${propuestaSeleccionada.nit_cedula}).`}
@@ -757,22 +929,40 @@ export default function DocumentosPage() {
                   </div>
                 </div>
 
-                {datosRut.representantes.length > 0 && (
+                {rutRepresentantes.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Representantes legales
                     </p>
-                    <div className="space-y-1">
-                      {datosRut.representantes.map((r, idx) => (
+                    <div className="space-y-2">
+                      {rutRepresentantes.map((r, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+                          className="space-y-2 rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
                         >
-                          <div>
-                            <span className="font-medium">{r.nombre}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {r.tipoRepresentacion}
-                            </span>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Nombre</Label>
+                              <Input
+                                value={r.nombre}
+                                onChange={(e) => {
+                                  const next = [...rutRepresentantes]
+                                  next[idx] = { ...next[idx], nombre: e.target.value }
+                                  setRutRepresentantes(next)
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Tipo de representación</Label>
+                              <Input
+                                value={r.tipoRepresentacion}
+                                onChange={(e) => {
+                                  const next = [...rutRepresentantes]
+                                  next[idx] = { ...next[idx], tipoRepresentacion: e.target.value }
+                                  setRutRepresentantes(next)
+                                }}
+                              />
+                            </div>
                           </div>
                           {(r.isPep || r.hasVinculoPep) && (
                             <Badge
@@ -788,24 +978,38 @@ export default function DocumentosPage() {
                   </div>
                 )}
 
-                {datosRut.socios.length > 0 && (
+                {rutSocios.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Socios / Beneficiarios
+                      Socios / Accionistas
                     </p>
-                    <div className="space-y-1">
-                      {datosRut.socios.map((s, idx) => (
+                    <div className="space-y-2">
+                      {rutSocios.map((s, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+                          className="flex items-center gap-3 rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
                         >
-                          <div>
-                            <span className="font-medium">{s.nombre || '—'}</span>
-                            {s.porcentaje && (
-                              <span className="ml-2 text-xs text-muted-foreground">
-                                {s.porcentaje}%
-                              </span>
-                            )}
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Nombre / Razón social</Label>
+                            <Input
+                              value={s.nombre}
+                              onChange={(e) => {
+                                const next = [...rutSocios]
+                                next[idx] = { ...next[idx], nombre: e.target.value }
+                                setRutSocios(next)
+                              }}
+                            />
+                          </div>
+                          <div className="w-28 space-y-1">
+                            <Label className="text-xs">% participación</Label>
+                            <Input
+                              value={s.porcentaje}
+                              onChange={(e) => {
+                                const next = [...rutSocios]
+                                next[idx] = { ...next[idx], porcentaje: e.target.value }
+                                setRutSocios(next)
+                              }}
+                            />
                           </div>
                           {(s.isPep || s.hasVinculoPep) && (
                             <Badge
@@ -820,6 +1024,15 @@ export default function DocumentosPage() {
                     </div>
                   </div>
                 )}
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleGuardarRut}
+                    disabled={savingRut || !propuestaSeleccionada || !rutForm}
+                  >
+                    {savingRut ? 'Guardando...' : 'Guardar datos del RUT'}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
