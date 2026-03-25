@@ -4,15 +4,17 @@ import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import type { Propuesta, TipoPersona } from '@/lib/types/index'
-import { useRutAutocompletado } from './RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
+import {
+  useRutAutocompletado,
+  type DatosRutExtraidos,
+} from './RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
 
 // ---------------------------------------------------------------------------
-// Tipos internos del formulario
-// Usamos strings para todos los campos para que los inputs HTML sean simples.
-// La conversión numérica ocurre solo al enviar.
+// Tipos internos
 // ---------------------------------------------------------------------------
 interface FormFields {
   tipo_persona: TipoPersona
@@ -47,25 +49,16 @@ interface FormPropuestaProps {
   onSuccess: (propuesta: Propuesta) => void
 }
 
-// ---------------------------------------------------------------------------
-// Validación de campos requeridos en el cliente
-// Retorna un objeto con los errores por campo, o null si todo está bien.
-// ---------------------------------------------------------------------------
 function validateForm(data: FormFields): Partial<Record<keyof FormFields, string>> | null {
   const errors: Partial<Record<keyof FormFields, string>> = {}
 
   if (!data.razon_social.trim()) {
     errors.razon_social =
-      data.tipo_persona === 'juridica'
-        ? 'La razón social es requerida'
-        : 'El nombre completo es requerido'
+      data.tipo_persona === 'juridica' ? 'La razón social es requerida' : 'El nombre completo es requerido'
   }
-
   if (!data.nit_cedula.trim()) {
-    errors.nit_cedula =
-      data.tipo_persona === 'juridica' ? 'El NIT es requerido' : 'La cédula es requerida'
+    errors.nit_cedula = data.tipo_persona === 'juridica' ? 'El NIT es requerido' : 'La cédula es requerida'
   }
-
   if (!data.email.trim()) {
     errors.email = 'El email de contacto es requerido'
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) {
@@ -76,17 +69,92 @@ function validateForm(data: FormFields): Partial<Record<keyof FormFields, string
 }
 
 // ---------------------------------------------------------------------------
-// Componente
+// Sub-componente: sección de revisión de datos del RUT (solo lectura + PEP)
+// ---------------------------------------------------------------------------
+function SeccionRevisionRut({ datos }: { datos: DatosRutExtraidos }) {
+  return (
+    <div className="space-y-4 rounded-md border border-border/50 bg-muted/20 p-4">
+      <p className="text-sm font-medium text-foreground">Datos extraídos del RUT</p>
+
+      {/* Alerta PEP */}
+      {datos.hayAlertaPep && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+          Alerta PEP detectada: uno o más representantes o socios están marcados como Personas
+          Expuestas Políticamente. Esta información quedará registrada para validación legal.
+        </div>
+      )}
+
+      {/* Representantes legales */}
+      {datos.representantes.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Representantes Legales
+          </p>
+          <div className="space-y-1">
+            {datos.representantes.map((r, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+              >
+                <div>
+                  <span className="font-medium">{r.nombre}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{r.tipoRepresentacion}</span>
+                </div>
+                {(r.isPep || r.hasVinculoPep) && (
+                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-xs">
+                    PEP
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Socios */}
+      {datos.socios.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Socios / Beneficiarios
+          </p>
+          <div className="space-y-1">
+            {datos.socios.map((s, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between rounded-md border border-border/40 bg-background px-3 py-2 text-sm"
+              >
+                <div>
+                  <span className="font-medium">{s.nombre || '—'}</span>
+                  {s.porcentaje && (
+                    <span className="ml-2 text-xs text-muted-foreground">{s.porcentaje}%</span>
+                  )}
+                </div>
+                {(s.isPep || s.hasVinculoPep) && (
+                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-xs">
+                    PEP
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Componente principal
 // ---------------------------------------------------------------------------
 export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
   const [formData, setFormData] = useState<FormFields>(EMPTY_FORM)
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormFields, string>>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [rutAutocompletado, setRutAutocompletado] = useState(false)
 
   const rutInputRef = useRef<HTMLInputElement>(null)
-  const { extraerRut, extrayendo, progreso, error: errorRut, datos: datosRut, limpiar } = useRutAutocompletado()
+  const { extraerRut, extrayendo, progreso, error: errorRut, datos: datosRut, limpiar } =
+    useRutAutocompletado()
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -115,15 +183,13 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
       telefono: datos.telefono || prev.telefono,
       direccion: datos.direccion || prev.direccion,
     }))
-
     setFieldErrors({})
-    setRutAutocompletado(true)
   }
 
   const handleDescartarRut = () => {
     limpiar()
-    setRutAutocompletado(false)
     setFormData(EMPTY_FORM)
+    setFieldErrors({})
     if (rutInputRef.current) rutInputRef.current.value = ''
   }
 
@@ -140,7 +206,8 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
     setIsSubmitting(true)
 
     try {
-      const res = await fetch('/api/propuestas', {
+      // 1. Crear propuesta
+      const propuestaRes = await fetch('/api/propuestas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -149,37 +216,57 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           razon_social: formData.razon_social.trim(),
           nit_cedula: formData.nit_cedula.trim(),
           representante_legal: formData.representante_legal.trim() || null,
-          anios_experiencia: formData.anios_experiencia
-            ? parseInt(formData.anios_experiencia, 10)
-            : 0,
+          anios_experiencia: formData.anios_experiencia ? parseInt(formData.anios_experiencia, 10) : 0,
           unidades_administradas: formData.unidades_administradas
             ? parseInt(formData.unidades_administradas, 10)
             : 0,
           telefono: formData.telefono.trim() || null,
           email: formData.email.trim().toLowerCase(),
           direccion: formData.direccion.trim() || null,
-          valor_honorarios: formData.valor_honorarios
-            ? parseFloat(formData.valor_honorarios)
-            : null,
+          valor_honorarios: formData.valor_honorarios ? parseFloat(formData.valor_honorarios) : null,
           observaciones: formData.observaciones.trim() || null,
         }),
       })
 
-      const responseData = await res.json()
-
-      if (!res.ok) {
-        const serverMessage = responseData?.error ?? `Error del servidor (${res.status})`
-        throw new Error(serverMessage)
+      const propuestaData = await propuestaRes.json()
+      if (!propuestaRes.ok) {
+        throw new Error(propuestaData?.error ?? `Error del servidor (${propuestaRes.status})`)
       }
 
+      const propuesta = propuestaData as Propuesta
+
+      // 2. Si se procesó un RUT, guardar los datos extendidos
+      if (datosRut) {
+        const nitRegistrado = formData.nit_cedula.trim()
+        const nitCoincide = nitRegistrado
+          .replace(/[^0-9]/g, '')
+          .startsWith(datosRut.nit.replace(/[^0-9]/g, ''))
+
+        await fetch('/api/propuestas/rut-datos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propuesta_id: propuesta.id,
+            nit_extraido: datosRut.nit,
+            dv_extraido: datosRut.dv,
+            razon_social_extraida: datosRut.razonSocial,
+            tipo_contribuyente: datosRut.tipoPersona === 'juridica' ? 'Persona jurídica' : 'Persona natural',
+            representantes_legales: datosRut.representantes,
+            socios: datosRut.socios,
+            hay_alerta_pep: datosRut.hayAlertaPep,
+            nit_coincide: nitCoincide,
+          }),
+        })
+        // No bloqueamos el flujo si falla el guardado de metadatos
+      }
+
+      // 3. Limpiar y notificar
       setFormData(EMPTY_FORM)
       limpiar()
-      setRutAutocompletado(false)
-      onSuccess(responseData as Propuesta)
+      if (rutInputRef.current) rutInputRef.current.value = ''
+      onSuccess(propuesta)
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Error desconocido al crear la propuesta'
-      setSubmitError(message)
+      setSubmitError(err instanceof Error ? err.message : 'Error desconocido al crear la propuesta')
     } finally {
       setIsSubmitting(false)
     }
@@ -192,64 +279,61 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
     <Card className="border border-border/50 bg-card/50 p-6">
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
-        {/* ── Sección RUT ── */}
-        <div className="rounded-md border border-border/50 bg-muted/30 p-4 space-y-3">
+        {/* ── Carga de RUT ── */}
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-foreground">Autocompletar desde RUT</p>
-            {rutAutocompletado && (
+            <p className="text-sm font-medium text-foreground">
+              RUT {datosRut ? '' : '(opcional)'}
+            </p>
+            {datosRut && (
               <button
                 type="button"
                 onClick={handleDescartarRut}
                 className="text-xs text-muted-foreground hover:text-destructive transition-colors"
               >
-                Descartar
+                Descartar RUT
               </button>
             )}
           </div>
 
-          {!rutAutocompletado ? (
-            <>
-              <Input
-                ref={rutInputRef}
-                type="file"
-                accept=".pdf"
-                disabled={extrayendo}
-                onChange={handleRutFileChange}
-                className="border-border/50 text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                Sube el PDF del RUT para completar automáticamente los campos del formulario.
-              </p>
-            </>
-          ) : null}
+          {!datosRut && (
+            <Input
+              ref={rutInputRef}
+              type="file"
+              accept=".pdf"
+              disabled={extrayendo}
+              onChange={handleRutFileChange}
+              className="border-border/50 text-sm"
+            />
+          )}
 
           {extrayendo && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner className="h-4 w-4 shrink-0" />
-              <span>{progreso || 'Procesando...'}</span>
+              <span>{progreso || 'Procesando RUT...'}</span>
             </div>
           )}
 
-          {errorRut && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-2 text-xs text-destructive">
-              {errorRut}
-            </div>
+          {errorRut && !extrayendo && (
+            <p className="text-xs text-destructive">{errorRut}</p>
           )}
 
-          {rutAutocompletado && datosRut && (
-            <div className="space-y-2">
-              <div className="rounded-md bg-emerald-500/10 border border-emerald-500/20 p-2 text-xs text-emerald-700">
-                Campos completados desde RUT · NIT extraído: <span className="font-medium">{datosRut.nitCompleto}</span>
-              </div>
-
-              {datosRut.hayAlertaPep && (
-                <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2 text-xs text-amber-700">
-                  Alerta PEP: se detectaron personas expuestas políticamente en representantes o socios. Verifique en validación legal.
-                </div>
-              )}
+          {datosRut && !extrayendo && (
+            <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+              RUT procesado · NIT extraído: <span className="font-medium">{datosRut.nitCompleto}</span>
             </div>
           )}
         </div>
+
+        {/* ── Revisión de datos del RUT (representantes, socios, PEP) ── */}
+        {datosRut && <SeccionRevisionRut datos={datosRut} />}
+
+        {/* ── Separador visual cuando viene del RUT ── */}
+        {datosRut && (
+          <p className="text-xs text-muted-foreground border-t border-border/50 pt-4">
+            Revisa y ajusta los campos antes de registrar la propuesta.
+          </p>
+        )}
 
         {/* Tipo de persona */}
         <FieldGroup>
@@ -269,7 +353,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </Field>
         </FieldGroup>
 
-        {/* Razón social / Nombre */}
+        {/* Razón social */}
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="razon_social">
@@ -376,8 +460,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="email">
-              Email
-              <span className="text-destructive ml-1">*</span>
+              Email <span className="text-destructive ml-1">*</span>
             </FieldLabel>
             <Input
               id="email"
@@ -469,7 +552,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </div>
         )}
 
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" disabled={isSubmitting || extrayendo} className="w-full">
           {isSubmitting ? (
             <>
               <Spinner className="h-4 w-4 mr-2" />

@@ -3,7 +3,8 @@ import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB para logos
+const MAX_LOGO_FILE_SIZE = 2 * 1024 * 1024 // 2MB para logos
+const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024 // 10MB para documentos
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
 const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
 
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Validar tamaño
-      if (file.size > MAX_FILE_SIZE) {
+      if (file.size > MAX_LOGO_FILE_SIZE) {
         return NextResponse.json(
           { error: 'El archivo excede el tamaño máximo de 2MB' },
           { status: 400 }
@@ -125,9 +126,9 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      if (file.size > MAX_FILE_SIZE) {
+      if (file.size > MAX_DOCUMENT_FILE_SIZE) {
         return NextResponse.json(
-          { error: 'El archivo excede el tamaño máximo de 2MB' },
+          { error: 'El archivo excede el tamaño máximo de 10MB' },
           { status: 400 }
         )
       }
@@ -165,6 +166,19 @@ export async function POST(request: NextRequest) {
               })
             uploadData = adminUpload.data
             uploadError = adminUpload.error
+
+            // Si el upload con admin tuvo éxito, devolvemos éxito inmediatamente
+            if (!uploadError && uploadData?.path) {
+              const { data: publicUrlData } = supabase.storage
+                .from('documentos')
+                .getPublicUrl(fileName)
+
+              return NextResponse.json({
+                pathname: uploadData.path,
+                url: publicUrlData.publicUrl,
+                filename: file.name,
+              })
+            }
           } catch (adminError) {
             console.error('Error uploading with admin client:', adminError)
           }
@@ -194,7 +208,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error: 'Error al subir documento',
-            details: uploadError.message,
+            details: uploadError?.message ?? 'Error desconocido en Storage',
           },
           { status: 500 }
         )
@@ -217,8 +231,34 @@ export async function POST(request: NextRequest) {
         filename: file.name,
       })
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('[upload] Error:', error)
-    return NextResponse.json({ error: 'Error al procesar la solicitud' }, { status: 500 })
+
+    // Intentar exponer mejor la causa raíz sin romper el contrato actual
+    const message =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Error desconocido'
+
+    // Error típico cuando faltan variables de entorno para Supabase
+    if (
+      typeof message === 'string' &&
+      message.includes('Faltan variables NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY')
+    ) {
+      return NextResponse.json(
+        {
+          error: 'Error de configuración de Supabase',
+          details:
+            'Revisa NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY en el entorno del servidor.',
+        },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Error al procesar la solicitud',
+        details: message,
+      },
+      { status: 500 }
+    )
   }
 }

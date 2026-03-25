@@ -63,6 +63,15 @@ type TipoDocumentoValue =
   | 'referencia'
   | 'otro'
 
+type RutFormState = {
+  nit: string
+  dv: string
+  razonSocial: string
+  tipoContribuyente: string
+  revisorNombre: string
+  contadorNombre: string
+}
+
 const estadoClase: Record<string, string> = {
   completo: 'bg-emerald-500/10 text-emerald-700',
   pendiente: 'bg-amber-500/10 text-amber-700',
@@ -95,6 +104,8 @@ export default function DocumentosPage() {
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [documentosByPropuesta, setDocumentosByPropuesta] = useState<Record<string, DocumentoRow[]>>({})
+  const [selectedPropuestaId, setSelectedPropuestaId] = useState<string | null>(null)
+  const [rutForm, setRutForm] = useState<RutFormState | null>(null)
   const { upload, uploading } = useFileUpload()
   const { extraerRut, limpiar: limpiarRut, extrayendo: extrayendoRut, progreso: progresoRut, error: errorRut, datos: datosRut } = useRutAutocompletado()
   const rutFileRef = useRef<HTMLInputElement>(null)
@@ -115,6 +126,23 @@ export default function DocumentosPage() {
     datosRut && propuestaSeleccionada
       ? propuestaSeleccionada.nit_cedula.replace(/[^0-9]/g, '').startsWith(datosRut.nit.replace(/[^0-9]/g, ''))
       : null
+
+  // Inicializar formulario editable del RUT a partir de los datos extraídos
+  useEffect(() => {
+    if (datosRut) {
+      setRutForm({
+        nit: datosRut.nit,
+        dv: datosRut.dv,
+        razonSocial: datosRut.razonSocial,
+        tipoContribuyente:
+          datosRut.tipoPersona === 'juridica' ? 'Persona jurídica' : 'Persona natural',
+        revisorNombre: '',
+        contadorNombre: '',
+      })
+    } else {
+      setRutForm(null)
+    }
+  }, [datosRut])
 
   const handleArchivoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null
@@ -213,6 +241,8 @@ export default function DocumentosPage() {
       return
     }
 
+    const propuestaActual = propuestas.find((p) => p.id === uploadForm.propuesta_id) ?? null
+
     try {
       setSaving(true)
 
@@ -280,9 +310,18 @@ export default function DocumentosPage() {
       item.docs.map((doc) => ({
         ...doc,
         propuesta: item.propuesta.razon_social,
+        propuesta_id: item.propuesta.id,
       }))
     )
   }, [resumenPorPropuesta])
+
+  const documentosFiltrados = useMemo(
+    () =>
+      selectedPropuestaId
+        ? documentosFlat.filter((doc) => doc.propuesta_id === selectedPropuestaId)
+        : documentosFlat,
+    [documentosFlat, selectedPropuestaId]
+  )
 
   return (
     <div className="space-y-6">
@@ -294,12 +333,16 @@ export default function DocumentosPage() {
             Vista por propuesta con indicadores de completitud y vencimiento.
           </p>
         </div>
-        <Dialog open={openUpload} onOpenChange={(open) => { setOpenUpload(open); if (!open) { limpiarRut(); setUploadFile(null) } }}>
-          <DialogTrigger asChild>
-            <Button variant="outline" disabled={!procesoId || propuestas.length === 0}>
-              Subir documento
-            </Button>
-          </DialogTrigger>
+        <Dialog
+          open={openUpload}
+          onOpenChange={(open) => {
+            setOpenUpload(open)
+            if (!open) {
+              limpiarRut()
+              setUploadFile(null)
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-xl">
             <form onSubmit={handleSubmitUpload}>
               <DialogHeader>
@@ -524,11 +567,29 @@ export default function DocumentosPage() {
                 <p className="text-sm text-muted-foreground">No hay propuestas en el proceso actual.</p>
               ) : (
                 resumenPorPropuesta.map((item) => (
-                  <div key={item.propuesta.id} className="rounded-lg border bg-muted/40 p-3 space-y-3">
+                  <div
+                    key={item.propuesta.id}
+                    className={`rounded-lg border bg-muted/40 p-3 space-y-3 ${
+                      selectedPropuestaId === item.propuesta.id ? 'border-primary/70' : ''
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold">{item.propuesta.razon_social}</p>
-                        <p className="text-xs text-muted-foreground">{item.total} documentos</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPropuestaId(item.propuesta.id)
+                            setUploadForm((prev) => ({ ...prev, propuesta_id: item.propuesta.id }))
+                            setOpenUpload(true)
+                          }}
+                          className="font-semibold text-left text-primary hover:underline"
+                        >
+                          {item.propuesta.razon_social}
+                        </button>
+                        <p className="text-xs text-muted-foreground">
+                          {item.total} documentos
+                          {selectedPropuestaId === item.propuesta.id && ' · seleccionada'}
+                        </p>
                       </div>
                       <Badge className={estadoClase[item.estado] ?? ''} variant="outline">
                         {item.estado.toUpperCase()}
@@ -563,6 +624,23 @@ export default function DocumentosPage() {
               <CardDescription>Completo / pendiente / vencido</CardDescription>
             </CardHeader>
             <CardContent>
+              {selectedPropuestaId && (
+                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    Filtrando por:{' '}
+                    <span className="font-medium">
+                      {propuestas.find((p) => p.id === selectedPropuestaId)?.razon_social ?? 'Propuesta'}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPropuestaId(null)}
+                    className="text-primary hover:underline"
+                  >
+                    Quitar filtro
+                  </button>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -574,16 +652,28 @@ export default function DocumentosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {documentosFlat.length === 0 ? (
+                  {documentosFiltrados.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-sm text-muted-foreground">
                         No hay documentos registrados para este proceso.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    documentosFlat.map((doc) => (
+                    documentosFiltrados.map((doc) => (
                       <TableRow key={doc.id}>
-                        <TableCell className="font-medium">{doc.propuesta}</TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPropuestaId(doc.propuesta_id)
+                              setUploadForm((prev) => ({ ...prev, propuesta_id: doc.propuesta_id }))
+                              setOpenUpload(true)
+                            }}
+                            className="text-left text-primary hover:underline"
+                          >
+                            {doc.propuesta}
+                          </button>
+                        </TableCell>
                         <TableCell>{doc.nombre}</TableCell>
                         <TableCell>
                           <Badge className={estadoClase[doc.estado] ?? ''} variant="outline">

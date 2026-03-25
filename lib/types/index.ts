@@ -254,6 +254,59 @@ export interface TransicionEstado {
   descripcion: string
 }
 
+// ---------------------------------------------------------------------------
+// Datos extendidos del RUT vinculados a una propuesta
+// Corresponde a la tabla propuesta_rut_datos (005_rut_metadata.sql)
+// ---------------------------------------------------------------------------
+
+export interface RepresentanteLegalResumen {
+  tipoRepresentacion: string
+  tipoDocumento: string
+  numeroIdentificacion: string
+  primerNombre: string
+  primerApellido: string
+  segundoApellido: string | null
+  otrosNombres: string | null
+  fechaInicioVinculacion: string | null
+  isPep: boolean
+  hasVinculoPep: boolean
+}
+
+export interface SocioResumen {
+  tipoDocumento: string
+  numeroIdentificacion: string
+  primerNombre: string | null
+  primerApellido: string | null
+  razonSocial: string | null
+  porcentajeParticipacion: string | null
+  isPep: boolean
+  hasVinculoPep: boolean
+}
+
+export interface ResponsabilidadResumen {
+  codigo: string
+  nombre: string
+}
+
+export interface PropuestaRutDatos {
+  id: string
+  propuesta_id: string
+  nit_extraido: string | null
+  dv_extraido: string | null
+  razon_social_extraida: string | null
+  tipo_contribuyente: string | null
+  representantes_legales: RepresentanteLegalResumen[]
+  socios: SocioResumen[]
+  revisor_fiscal_principal: Record<string, unknown> | null
+  revisor_fiscal_suplente: Record<string, unknown> | null
+  contador: Record<string, unknown> | null
+  responsabilidades: ResponsabilidadResumen[]
+  hay_alerta_pep: boolean
+  nit_coincide: boolean | null
+  created_at: string
+  updated_at: string
+}
+
 /** Resultado de la función RPC cambiar_estado_propuesta */
 export interface CambioEstadoResult {
   success: boolean

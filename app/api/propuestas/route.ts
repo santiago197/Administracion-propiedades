@@ -109,9 +109,16 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     console.error('[propuestas] POST error:', error)
-    // Devolver el mensaje real de Supabase (constraint violations, etc.)
+    const message = error.message || ''
+
+    let detail = message
+    if (message.includes('propuestas_estado_check')) {
+      detail =
+        'Error de configuración en los estados de la propuesta. Ejecuta el script scripts/003_state_machine.sql en Supabase para actualizar el constraint propuestas_estado_check.'
+    }
+
     return NextResponse.json(
-      { error: 'Error al crear propuesta', detail: error.message },
+      { error: 'Error al crear propuesta', detail },
       { status: 500 }
     )
   }

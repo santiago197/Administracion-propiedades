@@ -10,12 +10,12 @@ import type {
   Criterio,
   Evaluacion,
   Voto,
-  Documento,
   ProcesoStats,
   ResultadoFinal,
   HistorialEstado,
   TransicionEstado,
   CambioEstadoResult,
+  PropuestaRutDatos,
 } from '../types/index'
 
 // CONJUNTOS
@@ -491,33 +491,6 @@ export async function procesarValidacionLegal(
   return { success: true, estado: nuevoEstado, detalle: data }
 }
 
-// DOCUMENTOS
-export async function getDocumentos(propuesta_id: string) {
-  const supabase = await createServerClient()
-  return supabase
-    .from('documentos')
-    .select('*, tipos_documento(*)')
-    .eq('propuesta_id', propuesta_id)
-}
-
-export async function createDocumento(data: Omit<Documento, 'id' | 'created_at' | 'updated_at' | 'validado_por' | 'fecha_validacion'>) {
-  const supabase = await createServerClient()
-
-  // Registrar auditoría
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
-    await supabase.from('audit_log').insert({
-      accion: 'CARGA_DOCUMENTO',
-      entidad: 'documentos',
-      datos_nuevos: data as any,
-      entidad_id: null,
-      conjunto_id: null
-    })
-  }
-
-  return supabase.from('documentos').insert([data]).select().single()
-}
-
 export async function validarDocumento(id: string, estado: string, observaciones: string, userId: string) {
   const supabase = await createServerClient()
 
@@ -695,4 +668,25 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       estado_semaforo,
     }
   })
+}
+
+// PROPUESTA RUT DATOS
+export async function upsertPropuestaRutDatos(
+  data: Omit<PropuestaRutDatos, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('propuesta_rut_datos')
+    .upsert(data, { onConflict: 'propuesta_id' })
+    .select()
+    .single()
+}
+
+export async function getPropuestaRutDatos(propuesta_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('propuesta_rut_datos')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+    .maybeSingle()
 }
