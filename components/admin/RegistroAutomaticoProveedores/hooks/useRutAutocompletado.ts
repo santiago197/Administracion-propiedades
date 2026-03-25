@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { analizarRutLocal } from '../services/ocr'
 import type { RUTData, RepresentanteLegalData, SocioData } from '../model'
 import type { TipoPersona } from '@/lib/types'
 
@@ -145,6 +144,8 @@ export function useRutAutocompletado() {
     setEstado({ extrayendo: true, progreso: 'Leyendo documento...', error: null, datos: null })
 
     try {
+      // Import dinámico: evita que pdfjs-dist/tesseract.js se evalúen en SSR
+      const { analizarRutLocal } = await import('../services/ocr')
       const resultado = await analizarRutLocal(file, signal, (msg) =>
         setEstado((prev) => ({ ...prev, progreso: msg }))
       )
