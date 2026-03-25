@@ -75,6 +75,35 @@ export async function GET(request: NextRequest) {
 
     const propuestasEvaluadas = evaluaciones ? new Set(evaluaciones.map((row) => row.propuesta_id)).size : 0
 
+    // Cargar propuestas y documentos del proceso para el dashboard de consejeros
+    const { data: propuestas } = await supabase
+      .from('propuestas')
+      .select(
+        'id, razon_social, tipo_persona, nit_cedula, representante_legal, anios_experiencia, unidades_administradas, telefono, email, direccion, valor_honorarios, estado, cumple_requisitos_legales, observaciones_legales, puntaje_evaluacion, votos_recibidos, puntaje_final'
+      )
+      .eq('proceso_id', proceso.id)
+      .order('razon_social', { ascending: true })
+
+    let documentos: {
+      id: string
+      propuesta_id: string
+      tipo: string
+      nombre: string
+      estado: string
+      es_obligatorio: boolean
+      fecha_vencimiento: string | null
+      archivo_url: string | null
+    }[] = []
+
+    if (propuestas && propuestas.length > 0) {
+      const { data: docs } = await supabase
+        .from('documentos')
+        .select('id, propuesta_id, tipo, nombre, estado, es_obligatorio, fecha_vencimiento, archivo_url')
+        .in('propuesta_id', propuestas.map((p) => p.id))
+
+      documentos = docs ?? []
+    }
+
     return NextResponse.json({
       consejero,
       proceso,
@@ -85,6 +114,8 @@ export async function GET(request: NextRequest) {
         ya_voto: Boolean(voto),
         fecha_voto: voto?.created_at ?? null,
       },
+      propuestas: propuestas ?? [],
+      documentos,
     })
   } catch (error) {
     console.error('[consejero/perfil] error:', error)
