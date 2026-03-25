@@ -40,7 +40,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { title: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { title: 'Perfil del Conjunto', href: '/admin/perfil', icon: Building2 },
-  { title: 'Consejo', href: '/admin/consejeros', icon: Users, badge: '1 pendiente' },
+  { title: 'Consejo', href: '/admin/consejeros', icon: Users },
   { title: 'Procesos de Selección', href: '/admin/procesos', icon: Flag },
   { title: 'Propuestas', href: '/admin/propuestas', icon: Layers },
   { title: 'Documentación', href: '/admin/documentos', icon: FileText },
@@ -150,11 +150,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         ))}
       </nav>
-      <div className="p-3">
-        <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-          Panel UI listo para conectar a tu backend. Usa los datos mock para validar el diseño.
-        </div>
-      </div>
     </div>
   )
 

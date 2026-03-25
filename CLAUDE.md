@@ -16,17 +16,18 @@ pnpm start     # Servidor de producción
 ```
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=    # Usar el "publishable key" del dashboard de Supabase
+CONSEJERO_SESSION_SECRET=          # Opcional; si no se define, usa SUPABASE_SERVICE_ROLE_KEY o ANON_KEY como fallback
 ```
 
 ## Arquitectura general
 
-Sistema multi-tenant para la selección de administradores de Propiedad Horizontal (Ley 675 de 2001 Colombia). Next.js 16 App Router + Supabase (auth + PostgreSQL) + Radix UI (shadcn/ui).
+Sistema multi-tenant para la selección de administradores de Propiedad Horizontal (Ley 675 de 2001 Colombia). Next.js 16 App Router + Supabase (auth + PostgreSQL) + Radix UI (shadcn/ui) + Tailwind CSS v4.
 
 ### Dos flujos de usuario
 
 **`/admin/*`** — Administradores autenticados con email/password. Protegido por `middleware.ts` que valida sesión Supabase y existencia en tabla `usuarios` con `activo = true`.
 
-**`/consejero/*`** — Consejeros de conjunto. Acceso público por código de 8 caracteres (sin Supabase Auth). El código se valida en `/api/auth/validate-code` consultando la tabla `consejeros`.
+**`/consejero/*`** — Consejeros de conjunto. Acceso público por código de 8 caracteres (sin Supabase Auth). El código se valida en `/api/auth/validate-code` consultando la tabla `consejeros`. La sesión se gestiona mediante una cookie HMAC-signed implementada en `lib/consejero-session.ts` (duración 8 horas).
 
 ### Roles de usuario (`usuarios.rol`)
 
@@ -44,7 +45,7 @@ El middleware bloquea a cualquier usuario cuyo `id` no exista en la tabla `usuar
 - `lib/supabase/client.ts` → para Client Components (browser)
 - `lib/supabase/auth-utils.ts` → helpers `requireAuth()` y `getCurrentUser()` para API Routes
 
-`requireAuth()` valida sesión **y** que el usuario tenga `conjunto_id` asignado. El `superadmin` **no** puede usar rutas que llamen `requireAuth()` directamente porque retornará 403 (no tiene `conjunto_id`).
+`requireAuth()` valida sesión **y** que el usuario tenga `conjunto_id` asignado. El `superadmin` **no** puede usar rutas que llamen `requireAuth()` directamente porque retornará 403 (no tiene `conjunto_id`). Para rutas accesibles por superadmin, usar `getCurrentUser()` directamente y manejar el caso sin `conjunto_id`.
 
 ### Queries de base de datos
 
@@ -70,7 +71,7 @@ Flujo de estados: `registro → en_revision → incompleto/en_subsanacion/en_val
 
 ### Tipos
 
-Todos los tipos TypeScript del dominio están en `lib/types/index.ts`. Incluye tipos de unión literales para estados, interfaces de entidades, y constantes como `ESTADOS_TERMINALES` y `LABEL_ESTADO`.
+Todos los tipos TypeScript del dominio están en `lib/types/index.ts`. Incluye tipos de unión literales para estados, interfaces de entidades, y constantes como `ESTADOS_TERMINALES`, `ESTADOS_ACTIVOS` y `LABEL_ESTADO`.
 
 ### Estructura de base de datos
 
@@ -87,7 +88,21 @@ Ejecutar en orden en Supabase SQL Editor:
 2. `scripts/002_security_auth.sql` — tabla `usuarios`, RLS, trigger `handle_new_user`
 3. `scripts/003_state_machine.sql` — máquina de estados, tabla `transiciones_estado`, RPC
 4. `scripts/004_fix_rls.sql` — correcciones de políticas RLS
+5. `scripts/005_rut_metadata.sql` — tabla `propuestas_rut_datos` para metadatos extraídos por OCR
+
+### Subida de archivos
+
+Los documentos se suben a **Vercel Blob** (`@vercel/blob`). La API route `/api/upload` gestiona la subida. No se usa Supabase Storage.
+
+### Sistema OCR / Extracción de RUT
+
+`components/admin/RegistroAutomaticoProveedores/` implementa un flujo completo para:
+- Renderizar PDFs con `pdfjs-dist`
+- Extraer texto con `tesseract.js` (OCR en el browser)
+- Parsear automáticamente datos del RUT: NIT, razón social, representantes legales, socios, responsabilidades tributarias
+- Los datos extraídos se persisten en la tabla `propuestas_rut_datos` (ver `005_rut_metadata.sql`)
+- El tipo `PropuestaRutDatos` en `lib/types/index.ts` refleja esta estructura
 
 ### UI
 
-Componentes de Radix UI / shadcn. No usar MUI. Importaciones de componentes UI desde `@/components/ui/`.
+Componentes de Radix UI / shadcn. No usar MUI. Importaciones de componentes UI desde `@/components/ui/`. Recharts se usa para gráficos (`recharts`).

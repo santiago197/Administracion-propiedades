@@ -5,7 +5,9 @@
       "Bash(find c:/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app -type f -path *registro*proveedor* -o -type f -path *flujo*carga*)",
       "Bash(pnpm add:*)",
       "Bash(pnpm approve-builds:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/components/admin -type f -name *evaluaci* -o -name *evalua*)",
+      "Bash(pnpm tsc:*)"
     ]
   }
 }
