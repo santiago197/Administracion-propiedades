@@ -162,13 +162,8 @@ export default function ProcesoDashboard() {
       title: 'Evaluación Técnica',
       description: 'Calificación por criterios por parte del consejo.',
       icon: <ClipboardList className="h-6 w-6" />,
-      href: `/admin/conjuntos/${conjuntoId}/criterios`,
-      status:
-        estadoActual === 'evaluacion'
-          ? 'en_progreso'
-          : estadoActual === 'configuracion'
-          ? 'pendiente'
-          : 'completado',
+      href: `/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/evaluacion`,
+      status: proceso.estado === 'evaluacion' ? 'en_progreso' : (proceso.estado === 'configuracion' ? 'pendiente' : 'completado')
     },
     {
       title: 'Selección y Ranking',

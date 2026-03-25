@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { getDocumentos, createDocumento } from '@/lib/supabase/queries'
 import {
   createDocumento,
   deleteDocumento,
@@ -15,17 +16,18 @@ export async function GET(request: NextRequest) {
   // Validar autenticación
   const { authorized, response: authError, conjuntoId } = await requireAuth(request)
   if (!authorized && authError) return authError
+
   try {
     const { searchParams } = new URL(request.url)
     const propuesta_id = searchParams.get('propuesta_id')
 
     if (!propuesta_id) {
-      return NextResponse.json(
-        { error: 'propuesta_id es requerido' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'propuesta_id es requerido' }, { status: 400 })
     }
 
+    const { data, error } = await getDocumentos(propuesta_id)
+    if (error) throw error
+    return NextResponse.json(data)
     const { data: propuesta, error: accesoError } = await getPropuestaConjunto(propuesta_id, conjuntoId!)
     if (accesoError || !propuesta) {
       return NextResponse.json({ error: 'Propuesta no encontrada' }, { status: 404 })
@@ -48,6 +50,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    const { data, error } = await createDocumento(body)
+    if (error) throw error
+    return NextResponse.json(data, { status: 201 })
     const required = ['propuesta_id', 'tipo', 'nombre']
     const missing = required.filter((f) => !body?.[f])
     if (missing.length > 0) {
