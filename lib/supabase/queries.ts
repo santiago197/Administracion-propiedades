@@ -8,6 +8,7 @@ import type {
   Criterio,
   Evaluacion,
   Voto,
+  Documento,
   ProcesoStats,
   ResultadoFinal,
 } from '../types/index'
@@ -253,6 +254,67 @@ export async function procesarValidacionLegal(propuesta_id: string, cumple: bool
   if (updError) throw updError
 
   return { success: true, estado: nuevoEstado }
+}
+
+// DOCUMENTOS
+export async function getDocumentos(propuesta_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('documentos')
+    .select('*, tipos_documento(*)')
+    .eq('propuesta_id', propuesta_id)
+}
+
+export async function createDocumento(data: Omit<Documento, 'id' | 'created_at' | 'updated_at' | 'validado_por' | 'fecha_validacion'>) {
+  const supabase = await createServerClient()
+
+  // Registrar auditoría
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) {
+    await supabase.from('audit_log').insert({
+      accion: 'CARGA_DOCUMENTO',
+      entidad: 'documentos',
+      datos_nuevos: data as any,
+      entidad_id: null,
+      conjunto_id: null
+    })
+  }
+
+  return supabase.from('documentos').insert([data]).select().single()
+}
+
+export async function validarDocumento(id: string, estado: string, observaciones: string, userId: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('documentos')
+    .update({
+      estado,
+      observaciones,
+      validado_por: userId,
+      fecha_validacion: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  // Registrar auditoría
+  await supabase.from('audit_log').insert({
+    accion: estado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
+    entidad: 'documentos',
+    entidad_id: id,
+    datos_nuevos: { estado, observaciones },
+    consejero_id: userId // Usar como responsable genérico si aplica
+  })
+
+  return data
+}
+
+export async function getTiposDocumento() {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').select('*').eq('activo', true)
 }
 
 export async function verificarEvaluacionCompleta(consejero_id: string, proceso_id: string) {
