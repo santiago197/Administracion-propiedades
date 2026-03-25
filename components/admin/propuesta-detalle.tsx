@@ -36,6 +36,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { PanelEvaluacion } from '@/components/admin/panel-evaluacion'
+import { TabRut } from '@/components/admin/tab-rut'
 import { LABEL_ESTADO } from '@/lib/types/index'
 import type {
   Propuesta,
@@ -786,11 +787,15 @@ export function PropuestaDetalle({ propuesta, onChanged }: Props) {
               {!docsOk && <span className="ml-1.5 h-2 w-2 rounded-full bg-amber-500 inline-block" />}
             </TabsTrigger>
             <TabsTrigger value="evaluacion">Evaluación</TabsTrigger>
+            <TabsTrigger value="rut">RUT</TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
           <TabsContent value="info">{renderInfo()}</TabsContent>
           <TabsContent value="documentos">{renderDocumentos()}</TabsContent>
           <TabsContent value="evaluacion">{renderEvaluacion()}</TabsContent>
+          <TabsContent value="rut">
+            <TabRut propuestaId={propuesta.id} nitPropuesta={propuesta.nit_cedula} />
+          </TabsContent>
           <TabsContent value="historial">{renderHistorial()}</TabsContent>
         </Tabs>
       </CardContent>
