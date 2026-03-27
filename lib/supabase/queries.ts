@@ -16,7 +16,11 @@ import type {
   TransicionEstado,
   CambioEstadoResult,
   PropuestaRutDatos,
+  FilaMatrizEvaluacion,
+  DetallesCriterio,
+  ClasificacionPropuesta,
 } from '../types/index'
+import { CRITERIOS_MATRIZ } from '../types/index'
 
 // CONJUNTOS
 export async function createConjunto(data: Omit<Conjunto, 'id' | 'created_at' | 'updated_at'>) {
@@ -666,6 +670,80 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       puntaje_final: p.puntaje_final,
       posicion: index + 1,
       estado_semaforo,
+    }
+  })
+}
+
+// MATRIZ DE EVALUACIÓN ADMIN
+
+type EvaluacionAdminRow = {
+  id: string
+  propuesta_id: string
+  puntaje_total: number
+  clasificacion: string
+  created_at: string
+  puntajes_criterio: Array<{ criterio_codigo: string; puntaje: number }>
+}
+
+/**
+ * Retorna la matriz de evaluación del admin por propuesta para un proceso.
+ * Incluye el desglose por los 9 criterios con respuesta (Sí/No), peso y puntaje.
+ */
+export async function getMatrizEvaluacionAdmin(proceso_id: string): Promise<FilaMatrizEvaluacion[]> {
+  const supabase = await createServerClient()
+
+  const { data: propuestas } = await supabase
+    .from('propuestas')
+    .select('id, razon_social, clasificacion')
+    .eq('proceso_id', proceso_id)
+    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .order('razon_social', { ascending: true })
+
+  if (!propuestas || propuestas.length === 0) return []
+
+  const propuestaIds = propuestas.map((p) => p.id)
+
+  const { data: evaluaciones } = await supabase
+    .from('evaluaciones_admin')
+    .select('id, propuesta_id, puntaje_total, clasificacion, created_at, puntajes_criterio(criterio_codigo, puntaje)')
+    .in('propuesta_id', propuestaIds)
+    .order('created_at', { ascending: false })
+
+  // Más reciente por propuesta
+  const evalByPropuesta = new Map<string, EvaluacionAdminRow>()
+  for (const ev of ((evaluaciones ?? []) as EvaluacionAdminRow[])) {
+    if (!evalByPropuesta.has(ev.propuesta_id)) {
+      evalByPropuesta.set(ev.propuesta_id, ev)
+    }
+  }
+
+  return propuestas.map((p) => {
+    const ev = evalByPropuesta.get(p.id)
+
+    const puntajeMap = new Map<string, number>()
+    for (const pc of (ev?.puntajes_criterio ?? [])) {
+      puntajeMap.set(pc.criterio_codigo, pc.puntaje)
+    }
+
+    const criterios: DetallesCriterio[] = CRITERIOS_MATRIZ.map((c) => {
+      const puntaje = puntajeMap.get(c.codigo) ?? 0
+      return {
+        criterio_codigo: c.codigo,
+        nombre: c.nombre,
+        descripcion: c.descripcion,
+        respuesta: puntaje > 0,
+        peso: c.peso,
+        puntaje,
+      }
+    })
+
+    return {
+      propuesta_id: p.id,
+      razon_social: p.razon_social,
+      puntaje_total: ev?.puntaje_total ?? 0,
+      clasificacion: ((ev?.clasificacion ?? p.clasificacion) as ClasificacionPropuesta) ?? null,
+      fecha_evaluacion: ev?.created_at ?? null,
+      criterios: ev ? criterios : [],
     }
   })
 }

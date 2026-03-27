@@ -6,8 +6,11 @@ import Link from 'next/link'
 import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ArrowLeft, TrendingUp, Award } from 'lucide-react'
-import type { ResultadoFinal, ProcesoStats } from '@/lib/types/index'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
+import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import type { ResultadoFinal, ProcesoStats, FilaMatrizEvaluacion } from '@/lib/types/index'
+import { LABEL_CLASIFICACION } from '@/lib/types/index'
 
 export default function PaginaResultados() {
   const params = useParams()
@@ -16,32 +19,26 @@ export default function PaginaResultados() {
 
   const [resultados, setResultados] = useState<ResultadoFinal[]>([])
   const [stats, setStats] = useState<ProcesoStats | null>(null)
+  const [matriz, setMatriz] = useState<FilaMatrizEvaluacion[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [resRes, statsRes] = await Promise.all([
+        const [resRes, statsRes, matrizRes] = await Promise.all([
           fetch(`/api/resultados?proceso_id=${procesoId}`),
           fetch(`/api/resultados?proceso_id=${procesoId}&type=stats`),
+          fetch(`/api/resultados?proceso_id=${procesoId}&type=matriz`),
         ])
-
-        if (resRes.ok) {
-          const res = await resRes.json()
-          setResultados(res || [])
-        }
-
-        if (statsRes.ok) {
-          const st = await statsRes.json()
-          setStats(st)
-        }
+        if (resRes.ok) setResultados((await resRes.json()) || [])
+        if (statsRes.ok) setStats(await statsRes.json())
+        if (matrizRes.ok) setMatriz((await matrizRes.json()) || [])
       } catch (error) {
-        console.error('[v0] Error fetching resultados:', error)
+        console.error('[resultados] Error fetching data:', error)
       } finally {
         setLoading(false)
       }
     }
-
     fetchData()
   }, [procesoId])
 
@@ -60,19 +57,6 @@ export default function PaginaResultados() {
     )
   }
 
-  const getSemaforoColor = (estado: string) => {
-    switch (estado) {
-      case 'verde':
-        return 'bg-green-500/20 text-green-700 dark:text-green-300'
-      case 'amarillo':
-        return 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300'
-      case 'rojo':
-        return 'bg-red-500/20 text-red-700 dark:text-red-300'
-      default:
-        return 'bg-gray-500/20 text-gray-700 dark:text-gray-300'
-    }
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <NavBar />
@@ -85,7 +69,7 @@ export default function PaginaResultados() {
           </Button>
         </Link>
 
-        <div className="mb-12">
+        <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">Resultados Finales</h1>
           <p className="text-muted-foreground">
             Ranking de propuestas basado en evaluación y votación
@@ -93,7 +77,7 @@ export default function PaginaResultados() {
         </div>
 
         {stats && (
-          <div className="grid gap-4 md:grid-cols-4 mb-12">
+          <div className="grid gap-4 md:grid-cols-4 mb-8">
             <Card className="border border-border/50 bg-card/50 p-6">
               <p className="text-sm text-muted-foreground mb-2">Consejeros Totales</p>
               <p className="text-3xl font-bold text-foreground">{stats.total_consejeros}</p>
@@ -113,96 +97,277 @@ export default function PaginaResultados() {
           </div>
         )}
 
-        {resultados.length > 0 ? (
-          <div className="space-y-4">
-            {resultados.map((resultado) => (
-              <Card
-                key={resultado.propuesta_id}
-                className="border border-border/50 bg-card/50 p-6 hover:border-primary/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-6">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-muted font-bold text-lg">
-                        #{resultado.posicion}
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-foreground">
-                          {resultado.razon_social}
-                        </h3>
-                      </div>
-                      <div className={`rounded-full px-4 py-1 text-sm font-semibold ${getSemaforoColor(
-                        resultado.estado_semaforo
-                      )}`}>
-                        {resultado.estado_semaforo === 'verde'
-                          ? '✓ Alto desempeño'
-                          : resultado.estado_semaforo === 'amarillo'
-                            ? '◐ Medio'
-                            : '✗ Bajo'}
-                      </div>
-                    </div>
+        <Tabs defaultValue="resumen">
+          <TabsList className="mb-6">
+            <TabsTrigger value="resumen">Resumen</TabsTrigger>
+            <TabsTrigger value="matriz">Matriz de Evaluación</TabsTrigger>
+          </TabsList>
 
-                    <div className="grid grid-cols-3 gap-6">
-                      <div>
-                        <p className="text-xs text-muted-foreground font-semibold mb-1">
-                          PUNTAJE EVALUACIÓN
-                        </p>
-                        <p className="text-2xl font-bold text-foreground">
-                          {resultado.puntaje_evaluacion.toFixed(2)}/5
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground font-semibold mb-1">
-                          VOTOS RECIBIDOS
-                        </p>
-                        <p className="text-2xl font-bold text-foreground">
-                          {resultado.votos_recibidos}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground font-semibold mb-1">
-                          PUNTAJE FINAL
-                        </p>
-                        <p className="text-2xl font-bold text-primary">
-                          {resultado.puntaje_final.toFixed(2)}/5
-                        </p>
-                      </div>
-                    </div>
+          {/* ── TAB RESUMEN ── */}
+          <TabsContent value="resumen">
+            {resultados.length > 0 ? (
+              <div className="space-y-4">
+                {resultados.map((resultado) => (
+                  <Card
+                    key={resultado.propuesta_id}
+                    className="border border-border/50 bg-card/50 p-6 hover:border-primary/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-6">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex items-center justify-center h-12 w-12 rounded-lg bg-muted font-bold text-lg">
+                            #{resultado.posicion}
+                          </div>
+                          <h3 className="text-lg font-semibold text-foreground">
+                            {resultado.razon_social}
+                          </h3>
+                          <SemaforoBadge estado={resultado.estado_semaforo} />
+                        </div>
 
-                    <div className="mt-4">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                        <span>Progreso</span>
-                        <span>{((resultado.puntaje_final / 5) * 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                        <div
-                          className={`h-full ${
-                            resultado.estado_semaforo === 'verde'
-                              ? 'bg-green-500'
-                              : resultado.estado_semaforo === 'amarillo'
-                                ? 'bg-yellow-500'
-                                : 'bg-red-500'
-                          }`}
-                          style={{
-                            width: `${(resultado.puntaje_final / 5) * 100}%`,
-                          }}
-                        />
+                        <div className="grid grid-cols-3 gap-6">
+                          <div>
+                            <p className="text-xs text-muted-foreground font-semibold mb-1">
+                              PUNTAJE EVALUACIÓN
+                            </p>
+                            <p className="text-2xl font-bold text-foreground">
+                              {resultado.puntaje_evaluacion.toFixed(2)}/5
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground font-semibold mb-1">
+                              VOTOS RECIBIDOS
+                            </p>
+                            <p className="text-2xl font-bold text-foreground">
+                              {resultado.votos_recibidos}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground font-semibold mb-1">
+                              PUNTAJE FINAL
+                            </p>
+                            <p className="text-2xl font-bold text-primary">
+                              {resultado.puntaje_final.toFixed(2)}/5
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                            <span>Progreso</span>
+                            <span>{((resultado.puntaje_final / 5) * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                            <div
+                              className={`h-full ${
+                                resultado.estado_semaforo === 'verde'
+                                  ? 'bg-green-500'
+                                  : resultado.estado_semaforo === 'amarillo'
+                                    ? 'bg-yellow-500'
+                                    : 'bg-red-500'
+                              }`}
+                              style={{ width: `${(resultado.puntaje_final / 5) * 100}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="border-dashed p-12 text-center">
+                <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  No hay resultados disponibles aún. Asegúrate de que todos los consejeros hayan completado sus evaluaciones y votos.
+                </p>
               </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="border-dashed p-12 text-center">
-            <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              No hay resultados disponibles aún. Asegúrate de que todos los consejeros hayan completado sus evaluaciones y votos.
-            </p>
-          </Card>
-        )}
+            )}
+          </TabsContent>
+
+          {/* ── TAB MATRIZ ── */}
+          <TabsContent value="matriz">
+            {matriz.length > 0 ? (
+              <div className="space-y-8">
+                {/* Tabla resumen */}
+                <Card className="border border-border/50 overflow-hidden">
+                  <div className="px-6 py-4 border-b bg-muted/30">
+                    <h2 className="font-semibold text-foreground">Resumen por Candidato</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/20">
+                          <th className="text-left px-6 py-3 text-muted-foreground font-semibold">Candidato</th>
+                          <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Puntaje</th>
+                          <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Estado Final</th>
+                          <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Fecha Evaluación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {matriz.map((fila) => (
+                          <tr key={fila.propuesta_id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
+                            <td className="px-6 py-4 font-medium text-foreground">{fila.razon_social}</td>
+                            <td className="px-4 py-4 text-center">
+                              <span className={`font-bold tabular-nums ${fila.puntaje_total >= 60 ? 'text-green-600' : 'text-red-600'}`}>
+                                {fila.puntaje_total}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <EstadoFinalBadge clasificacion={fila.clasificacion} puntaje={fila.puntaje_total} />
+                            </td>
+                            <td className="px-4 py-4 text-center text-muted-foreground">
+                              {fila.fecha_evaluacion
+                                ? new Date(fila.fecha_evaluacion).toLocaleDateString('es-CO', {
+                                    day: '2-digit', month: '2-digit', year: 'numeric',
+                                  })
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Detalle por candidato */}
+                {matriz.map((fila) => (
+                  <Card key={fila.propuesta_id} className="border border-border/50 overflow-hidden">
+                    <div className="px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-foreground">{fila.razon_social}</h3>
+                        {fila.fecha_evaluacion && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Evaluado el{' '}
+                            {new Date(fila.fecha_evaluacion).toLocaleDateString('es-CO', {
+                              day: '2-digit', month: 'long', year: 'numeric',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-2xl font-black tabular-nums ${fila.puntaje_total >= 60 ? 'text-green-600' : 'text-red-600'}`}>
+                          {fila.puntaje_total}%
+                        </span>
+                        <EstadoFinalBadge clasificacion={fila.clasificacion} puntaje={fila.puntaje_total} />
+                      </div>
+                    </div>
+
+                    {fila.criterios.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/10">
+                              <th className="text-left px-6 py-3 text-muted-foreground font-semibold w-8">#</th>
+                              <th className="text-left px-4 py-3 text-muted-foreground font-semibold">Criterio</th>
+                              <th className="text-left px-4 py-3 text-muted-foreground font-semibold hidden md:table-cell">Descripción</th>
+                              <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Respuesta</th>
+                              <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Peso</th>
+                              <th className="text-center px-4 py-3 text-muted-foreground font-semibold">Puntaje</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {fila.criterios.map((c, idx) => (
+                              <tr
+                                key={c.criterio_codigo}
+                                className={`border-b last:border-0 ${c.respuesta ? '' : 'bg-red-50/30 dark:bg-red-950/10'}`}
+                              >
+                                <td className="px-6 py-3 text-muted-foreground text-xs">{idx + 1}</td>
+                                <td className="px-4 py-3 font-medium text-foreground">{c.nombre}</td>
+                                <td className="px-4 py-3 text-muted-foreground hidden md:table-cell text-xs leading-relaxed">{c.descripcion}</td>
+                                <td className="px-4 py-3 text-center">
+                                  {c.respuesta ? (
+                                    <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">
+                                      <CheckCircle2 className="h-4 w-4" />
+                                      Sí
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-red-500 font-semibold text-xs">
+                                      <XCircle className="h-4 w-4" />
+                                      No
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-center text-muted-foreground tabular-nums">{c.peso}%</td>
+                                <td className={`px-4 py-3 text-center font-bold tabular-nums ${c.respuesta ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                  {c.puntaje}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t bg-muted/20">
+                              <td colSpan={4} className="px-6 py-3 text-right font-semibold text-sm text-foreground">
+                                Total
+                              </td>
+                              <td className="px-4 py-3 text-center font-bold text-foreground tabular-nums">100%</td>
+                              <td className={`px-4 py-3 text-center font-black text-lg tabular-nums ${fila.puntaje_total >= 60 ? 'text-green-600' : 'text-red-600'}`}>
+                                {fila.puntaje_total}%
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-6 py-8 text-center text-muted-foreground flex items-center justify-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-sm">Este candidato aún no ha sido evaluado por el administrador.</span>
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="border-dashed p-12 text-center">
+                <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  No hay evaluaciones de administrador registradas aún.
+                </p>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Sub-componentes de display
+// ---------------------------------------------------------------------------
+
+function SemaforoBadge({ estado }: { estado: 'verde' | 'amarillo' | 'rojo' }) {
+  const map = {
+    verde:    { label: '✓ Alto desempeño', cls: 'bg-green-500/20 text-green-700 dark:text-green-300' },
+    amarillo: { label: '◐ Medio',          cls: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300' },
+    rojo:     { label: '✗ Bajo',           cls: 'bg-red-500/20 text-red-700 dark:text-red-300' },
+  }
+  const { label, cls } = map[estado]
+  return <div className={`rounded-full px-4 py-1 text-sm font-semibold ${cls}`}>{label}</div>
+}
+
+function EstadoFinalBadge({
+  clasificacion,
+  puntaje,
+}: {
+  clasificacion: string | null
+  puntaje: number
+}) {
+  if (!clasificacion) {
+    const cumple = puntaje >= 60
+    return (
+      <Badge variant={cumple ? 'default' : 'destructive'} className={cumple ? 'bg-yellow-500 hover:bg-yellow-500' : ''}>
+        {cumple ? 'Cumple, con observaciones' : 'Rechazado'}
+      </Badge>
+    )
+  }
+
+  const label = LABEL_CLASIFICACION[clasificacion as keyof typeof LABEL_CLASIFICACION] ?? clasificacion
+
+  if (label === 'Cumple') {
+    return <Badge className="bg-green-600 hover:bg-green-600">{label}</Badge>
+  }
+  if (label === 'Cumple, con observaciones') {
+    return <Badge className="bg-yellow-500 hover:bg-yellow-500">{label}</Badge>
+  }
+  return <Badge variant="destructive">{label}</Badge>
 }

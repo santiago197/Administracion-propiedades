@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/sheet'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -23,13 +22,14 @@ import {
 } from '@/components/ui/tooltip'
 import {
   Building2,
-  ShieldCheck,
-  Briefcase,
-  Settings2,
   Users,
   FileText,
   Star,
   Banknote,
+  GraduationCap,
+  Scale,
+  Heart,
+  ClipboardList,
   CheckCircle2,
   Loader2,
   Info,
@@ -42,35 +42,34 @@ import type { Propuesta, ClasificacionPropuesta } from '@/lib/types/index'
 // ---------------------------------------------------------------------------
 
 type EvalData = {
-  densidad: number | null
-  cartera: number | null
-  financiero: number | null
-  complejaOps: string[]
-  complejaNivel: number | null
-  capacidad: number | null
-  tecnica: number | null
-  referencias: number | null
-  economica: number | null
+  expPH: number | null               // 20 pts — Experiencia en propiedad horizontal
+  expDensidad: number | null         // 15 pts — Experiencia en conjuntos de alta densidad
+  capacidadOperativa: number | null  // 15 pts — Capacidad operativa / Equipo de apoyo
+  propuestaTecnica: number | null    // 15 pts — Propuesta técnica / Plan de gestión
+  formacionAcademica: number | null  // 10 pts — Formación académica
+  conocimientosNormativos: number | null // 10 pts — Conocimientos normativos y técnicos
+  referencias: number | null         //  5 pts — Referencias verificables
+  economica: number | null           //  5 pts — Propuesta económica
+  competenciasPersonales: number | null //  5 pts — Competencias personales
 }
-
-const OPERACIONES = ['Seguridad', 'Convivencia', 'Parqueaderos'] as const
 
 const CLAS_STYLE: Record<ClasificacionPropuesta, { label: string; cls: string }> = {
-  destacado: { label: 'Destacado', cls: 'bg-green-600 text-white' },
-  apto: { label: 'Apto', cls: 'bg-yellow-500 text-white' },
-  condicionado: { label: 'Condicionado', cls: 'bg-orange-500 text-white' },
-  no_apto: { label: 'No Apto', cls: 'bg-red-600 text-white' },
+  destacado:    { label: 'Cumple',                    cls: 'bg-green-600 text-white' },
+  apto:         { label: 'Cumple, con observaciones', cls: 'bg-yellow-500 text-white' },
+  condicionado: { label: 'Cumple, con observaciones', cls: 'bg-orange-500 text-white' },
+  no_apto:      { label: 'Rechazado',                 cls: 'bg-red-600 text-white' },
 }
 
-const DESGLOSE: { key: keyof Omit<EvalData, 'complejaOps'>; label: string; max: number }[] = [
-  { key: 'densidad', label: 'Experiencia densidad', max: 25 },
-  { key: 'cartera', label: 'Cartera', max: 20 },
-  { key: 'financiero', label: 'Control financiero', max: 15 },
-  { key: 'complejaNivel', label: 'Operación compleja', max: 15 },
-  { key: 'capacidad', label: 'Capacidad operativa', max: 10 },
-  { key: 'tecnica', label: 'Propuesta técnica', max: 10 },
-  { key: 'referencias', label: 'Referencias', max: 5 },
-  { key: 'economica', label: 'Propuesta económica', max: 5 },
+const DESGLOSE: { key: keyof EvalData; label: string; max: number }[] = [
+  { key: 'expPH',                  label: 'Exp. prop. horizontal',  max: 20 },
+  { key: 'expDensidad',            label: 'Exp. alta densidad',     max: 15 },
+  { key: 'capacidadOperativa',     label: 'Capacidad operativa',    max: 15 },
+  { key: 'propuestaTecnica',       label: 'Propuesta técnica',      max: 15 },
+  { key: 'formacionAcademica',     label: 'Formación académica',    max: 10 },
+  { key: 'conocimientosNormativos',label: 'Conoc. normativos',      max: 10 },
+  { key: 'referencias',            label: 'Referencias',            max:  5 },
+  { key: 'economica',              label: 'Prop. económica',        max:  5 },
+  { key: 'competenciasPersonales', label: 'Comp. personales',       max:  5 },
 ]
 
 // ---------------------------------------------------------------------------
@@ -79,34 +78,35 @@ const DESGLOSE: { key: keyof Omit<EvalData, 'complejaOps'>; label: string; max: 
 
 function sumarPuntos(d: EvalData): number {
   return (
-    (d.densidad ?? 0) +
-    (d.cartera ?? 0) +
-    (d.financiero ?? 0) +
-    (d.complejaNivel ?? 0) +
-    (d.capacidad ?? 0) +
-    (d.tecnica ?? 0) +
-    (d.referencias ?? 0) +
-    (d.economica ?? 0)
+    (d.expPH                  ?? 0) +
+    (d.expDensidad             ?? 0) +
+    (d.capacidadOperativa      ?? 0) +
+    (d.propuestaTecnica        ?? 0) +
+    (d.formacionAcademica      ?? 0) +
+    (d.conocimientosNormativos ?? 0) +
+    (d.referencias             ?? 0) +
+    (d.economica               ?? 0) +
+    (d.competenciasPersonales  ?? 0)
   )
 }
 
 function getClasificacion(score: number): ClasificacionPropuesta {
-  if (score >= 85) return 'destacado'
-  if (score >= 70) return 'apto'
-  if (score >= 55) return 'condicionado'
+  if (score === 100) return 'destacado'
+  if (score >= 60) return 'apto'
   return 'no_apto'
 }
 
 function isComplete(d: EvalData): boolean {
   return (
-    d.densidad !== null &&
-    d.cartera !== null &&
-    d.financiero !== null &&
-    d.complejaNivel !== null &&
-    d.capacidad !== null &&
-    d.tecnica !== null &&
-    d.referencias !== null &&
-    d.economica !== null
+    d.expPH                  !== null &&
+    d.expDensidad             !== null &&
+    d.capacidadOperativa      !== null &&
+    d.propuestaTecnica        !== null &&
+    d.formacionAcademica      !== null &&
+    d.conocimientosNormativos !== null &&
+    d.referencias             !== null &&
+    d.economica               !== null &&
+    d.competenciasPersonales  !== null
   )
 }
 
@@ -114,29 +114,42 @@ function isComplete(d: EvalData): boolean {
 // Sub-componentes de UI
 // ---------------------------------------------------------------------------
 
-function OpcionRadio({
-  id,
+function OpcionBinaria({
+  field,
+  max,
   value,
-  label,
-  badge,
+  onChange,
 }: {
-  id: string
-  value: string
-  label: string
-  badge?: string
+  field: string
+  max: number
+  value: number | null
+  onChange: (v: number) => void
 }) {
   return (
-    <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
-      <div className="flex items-center gap-3">
-        <RadioGroupItem value={value} id={id} />
-        <Label htmlFor={id} className="cursor-pointer font-normal text-sm leading-snug">
-          {label}
-        </Label>
+    <RadioGroup
+      value={value?.toString() ?? ''}
+      onValueChange={(v) => onChange(parseInt(v))}
+      className="grid grid-cols-2 gap-3"
+    >
+      <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
+        <div className="flex items-center gap-3">
+          <RadioGroupItem value={max.toString()} id={`${field}-si`} />
+          <Label htmlFor={`${field}-si`} className="cursor-pointer font-normal text-sm">
+            Sí cumple
+          </Label>
+        </div>
+        <span className="text-xs text-muted-foreground font-medium ml-3 shrink-0">{max} pts</span>
       </div>
-      {badge && (
-        <span className="text-xs text-muted-foreground font-medium ml-3 shrink-0">{badge}</span>
-      )}
-    </div>
+      <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-destructive has-[[data-state=checked]]:bg-destructive/5">
+        <div className="flex items-center gap-3">
+          <RadioGroupItem value="0" id={`${field}-no`} />
+          <Label htmlFor={`${field}-no`} className="cursor-pointer font-normal text-sm">
+            No cumple
+          </Label>
+        </div>
+        <span className="text-xs text-muted-foreground font-medium ml-3 shrink-0">0 pts</span>
+      </div>
+    </RadioGroup>
   )
 }
 
@@ -211,15 +224,15 @@ interface PanelEvaluacionProps {
 
 export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: PanelEvaluacionProps) {
   const [evalData, setEvalData] = useState<EvalData>({
-    densidad: null,
-    cartera: null,
-    financiero: null,
-    complejaOps: [],
-    complejaNivel: null,
-    capacidad: null,
-    tecnica: null,
+    expPH: null,
+    expDensidad: null,
+    capacidadOperativa: null,
+    propuestaTecnica: null,
+    formacionAcademica: null,
+    conocimientosNormativos: null,
     referencias: null,
     economica: null,
+    competenciasPersonales: null,
   })
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -227,21 +240,16 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
   // Auto-sugerencias al abrir el panel con una propuesta distinta
   useEffect(() => {
     if (!propuesta) return
-    const densidad =
-      propuesta.unidades_administradas > 500 ? 25
-      : propuesta.unidades_administradas >= 300 ? 15
-      : 5
-    const capacidad = propuesta.tipo_persona === 'juridica' ? 10 : 5
     setEvalData({
-      densidad,
-      cartera: null,
-      financiero: null,
-      complejaOps: [],
-      complejaNivel: null,
-      capacidad,
-      tecnica: null,
-      referencias: null,
-      economica: null,
+      expPH:                  propuesta.anios_experiencia >= 5 ? 20 : null,
+      expDensidad:            propuesta.unidades_administradas > 500 ? 15 : null,
+      capacidadOperativa:     null,
+      propuestaTecnica:       null,
+      formacionAcademica:     null,
+      conocimientosNormativos:null,
+      referencias:            null,
+      economica:              null,
+      competenciasPersonales: null,
     })
     setError(null)
   }, [propuesta?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -251,16 +259,8 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
   const clasStyle = CLAS_STYLE[clasificacion]
   const completo = isComplete(evalData)
 
-  const set = (field: keyof Omit<EvalData, 'complejaOps'>, value: number) =>
+  const set = (field: keyof EvalData, value: number) =>
     setEvalData((prev) => ({ ...prev, [field]: value }))
-
-  const toggleOp = (op: string) =>
-    setEvalData((prev) => ({
-      ...prev,
-      complejaOps: prev.complejaOps.includes(op)
-        ? prev.complejaOps.filter((o) => o !== op)
-        : [...prev.complejaOps, op],
-    }))
 
   const handleGuardar = async () => {
     if (!propuesta || !completo) return
@@ -292,8 +292,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
 
   if (!propuesta) return null
 
-  const currentClasIndex =
-    total >= 85 ? 0 : total >= 70 ? 1 : total >= 55 ? 2 : 3
+  const currentClasIndex = total === 100 ? 0 : total >= 60 ? 1 : 2
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -310,8 +309,8 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
             {propuesta.tipo_persona === 'juridica' ? 'Persona Jurídica' : 'Persona Natural'}
             {' · NIT/CC: '}
             {propuesta.nit_cedula}
-            {propuesta.unidades_administradas > 0 && (
-              <> · <span className="text-blue-500">{propuesta.unidades_administradas.toLocaleString()} uds. administradas</span></>
+            {propuesta.anios_experiencia > 0 && (
+              <> · <span className="text-blue-500">{propuesta.anios_experiencia} años de experiencia</span></>
             )}
           </SheetDescription>
         </SheetHeader>
@@ -323,175 +322,102 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
           <ScrollArea className="flex-1">
             <div className="px-8 py-7 space-y-8">
 
-              {/* 1. EXPERIENCIA EN ALTA DENSIDAD */}
+              {/* 1. EXPERIENCIA EN PROPIEDAD HORIZONTAL */}
               <CriterioBloque
                 numero={1}
-                nombre="Experiencia en Alta Densidad"
-                pts={evalData.densidad}
-                maxPts={25}
+                nombre="Experiencia en Propiedad Horizontal"
+                pts={evalData.expPH}
+                maxPts={20}
                 icon={<Building2 className="h-5 w-5 text-blue-500" />}
-                tooltip="Capacidad del candidato de administrar conjuntos de alta densidad. Se sugiere automáticamente con base en unidades_administradas."
+                tooltip="Mínimo 5 años certificados en administración de propiedad horizontal."
                 autosugerido
               >
-                <RadioGroup
-                  value={evalData.densidad?.toString() ?? ''}
-                  onValueChange={(v) => set('densidad', parseInt(v))}
-                  className="space-y-2"
-                >
-                  <OpcionRadio id="d-25" value="25" label="+500 unidades administradas" badge="25 pts" />
-                  <OpcionRadio id="d-15" value="15" label="300 – 500 unidades" badge="15 pts" />
-                  <OpcionRadio id="d-5" value="5" label="Menos de 300 unidades" badge="5 pts" />
-                </RadioGroup>
+                <OpcionBinaria field="expPH" max={20} value={evalData.expPH} onChange={(v) => set('expPH', v)} />
               </CriterioBloque>
 
               <Separator />
 
-              {/* 2. RESULTADOS EN CARTERA */}
+              {/* 2. EXPERIENCIA EN CONJUNTOS DE ALTA DENSIDAD */}
               <CriterioBloque
                 numero={2}
-                nombre="Resultados en Cartera"
-                pts={evalData.cartera}
-                maxPts={20}
-                icon={<ShieldCheck className="h-5 w-5 text-green-500" />}
-                tooltip="Evidencia documentada de reducción de cartera morosa en conjuntos administrados anteriormente."
-              >
-                <RadioGroup
-                  value={evalData.cartera?.toString() ?? ''}
-                  onValueChange={(v) => set('cartera', parseInt(v))}
-                  className="space-y-2"
-                >
-                  <OpcionRadio id="c-20" value="20" label="Reducción comprobada de cartera morosa" badge="20 pts" />
-                  <OpcionRadio id="c-10" value="10" label="Manejo operativo sin resultados medibles" badge="10 pts" />
-                  <OpcionRadio id="c-0" value="0" label="Sin experiencia en gestión de cartera" badge="0 pts" />
-                </RadioGroup>
-              </CriterioBloque>
-
-              <Separator />
-
-              {/* 3. CONTROL FINANCIERO */}
-              <CriterioBloque
-                numero={3}
-                nombre="Control Financiero"
-                pts={evalData.financiero}
+                nombre="Experiencia en Conjuntos de Alta Densidad"
+                pts={evalData.expDensidad}
                 maxPts={15}
-                icon={<Briefcase className="h-5 w-5 text-amber-500" />}
-                tooltip="Capacidad de elaborar informes financieros, presupuestos y controlar egresos e ingresos del conjunto."
-              >
-                <RadioGroup
-                  value={evalData.financiero?.toString() ?? ''}
-                  onValueChange={(v) => set('financiero', parseInt(v))}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <OpcionRadio id="f-15" value="15" label="Manejo completo: informes, presupuesto y control de egresos" badge="15 pts" />
-                  <OpcionRadio id="f-8" value="8" label="Básico / limitado" badge="8 pts" />
-                </RadioGroup>
-              </CriterioBloque>
-
-              <Separator />
-
-              {/* 4. OPERACIÓN COMPLEJA */}
-              <CriterioBloque
-                numero={4}
-                nombre="Operación Compleja"
-                pts={evalData.complejaNivel}
-                maxPts={15}
-                icon={<Settings2 className="h-5 w-5 text-purple-500" />}
-                tooltip="Experiencia administrando aspectos complejos como seguridad, convivencia y parqueaderos."
-              >
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Áreas de experiencia declaradas (informativo):
-                    </p>
-                    <div className="flex gap-6">
-                      {OPERACIONES.map((op) => (
-                        <div key={op} className="flex items-center gap-2">
-                          <Checkbox
-                            id={`op-${op}`}
-                            checked={evalData.complejaOps.includes(op)}
-                            onCheckedChange={() => toggleOp(op)}
-                          />
-                          <label htmlFor={`op-${op}`} className="text-sm cursor-pointer">
-                            {op}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <RadioGroup
-                    value={evalData.complejaNivel?.toString() ?? ''}
-                    onValueChange={(v) => set('complejaNivel', parseInt(v))}
-                    className="grid grid-cols-3 gap-3"
-                  >
-                    <OpcionRadio id="o-15" value="15" label="Alta experiencia" badge="15 pts" />
-                    <OpcionRadio id="o-8" value="8" label="Experiencia media" badge="8 pts" />
-                    <OpcionRadio id="o-3" value="3" label="Experiencia baja" badge="3 pts" />
-                  </RadioGroup>
-                </div>
-              </CriterioBloque>
-
-              <Separator />
-
-              {/* 5. CAPACIDAD OPERATIVA */}
-              <CriterioBloque
-                numero={5}
-                nombre="Capacidad Operativa"
-                pts={evalData.capacidad}
-                maxPts={10}
-                icon={<Users className="h-5 w-5 text-cyan-500" />}
-                tooltip="Personas jurídicas típicamente tienen mayor capacidad operativa. Ajustable manualmente."
+                icon={<Building2 className="h-5 w-5 text-purple-500" />}
+                tooltip="Experiencia en conjuntos con más de 500 unidades, con retos de seguridad, convivencia y parqueaderos."
                 autosugerido
               >
-                <RadioGroup
-                  value={evalData.capacidad?.toString() ?? ''}
-                  onValueChange={(v) => set('capacidad', parseInt(v))}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <OpcionRadio id="ca-10" value="10" label="Empresa / Equipo completo (Jurídica)" badge="10 pts" />
-                  <OpcionRadio id="ca-5" value="5" label="Persona natural con soporte parcial" badge="5 pts" />
-                </RadioGroup>
+                <OpcionBinaria field="expDensidad" max={15} value={evalData.expDensidad} onChange={(v) => set('expDensidad', v)} />
               </CriterioBloque>
 
               <Separator />
 
-              {/* 6. PROPUESTA TÉCNICA */}
+              {/* 3. CAPACIDAD OPERATIVA / EQUIPO DE APOYO */}
+              <CriterioBloque
+                numero={3}
+                nombre="Capacidad Operativa / Equipo de Apoyo"
+                pts={evalData.capacidadOperativa}
+                maxPts={15}
+                icon={<Users className="h-5 w-5 text-cyan-500" />}
+                tooltip="Recursos humanos y técnicos disponibles para la gestión del conjunto."
+              >
+                <OpcionBinaria field="capacidadOperativa" max={15} value={evalData.capacidadOperativa} onChange={(v) => set('capacidadOperativa', v)} />
+              </CriterioBloque>
+
+              <Separator />
+
+              {/* 4. PROPUESTA TÉCNICA / PLAN DE GESTIÓN */}
+              <CriterioBloque
+                numero={4}
+                nombre="Propuesta Técnica / Plan de Gestión"
+                pts={evalData.propuestaTecnica}
+                maxPts={15}
+                icon={<ClipboardList className="h-5 w-5 text-indigo-500" />}
+                tooltip="Claridad, organización y viabilidad del plan administrativo presentado."
+              >
+                <OpcionBinaria field="propuestaTecnica" max={15} value={evalData.propuestaTecnica} onChange={(v) => set('propuestaTecnica', v)} />
+              </CriterioBloque>
+
+              <Separator />
+
+              {/* 5. FORMACIÓN ACADÉMICA */}
+              <CriterioBloque
+                numero={5}
+                nombre="Formación Académica"
+                pts={evalData.formacionAcademica}
+                maxPts={10}
+                icon={<GraduationCap className="h-5 w-5 text-amber-500" />}
+                tooltip="Profesional en áreas administrativas, contables, económicas, ingeniería, derecho o afines."
+              >
+                <OpcionBinaria field="formacionAcademica" max={10} value={evalData.formacionAcademica} onChange={(v) => set('formacionAcademica', v)} />
+              </CriterioBloque>
+
+              <Separator />
+
+              {/* 6. CONOCIMIENTOS NORMATIVOS Y TÉCNICOS */}
               <CriterioBloque
                 numero={6}
-                nombre="Propuesta Técnica"
-                pts={evalData.tecnica}
+                nombre="Conocimientos Normativos y Técnicos"
+                pts={evalData.conocimientosNormativos}
                 maxPts={10}
-                icon={<FileText className="h-5 w-5 text-indigo-500" />}
-                tooltip="Claridad, profundidad y alineación del plan de trabajo con las necesidades específicas del conjunto."
+                icon={<Scale className="h-5 w-5 text-green-500" />}
+                tooltip="Ley 675, Ley 1801, SST, manejo presupuestal y financiero."
               >
-                <RadioGroup
-                  value={evalData.tecnica?.toString() ?? ''}
-                  onValueChange={(v) => set('tecnica', parseInt(v))}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <OpcionRadio id="t-10" value="10" label="Clara, estructurada y alineada al conjunto" badge="10 pts" />
-                  <OpcionRadio id="t-5" value="5" label="Genérica o poco detallada" badge="5 pts" />
-                </RadioGroup>
+                <OpcionBinaria field="conocimientosNormativos" max={10} value={evalData.conocimientosNormativos} onChange={(v) => set('conocimientosNormativos', v)} />
               </CriterioBloque>
 
               <Separator />
 
-              {/* 7. REFERENCIAS */}
+              {/* 7. REFERENCIAS VERIFICABLES */}
               <CriterioBloque
                 numero={7}
-                nombre="Referencias"
+                nombre="Referencias Verificables"
                 pts={evalData.referencias}
                 maxPts={5}
                 icon={<Star className="h-5 w-5 text-yellow-500" />}
-                tooltip="Referencias comerciales o de conjuntos administrados anteriormente, contactables y verificables."
+                tooltip="Calidad y confiabilidad de las referencias presentadas."
               >
-                <RadioGroup
-                  value={evalData.referencias?.toString() ?? ''}
-                  onValueChange={(v) => set('referencias', parseInt(v))}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <OpcionRadio id="r-5" value="5" label="Verificadas y positivas" badge="5 pts" />
-                  <OpcionRadio id="r-2" value="2" label="Débiles o no verificables" badge="2 pts" />
-                </RadioGroup>
+                <OpcionBinaria field="referencias" max={5} value={evalData.referencias} onChange={(v) => set('referencias', v)} />
               </CriterioBloque>
 
               <Separator />
@@ -503,16 +429,23 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                 pts={evalData.economica}
                 maxPts={5}
                 icon={<Banknote className="h-5 w-5 text-emerald-500" />}
-                tooltip="Relación calidad-precio: honorarios competitivos y justificados con el alcance de los servicios."
+                tooltip="Honorarios y condiciones económicas ofrecidas."
               >
-                <RadioGroup
-                  value={evalData.economica?.toString() ?? ''}
-                  onValueChange={(v) => set('economica', parseInt(v))}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <OpcionRadio id="e-5" value="5" label="Competitiva y justificada con el alcance" badge="5 pts" />
-                  <OpcionRadio id="e-2" value="2" label="Solo económica sin justificación técnica" badge="2 pts" />
-                </RadioGroup>
+                <OpcionBinaria field="economica" max={5} value={evalData.economica} onChange={(v) => set('economica', v)} />
+              </CriterioBloque>
+
+              <Separator />
+
+              {/* 9. COMPETENCIAS PERSONALES */}
+              <CriterioBloque
+                numero={9}
+                nombre="Competencias Personales"
+                pts={evalData.competenciasPersonales}
+                maxPts={5}
+                icon={<Heart className="h-5 w-5 text-rose-500" />}
+                tooltip="Liderazgo, ética, comunicación y manejo de conflictos."
+              >
+                <OpcionBinaria field="competenciasPersonales" max={5} value={evalData.competenciasPersonales} onChange={(v) => set('competenciasPersonales', v)} />
               </CriterioBloque>
 
             </div>
@@ -564,10 +497,9 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                 Umbrales
               </p>
               {[
-                { label: 'Destacado', min: '≥85', cls: 'text-green-600', i: 0 },
-                { label: 'Apto', min: '≥70', cls: 'text-yellow-600', i: 1 },
-                { label: 'Condicionado', min: '≥55', cls: 'text-orange-500', i: 2 },
-                { label: 'No Apto', min: '<55', cls: 'text-red-600', i: 3 },
+                { label: 'Cumple',                    min: '100',  cls: 'text-green-600',  i: 0 },
+                { label: 'Cumple, con observaciones', min: '≥60',  cls: 'text-yellow-600', i: 1 },
+                { label: 'Rechazado',                 min: '<60',  cls: 'text-red-600',    i: 2 },
               ].map(({ label, min, cls, i }) => (
                 <div
                   key={label}

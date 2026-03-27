@@ -235,6 +235,50 @@ export interface ResultadoFinal {
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
 }
 
+/** Detalle de un criterio de la matriz de evaluación para una propuesta */
+export interface DetallesCriterio {
+  criterio_codigo: string
+  nombre: string
+  descripcion: string
+  /** true = Sí cumple, false = No cumple */
+  respuesta: boolean
+  /** Peso del criterio en puntos (= porcentaje sobre 100) */
+  peso: number
+  /** Puntaje obtenido: igual a peso si cumple, 0 si no cumple */
+  puntaje: number
+}
+
+/** Fila completa de la matriz por candidato */
+export interface FilaMatrizEvaluacion {
+  propuesta_id: string
+  razon_social: string
+  puntaje_total: number
+  clasificacion: ClasificacionPropuesta | null
+  fecha_evaluacion: string | null
+  criterios: DetallesCriterio[]
+}
+
+/** Definición canónica de los 9 criterios de la matriz de aprobación */
+export const CRITERIOS_MATRIZ = [
+  { codigo: 'expPH',                   nombre: 'Experiencia en Propiedad Horizontal',       descripcion: 'Mínimo 5 años certificados en administración de propiedad horizontal.',                                     peso: 20 },
+  { codigo: 'expDensidad',             nombre: 'Experiencia en Conjuntos de Alta Densidad', descripcion: 'Experiencia en conjuntos >500 unidades, con retos de seguridad, convivencia y parqueaderos.',             peso: 15 },
+  { codigo: 'capacidadOperativa',      nombre: 'Capacidad Operativa / Equipo de Apoyo',     descripcion: 'Recursos humanos y técnicos disponibles para la gestión.',                                                 peso: 15 },
+  { codigo: 'propuestaTecnica',        nombre: 'Propuesta Técnica / Plan de Gestión',       descripcion: 'Claridad, organización y viabilidad del plan administrativo.',                                            peso: 15 },
+  { codigo: 'formacionAcademica',      nombre: 'Formación Académica',                       descripcion: 'Profesional en áreas administrativas, contables, económicas, ingeniería, derecho o afines.',             peso: 10 },
+  { codigo: 'conocimientosNormativos', nombre: 'Conocimientos Normativos y Técnicos',       descripcion: 'Ley 675, Ley 1801, SST, manejo presupuestal y financiero.',                                              peso: 10 },
+  { codigo: 'referencias',             nombre: 'Referencias Verificables',                  descripcion: 'Calidad y confiabilidad de referencias.',                                                                  peso:  5 },
+  { codigo: 'economica',               nombre: 'Propuesta Económica',                       descripcion: 'Honorarios y condiciones económicas.',                                                                      peso:  5 },
+  { codigo: 'competenciasPersonales',  nombre: 'Competencias Personales',                   descripcion: 'Liderazgo, ética, comunicación, manejo de conflictos.',                                                    peso:  5 },
+] as const
+
+/** Etiquetas de la matriz de aprobación para mostrar en resultados */
+export const LABEL_CLASIFICACION: Record<ClasificacionPropuesta, string> = {
+  destacado:    'Cumple',
+  apto:         'Cumple, con observaciones',
+  condicionado: 'Cumple, con observaciones',
+  no_apto:      'Rechazado',
+}
+
 /** Registro inmutable de un cambio de estado de una propuesta */
 export interface HistorialEstado {
   id: string

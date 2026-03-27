@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getResultadosFinales, getProcesoConjunto } from '@/lib/supabase/queries'
+import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 export async function GET(request: NextRequest) {
@@ -25,6 +25,11 @@ export async function GET(request: NextRequest) {
     if (type === 'stats') {
       const supabase = await createClient()
       return await getStats(supabase, procesoId)
+    }
+
+    if (type === 'matriz') {
+      const matriz = await getMatrizEvaluacionAdmin(procesoId)
+      return NextResponse.json(matriz)
     }
 
     const resultados = await getResultadosFinales(procesoId)

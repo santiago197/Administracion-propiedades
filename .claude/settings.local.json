@@ -8,7 +8,21 @@
       "Bash(pnpm build:*)",
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/components/admin -type f -name *evaluaci* -o -name *evalua*)",
       "Bash(pnpm tsc:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(python3 -c \"import openpyxl; print\\(''openpyxl disponible''\\)\")",
+      "Bash(python3 -c \"import xlrd; print\\(''xlrd disponible''\\)\")",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(where python:*)",
+      "Bash(where python3:*)",
+      "Bash(where py:*)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/santiago.rodriguez/AppData/Local/Programs/Python//**)",
+      "Bash(/c/Users/santiago.rodriguez/AppData/Local/Programs/Python/Python312/python.exe -c \"import openpyxl; print\\('ok'\\)\" 2>&1)",
+      "Bash(/c/Users/santiago.rodriguez/AppData/Local/Programs/Python/Python312/python.exe -m pip install openpyxl --quiet)",
+      "Bash(/c/Users/santiago.rodriguez/AppData/Local/Programs/Python/Python312/python.exe -c \"\nimport openpyxl\n\nwb = openpyxl.load_workbook\\(r'C:/Users/santiago.rodriguez/Downloads/Matriz aprobación.xlsx', data_only=True\\)\nprint\\('Hojas:', wb.sheetnames\\)\nprint\\(\\)\n\nfor sheet_name in wb.sheetnames:\n    ws = wb[sheet_name]\n    print\\(f'========== HOJA: {sheet_name} =========='\\)\n    print\\(f'Dimensiones: {ws.dimensions}'\\)\n    print\\(f'Filas: {ws.max_row}, Columnas: {ws.max_column}'\\)\n    print\\(\\)\n    for row in ws.iter_rows\\(values_only=True\\):\n        if any\\(cell is not None for cell in row\\):\n            print\\(row\\)\n    print\\(\\)\n\")",
+      "Bash(/c/Users/santiago.rodriguez/AppData/Local/Programs/Python/Python312/python.exe -c \"\nimport openpyxl\nwb = openpyxl.load_workbook\\(r'C:/Users/santiago.rodriguez/Downloads/Matriz aprobacion.xlsx', data_only=False\\)\nfor sheet_name in wb.sheetnames:\n    ws = wb[sheet_name]\n    print\\(f'Hoja {sheet_name} - celdas combinadas: {list\\(ws.merged_cells.ranges\\)}'\\)\n    for row in ws.iter_rows\\(\\):\n        for cell in row:\n            if cell.value and isinstance\\(cell.value, str\\) and cell.value.startswith\\('='\\):\n                print\\(f'  Formula en {cell.coordinate}: {cell.value}'\\)\n\")",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -path *procesos* -name page.tsx)"
     ]
   }
 }
