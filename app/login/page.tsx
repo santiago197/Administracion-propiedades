@@ -46,9 +46,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md p-8 border-border/50">
+      <Card className="w-full max-w-md p-6 sm:p-8 border-border/50">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl font-bold text-foreground text-center">SelecionAdm</h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
             Sistema de Selección de Administradores

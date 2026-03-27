@@ -118,17 +118,17 @@ export default function EvaluacionPage() {
 
         {/* Encabezado */}
         <div className="mb-8">
-          <h1 className="text-3xl flex items-center gap-3">
-            <BarChart4 className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
+            <BarChart4 className="h-6 w-6 sm:h-8 sm:w-8 text-primary shrink-0" />
             Evaluación Técnica de Candidatos
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Califica a cada candidato según los 8 criterios ponderados. Los puntajes se guardan automáticamente en la base de datos.
+          <p className="text-muted-foreground mt-2 text-sm sm:text-base">
+            Califica a cada candidato según los criterios ponderados. Los puntajes se guardan automáticamente.
           </p>
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <Card className="p-5 flex items-center gap-4">
             <div className="p-3 rounded-lg bg-primary/10 shrink-0">
               <Users className="h-6 w-6 text-primary" />
@@ -160,7 +160,7 @@ export default function EvaluacionPage() {
 
         {/* Tabla de candidatos */}
         {propuestas.length === 0 ? (
-          <Card className="p-16 text-center border-dashed">
+          <Card className="p-8 sm:p-16 text-center border-dashed">
             <BarChart4 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">
               No hay candidatos registrados en este proceso.
@@ -171,14 +171,14 @@ export default function EvaluacionPage() {
             <table className="w-full text-left">
               <thead className="bg-muted/50 text-xs uppercase text-muted-foreground font-semibold border-b border-border/60">
                 <tr>
-                  <th className="px-4 py-3 w-10">#</th>
-                  <th className="px-4 py-3">Candidato</th>
-                  <th className="px-4 py-3 text-center">Tipo</th>
-                  <th className="px-4 py-3 text-center">Unidades</th>
-                  <th className="px-4 py-3 text-center">Estado</th>
-                  <th className="px-4 py-3 w-44">Puntaje</th>
-                  <th className="px-4 py-3 text-center w-36">Clasificación</th>
-                  <th className="px-4 py-3 text-right w-32">Acción</th>
+                  <th className="px-3 sm:px-4 py-3 w-8 sm:w-10">#</th>
+                  <th className="px-3 sm:px-4 py-3">Candidato</th>
+                  <th className="px-4 py-3 text-center hidden sm:table-cell">Tipo</th>
+                  <th className="px-4 py-3 text-center hidden md:table-cell">Unidades</th>
+                  <th className="px-4 py-3 text-center hidden sm:table-cell">Estado</th>
+                  <th className="px-3 sm:px-4 py-3 w-32 sm:w-44">Puntaje</th>
+                  <th className="px-4 py-3 text-center w-36 hidden md:table-cell">Clasificación</th>
+                  <th className="px-3 sm:px-4 py-3 text-right w-24 sm:w-32">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -203,28 +203,28 @@ export default function EvaluacionPage() {
                       </td>
 
                       {/* Nombre */}
-                      <td className="px-4 py-4">
-                        <p className="font-semibold leading-snug">{p.razon_social}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                      <td className="px-3 sm:px-4 py-4">
+                        <p className="font-semibold leading-snug text-sm sm:text-base">{p.razon_social}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                           {p.nit_cedula}
                           {p.representante_legal && ` · ${p.representante_legal}`}
                         </p>
                       </td>
 
                       {/* Tipo */}
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center hidden sm:table-cell">
                         <Badge variant="outline" className="capitalize text-xs">
                           {p.tipo_persona}
                         </Badge>
                       </td>
 
                       {/* Unidades */}
-                      <td className="px-4 py-4 text-center font-medium tabular-nums text-sm">
+                      <td className="px-4 py-4 text-center font-medium tabular-nums text-sm hidden md:table-cell">
                         {p.unidades_administradas.toLocaleString()}
                       </td>
 
                       {/* Estado */}
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center hidden sm:table-cell">
                         <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${estadoColor}`}>
                           {LABEL_ESTADO[p.estado]}
                         </span>
@@ -244,7 +244,7 @@ export default function EvaluacionPage() {
                       </td>
 
                       {/* Clasificación */}
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-4 text-center hidden md:table-cell">
                         {p.clasificacion ? (
                           <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${CLAS_BADGE[p.clasificacion]}`}>
                             {CLAS_LABEL[p.clasificacion]}

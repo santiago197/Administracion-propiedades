@@ -193,7 +193,7 @@ export default function ProcesoDashboard() {
 
         <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl text-foreground">{proceso.nombre}</h1>
+            <h1 className="text-2xl sm:text-3xl text-foreground">{proceso.nombre}</h1>
             <div className="mt-2 flex items-center gap-3">
               <span
                 className={`text-xs px-2 py-1 rounded-full uppercase font-medium ${ESTADO_COLOR[estadoActual]}`}
@@ -230,7 +230,7 @@ export default function ProcesoDashboard() {
           </Card>
         )}
 
-        <div className="grid gap-6 md:grid-cols-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-8">
           <Card className="p-4 border border-border/50 bg-card/50 flex flex-col items-center text-center">
             <span className="text-2xl">{stats?.total_propuestas || 0}</span>
             <span className="text-xs text-muted-foreground uppercase mt-1">Candidatos</span>

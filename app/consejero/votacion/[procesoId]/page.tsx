@@ -171,8 +171,8 @@ export default function PaginaVotacion() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-        <Card className="border border-border/50 bg-card/50 p-8 mb-6">
-          <p className="text-2xl font-bold text-foreground mb-2">Selecciona tu voto</p>
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-6 mb-4 sm:mb-6">
+          <p className="text-xl sm:text-2xl font-bold text-foreground mb-2">Selecciona tu voto</p>
           <p className="text-muted-foreground text-sm">
             Elige la propuesta que consideras mejor para administrar el conjunto. Cada
             consejero puede votar una sola vez.
@@ -192,7 +192,7 @@ export default function PaginaVotacion() {
             <Card
               key={propuesta.id}
               onClick={() => setSelectedVoto(propuesta.id)}
-              className={`border-2 p-6 cursor-pointer transition-all ${
+              className={`border-2 p-4 sm:p-6 cursor-pointer transition-all ${
                 selectedVoto === propuesta.id
                   ? 'border-primary bg-primary/5'
                   : 'border-border/50 bg-card/50 hover:border-primary/30 hover:bg-card/70'
@@ -218,7 +218,7 @@ export default function PaginaVotacion() {
                       Representante: {propuesta.representante_legal}
                     </p>
                   )}
-                  <div className="mt-3 grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs text-muted-foreground">
                     <div>
                       <span className="font-semibold">Experiencia: </span>
                       {propuesta.anios_experiencia} años

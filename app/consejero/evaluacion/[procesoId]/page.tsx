@@ -313,14 +313,14 @@ export default function PaginaEvaluacion() {
         </div>
 
         {/* Ficha de la propuesta */}
-        <Card className="border border-border/50 bg-card/50 p-8">
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
           <div className="flex items-start justify-between mb-4">
-            <p className="text-2xl font-bold text-foreground">{propuesta.razon_social}</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground">{propuesta.razon_social}</p>
             {isPropuestaCompleta(propuesta.id, criterios, evaluaciones) && (
               <CheckCircle2 className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm text-muted-foreground">
             <div>
               <p className="font-semibold text-foreground">Tipo</p>
               <p>
@@ -363,7 +363,7 @@ export default function PaginaEvaluacion() {
         </Card>
 
         {/* Criterios */}
-        <Card className="border border-border/50 bg-card/50 p-8">
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
           <p className="text-lg font-semibold text-foreground mb-6">Evaluación por criterios</p>
 
           <div className="space-y-8">
@@ -475,7 +475,7 @@ export default function PaginaEvaluacion() {
           </div>
         </Card>
 
-        <Card className="border border-border/50 bg-card/50 p-8">
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
           <p className="text-lg font-semibold text-foreground mb-4">Documentos relacionados</p>
           {documentosPropuesta.length === 0 ? (
             <p className="text-sm text-muted-foreground">Esta propuesta no tiene documentos registrados.</p>

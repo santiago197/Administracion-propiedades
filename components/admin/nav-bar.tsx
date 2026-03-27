@@ -24,12 +24,12 @@ export function NavBar() {
 
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
-      <div className="flex items-center justify-between px-6 py-4">
-        <Link href="/admin" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
+      <div className="flex items-center justify-between px-3 py-3 sm:px-6 sm:py-4">
+        <Link href="/admin" className="flex items-center gap-2 sm:gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm shrink-0">
             SA
           </div>
-          <span className="font-semibold text-foreground">SelecionAdm</span>
+          <span className="hidden sm:block font-semibold text-foreground">SelecionAdm</span>
         </Link>
 
         <nav className="flex items-center gap-1">
@@ -37,20 +37,20 @@ export function NavBar() {
             <Button
               variant={pathname === '/admin' ? 'default' : 'ghost'}
               size="sm"
-              className="gap-2"
+              className="gap-1.5 sm:gap-2"
             >
               <Home className="h-4 w-4" />
-              Conjuntos
+              <span className="hidden sm:inline">Conjuntos</span>
             </Button>
           </Link>
           <Link href="/admin/configuracion">
             <Button
               variant={pathname.startsWith('/admin/configuracion') ? 'default' : 'ghost'}
               size="sm"
-              className="gap-2"
+              className="gap-1.5 sm:gap-2"
             >
               <Settings className="h-4 w-4" />
-              Configuración
+              <span className="hidden sm:inline">Configuración</span>
             </Button>
           </Link>
         </nav>
@@ -60,10 +60,10 @@ export function NavBar() {
           size="sm"
           onClick={handleLogout}
           disabled={loggingOut}
-          className="gap-2 text-muted-foreground hover:text-foreground"
+          className="gap-1.5 sm:gap-2 text-muted-foreground hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
-          Salir
+          <span className="hidden sm:inline">Salir</span>
         </Button>
       </div>
     </header>

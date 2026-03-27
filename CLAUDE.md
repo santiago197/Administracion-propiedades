@@ -47,6 +47,21 @@ El middleware bloquea a cualquier usuario cuyo `id` no exista en la tabla `usuar
 
 `requireAuth()` valida sesión **y** que el usuario tenga `conjunto_id` asignado. El `superadmin` **no** puede usar rutas que llamen `requireAuth()` directamente porque retornará 403 (no tiene `conjunto_id`). Para rutas accesibles por superadmin, usar `getCurrentUser()` directamente y manejar el caso sin `conjunto_id`.
 
+### Rutas públicas del middleware
+
+Las siguientes rutas no requieren autenticación y están exentas en `middleware.ts`:
+
+```
+/
+/login
+/consejero  (y todos los subrutas /consejero/*)
+/api/auth/login
+/api/auth/logout
+/api/auth/validate-code
+/api/evaluacion/*   (sesión consejero, no Supabase)
+/api/consejero/*    (sesión consejero, no Supabase)
+```
+
 ### Queries de base de datos
 
 Todas las queries reutilizables están centralizadas en `lib/supabase/queries.ts`. Las páginas y API routes las importan desde ahí. No escribir queries inline en los componentes.
@@ -71,13 +86,26 @@ Flujo de estados: `registro → en_revision → incompleto/en_subsanacion/en_val
 
 ### Tipos
 
-Todos los tipos TypeScript del dominio están en `lib/types/index.ts`. Incluye tipos de unión literales para estados, interfaces de entidades, y constantes como `ESTADOS_TERMINALES`, `ESTADOS_ACTIVOS` y `LABEL_ESTADO`.
+Todos los tipos TypeScript del dominio están en `lib/types/index.ts`. Incluye tipos de unión literales para estados, interfaces de entidades, y constantes:
+
+- `ESTADOS_TERMINALES`, `ESTADOS_ACTIVOS`, `LABEL_ESTADO` — para gestión de estados
+- `CRITERIOS_MATRIZ` — los 9 criterios de evaluación con sus pesos (hardcodeados en código, no en BD)
+- `LABEL_CLASIFICACION` — mapeo de `ClasificacionPropuesta` a etiquetas de la matriz (`"Cumple"`, `"Cumple, con observaciones"`, `"Rechazado"`)
 
 ### Estructura de base de datos
 
-`conjuntos` → `procesos` → `propuestas` → `documentos`, `evaluaciones`, `votos`
-`conjuntos` → `consejeros` (evaluadores sin cuenta Supabase Auth)
-`usuarios` → referencia `auth.users` (1:1), tiene `conjunto_id` y `rol`
+```
+conjuntos → procesos → propuestas → documentos, evaluaciones, votos
+conjuntos → consejeros (evaluadores sin cuenta Supabase Auth)
+usuarios → referencia auth.users (1:1), tiene conjunto_id y rol
+```
+
+**Tablas de evaluación del administrador** (separadas de las evaluaciones de consejeros):
+- `evaluaciones_admin` — registro por propuesta: `propuesta_id`, `evaluador_id`, `puntaje_total`, `clasificacion`
+- `puntajes_criterio` — desglose por criterio: `evaluacion_id`, `criterio_codigo`, `puntaje`, `valor_original`
+
+**Vista usada en resultados:**
+- `vista_propuestas_resumen` — agrega puntajes de consejeros en escala 0–5 junto con `votos_recibidos` y `puntaje_final`
 
 RLS habilitado en todas las tablas. Políticas en `scripts/002_security_auth.sql`.
 
@@ -92,7 +120,7 @@ Ejecutar en orden en Supabase SQL Editor:
 
 ### Subida de archivos
 
-Los documentos se suben a **Vercel Blob** (`@vercel/blob`). La API route `/api/upload` gestiona la subida. No se usa Supabase Storage.
+Los documentos se suben a **Vercel Blob** (`@vercel/blob`). La API route `/api/upload` gestiona la subida. No se usa Supabase Storage. El campo `archivo_pathname` guarda la ruta interna para poder eliminar el blob.
 
 ### Sistema OCR / Extracción de RUT
 
@@ -103,6 +131,19 @@ Los documentos se suben a **Vercel Blob** (`@vercel/blob`). La API route `/api/u
 - Los datos extraídos se persisten en la tabla `propuestas_rut_datos` (ver `005_rut_metadata.sql`)
 - El tipo `PropuestaRutDatos` en `lib/types/index.ts` refleja esta estructura
 
+### Matriz de evaluación del administrador
+
+`components/admin/panel-evaluacion.tsx` implementa el panel de calificación con 9 criterios binarios (Sí/No). Los códigos de criterio (`expPH`, `expDensidad`, `capacidadOperativa`, `propuestaTecnica`, `formacionAcademica`, `conocimientosNormativos`, `referencias`, `economica`, `competenciasPersonales`) se usan como `criterio_codigo` en la tabla `puntajes_criterio` y deben coincidir con los `codigo` del array `CRITERIOS_MATRIZ` en `lib/types/index.ts`.
+
+La función `getMatrizEvaluacionAdmin(proceso_id)` en `queries.ts` y el endpoint `GET /api/resultados?type=matriz` retornan el desglose completo por candidato para la vista de resultados.
+
+### Hooks disponibles
+
+- `hooks/use-protected-page.ts` — verifica sesión admin en el cliente, redirige a `/login` si no hay usuario
+- `hooks/use-active-proceso.ts` — obtiene y cachea el proceso activo de un conjunto
+- `hooks/use-file-upload.ts` — maneja subida de archivos a Vercel Blob
+- `hooks/use-toast.ts` — notificaciones vía `sonner`
+
 ### UI
 
-Componentes de Radix UI / shadcn. No usar MUI. Importaciones de componentes UI desde `@/components/ui/`. Recharts se usa para gráficos (`recharts`).
+Componentes de Radix UI / shadcn. No usar MUI. Importaciones de componentes UI desde `@/components/ui/`. Recharts se usa para gráficos (`recharts`). Formularios con `react-hook-form` + `zod`.

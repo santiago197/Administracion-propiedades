@@ -129,7 +129,7 @@ function OpcionBinaria({
     <RadioGroup
       value={value?.toString() ?? ''}
       onValueChange={(v) => onChange(parseInt(v))}
-      className="grid grid-cols-2 gap-3"
+      className="grid grid-cols-1 sm:grid-cols-2 gap-3"
     >
       <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
         <div className="flex items-center gap-3">
@@ -301,7 +301,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
         className="w-full sm:max-w-4xl p-0 gap-0 flex flex-col"
       >
         {/* Encabezado */}
-        <SheetHeader className="px-8 pt-8 pb-5 border-b shrink-0">
+        <SheetHeader className="px-4 sm:px-8 pt-5 sm:pt-8 pb-4 sm:pb-5 border-b shrink-0">
           <SheetTitle className="text-2xl">Panel de Calificación</SheetTitle>
           <SheetDescription>
             <span className="font-semibold text-foreground">{propuesta.razon_social}</span>
@@ -315,12 +315,22 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
           </SheetDescription>
         </SheetHeader>
 
+        {/* Score compacto — solo visible en mobile */}
+        <div className="lg:hidden shrink-0 px-4 py-3 border-b bg-muted/10 flex items-center gap-3">
+          <span className="text-3xl font-black text-primary tabular-nums">{total}</span>
+          <span className="text-sm text-muted-foreground">/100</span>
+          <Progress value={Math.min(total, 100)} className="flex-1 h-2" />
+          <div className={`py-1 px-2.5 rounded text-xs font-semibold shrink-0 ${clasStyle.cls}`}>
+            {clasStyle.label}
+          </div>
+        </div>
+
         {/* Cuerpo: criterios + sidebar */}
         <div className="flex flex-1 overflow-hidden">
 
           {/* Columna de criterios */}
           <ScrollArea className="flex-1">
-            <div className="px-8 py-7 space-y-8">
+            <div className="px-4 sm:px-8 py-5 sm:py-7 space-y-6 sm:space-y-8">
 
               {/* 1. EXPERIENCIA EN PROPIEDAD HORIZONTAL */}
               <CriterioBloque
@@ -451,8 +461,8 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
             </div>
           </ScrollArea>
 
-          {/* Sidebar: puntaje en vivo */}
-          <aside className="w-72 border-l flex flex-col p-6 gap-5 bg-muted/10 shrink-0">
+          {/* Sidebar: puntaje en vivo — oculto en mobile */}
+          <aside className="hidden lg:flex w-72 border-l flex-col p-6 gap-5 bg-muted/10 shrink-0">
 
             {/* Score total */}
             <div className="space-y-3">
@@ -460,8 +470,8 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                 Puntaje en vivo
               </p>
               <div className="text-center py-2">
-                <span className="text-6xl font-black text-primary tabular-nums">{total}</span>
-                <span className="text-xl text-muted-foreground">/100</span>
+                <span className="text-5xl font-black text-primary tabular-nums">{total}</span>
+                <span className="text-lg text-muted-foreground">/100</span>
               </div>
               <Progress value={Math.min(total, 100)} className="h-3" />
               <div className={`py-2 px-3 rounded-lg text-center text-sm font-semibold ${clasStyle.cls}`}>

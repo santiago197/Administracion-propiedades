@@ -70,14 +70,14 @@ export default function PaginaResultados() {
         </Link>
 
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-2">Resultados Finales</h1>
+          <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-2">Resultados Finales</h1>
           <p className="text-muted-foreground">
             Ranking de propuestas basado en evaluación y votación
           </p>
         </div>
 
         {stats && (
-          <div className="grid gap-4 md:grid-cols-4 mb-8">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 mb-8">
             <Card className="border border-border/50 bg-card/50 p-6">
               <p className="text-sm text-muted-foreground mb-2">Consejeros Totales</p>
               <p className="text-3xl font-bold text-foreground">{stats.total_consejeros}</p>
@@ -124,7 +124,7 @@ export default function PaginaResultados() {
                           <SemaforoBadge estado={resultado.estado_semaforo} />
                         </div>
 
-                        <div className="grid grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                           <div>
                             <p className="text-xs text-muted-foreground font-semibold mb-1">
                               PUNTAJE EVALUACIÓN
