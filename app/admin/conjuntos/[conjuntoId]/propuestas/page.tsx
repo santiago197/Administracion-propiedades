@@ -193,10 +193,10 @@ export default function GestionPropuestas() {
       <NavBar />
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        <Link href={`/admin/conjuntos/${conjuntoId}/configuracion`}>
+        <Link href={`/admin/conjuntos/${conjuntoId}`}>
           <Button variant="ghost" className="mb-8 gap-2">
             <ArrowLeft className="h-4 w-4" />
-            Volver
+            Volver al conjunto
           </Button>
         </Link>
 

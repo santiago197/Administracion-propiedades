@@ -3,13 +3,15 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Settings, Home, LogOut } from 'lucide-react'
+import { Settings, Home, LogOut, ClipboardList, LayoutDashboard, Users } from 'lucide-react'
 import { useState } from 'react'
+import { useActiveProceso } from '@/hooks/use-active-proceso'
 
 export function NavBar() {
   const pathname = usePathname()
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
+  const { conjunto, proceso } = useActiveProceso()
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -21,6 +23,18 @@ export function NavBar() {
       setLoggingOut(false)
     }
   }
+
+  const procesoHref = conjunto && proceso
+    ? `/admin/conjuntos/${conjunto.id}/procesos/${proceso.id}`
+    : null
+
+  const evaluacionHref = conjunto && proceso && proceso.estado === 'evaluacion'
+    ? `/admin/conjuntos/${conjunto.id}/procesos/${proceso.id}/evaluacion`
+    : null
+
+  const consejerosHref = conjunto
+    ? `/admin/conjuntos/${conjunto.id}/consejeros`
+    : null
 
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
@@ -43,6 +57,46 @@ export function NavBar() {
               <span className="hidden sm:inline">Conjuntos</span>
             </Button>
           </Link>
+
+          {procesoHref && (
+            <Link href={procesoHref}>
+              <Button
+                variant={pathname.includes('/procesos/') && !pathname.includes('/evaluacion') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Proceso</span>
+              </Button>
+            </Link>
+          )}
+
+          {evaluacionHref && (
+            <Link href={evaluacionHref}>
+              <Button
+                variant={pathname.includes('/evaluacion') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span className="hidden sm:inline">Evaluación</span>
+              </Button>
+            </Link>
+          )}
+
+          {consejerosHref && (
+            <Link href={consejerosHref}>
+              <Button
+                variant={pathname.includes('/consejeros') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Consejeros</span>
+              </Button>
+            </Link>
+          )}
+
           <Link href="/admin/configuracion">
             <Button
               variant={pathname.startsWith('/admin/configuracion') ? 'default' : 'ghost'}

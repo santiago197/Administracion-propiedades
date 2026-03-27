@@ -297,14 +297,19 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </div>
 
           {!datosRut && (
-            <Input
-              ref={rutInputRef}
-              type="file"
-              accept=".pdf"
-              disabled={extrayendo}
-              onChange={handleRutFileChange}
-              className="border-border/50 text-sm"
-            />
+            <>
+              <Input
+                ref={rutInputRef}
+                type="file"
+                accept=".pdf"
+                disabled={extrayendo}
+                onChange={handleRutFileChange}
+                className="border-border/50 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Sube el RUT en PDF para autocompletar razón social, NIT, representante legal y detectar alertas PEP automáticamente.
+              </p>
+            </>
           )}
 
           {extrayendo && (

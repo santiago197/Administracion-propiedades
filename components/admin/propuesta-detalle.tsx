@@ -34,10 +34,15 @@ import {
   Plus,
   CheckCircle2,
   ArrowRight,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldQuestion,
+  Clock,
+  Circle,
 } from 'lucide-react'
 import { PanelEvaluacion } from '@/components/admin/panel-evaluacion'
 import { TabRut } from '@/components/admin/tab-rut'
-import { LABEL_ESTADO } from '@/lib/types/index'
+import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 import type {
   Propuesta,
   Documento,
@@ -46,6 +51,8 @@ import type {
   EstadoDocumento,
   ClasificacionPropuesta,
   TipoPersona,
+  EstadoPropuesta,
+  ChecklistLegal,
 } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
@@ -130,9 +137,11 @@ function initEditForm(p: Propuesta): EditForm {
 type Props = {
   propuesta: Propuesta
   onChanged: () => void
+  procesoId?: string
+  conjuntoId?: string
 }
 
-export function PropuestaDetalle({ propuesta, onChanged }: Props) {
+export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }: Props) {
   // Docs
   const [docs, setDocs]               = useState<Documento[]>([])
   const [docsLoading, setDocsLoading] = useState(false)
@@ -304,6 +313,35 @@ export function PropuestaDetalle({ propuesta, onChanged }: Props) {
   const completos    = obligatorios.filter((d) => d.estado === 'completo').length
   const docsPct      = obligatorios.length > 0 ? Math.round((completos / obligatorios.length) * 100) : 100
   const docsOk       = obligatorios.length === 0 || completos === obligatorios.length
+
+  // ---------------------------------------------------------------------------
+  // Cálculos validación legal
+  // ---------------------------------------------------------------------------
+
+  type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente'
+
+  function getEstadoLegal(): EstadoLegal {
+    if (propuesta.estado === 'habilitada' || propuesta.estado === 'en_evaluacion') return 'aprobado'
+    if (propuesta.estado === 'no_apto_legal') return 'rechazado'
+    return 'pendiente'
+  }
+
+  const estadoLegal = getEstadoLegal()
+  const checklistGuardado: ChecklistLegal | null = propuesta.checklist_legal ?? null
+
+  // El tab de validación legal tiene dot cuando está pendiente
+  const legalPendiente = estadoLegal === 'pendiente' && (
+    propuesta.estado === 'en_validacion' ||
+    propuesta.estado === 'en_revision' ||
+    propuesta.estado === 'registro'
+  )
+
+  // Tab por defecto según estado
+  function getDefaultTab(): string {
+    const estado = propuesta.estado as EstadoPropuesta
+    if (estado === 'en_validacion' || estado === 'no_apto_legal' || estado === 'habilitada') return 'legal'
+    return 'info'
+  }
 
   // ---------------------------------------------------------------------------
   // Renders de tabs

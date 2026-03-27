@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const MAX_LOGO_FILE_SIZE = 2 * 1024 * 1024 // 2MB para logos
-const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024 // 10MB para documentos
+const MAX_DOCUMENT_FILE_SIZE = 50 * 1024 * 1024 // 50MB para documentos
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
 const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
 
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
       if (file.size > MAX_DOCUMENT_FILE_SIZE) {
         return NextResponse.json(
-          { error: 'El archivo excede el tamaño máximo de 10MB' },
+          { error: 'El archivo excede el tamaño máximo de 50MB' },
           { status: 400 }
         )
       }

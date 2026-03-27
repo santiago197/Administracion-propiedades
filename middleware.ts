@@ -118,6 +118,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Excluye archivos estáticos, imágenes y la ruta de upload (multipart/form-data
+    // se corrompe cuando el middleware clona el request al renovar cookies de Supabase).
+    // La auth en /api/upload ya la maneja requireAuth() directamente en el route.
+    '/((?!_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

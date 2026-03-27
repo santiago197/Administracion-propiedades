@@ -235,23 +235,55 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
     competenciasPersonales: null,
   })
   const [guardando, setGuardando] = useState(false)
+  const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Auto-sugerencias al abrir el panel con una propuesta distinta
+  // Cargar evaluación existente o auto-sugerir al abrir con una propuesta distinta
   useEffect(() => {
     if (!propuesta) return
-    setEvalData({
-      expPH:                  propuesta.anios_experiencia >= 5 ? 20 : null,
-      expDensidad:            propuesta.unidades_administradas > 500 ? 15 : null,
-      capacidadOperativa:     null,
-      propuestaTecnica:       null,
-      formacionAcademica:     null,
-      conocimientosNormativos:null,
-      referencias:            null,
-      economica:              null,
-      competenciasPersonales: null,
-    })
-    setError(null)
+
+    const cargarEvaluacion = async () => {
+      setCargando(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/propuestas/${propuesta.id}/evaluar`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.detalles) {
+            setEvalData({
+              expPH:                   data.detalles.expPH                  ?? null,
+              expDensidad:             data.detalles.expDensidad             ?? null,
+              capacidadOperativa:      data.detalles.capacidadOperativa      ?? null,
+              propuestaTecnica:        data.detalles.propuestaTecnica        ?? null,
+              formacionAcademica:      data.detalles.formacionAcademica      ?? null,
+              conocimientosNormativos: data.detalles.conocimientosNormativos ?? null,
+              referencias:             data.detalles.referencias             ?? null,
+              economica:               data.detalles.economica               ?? null,
+              competenciasPersonales:  data.detalles.competenciasPersonales  ?? null,
+            })
+            return
+          }
+        }
+      } catch {
+        // si falla la carga, seguir con auto-sugerencia
+      } finally {
+        setCargando(false)
+      }
+      // Sin evaluación previa: auto-sugerir
+      setEvalData({
+        expPH:                  propuesta.anios_experiencia >= 5 ? 20 : null,
+        expDensidad:            propuesta.unidades_administradas > 500 ? 15 : null,
+        capacidadOperativa:     null,
+        propuestaTecnica:       null,
+        formacionAcademica:     null,
+        conocimientosNormativos:null,
+        referencias:            null,
+        economica:              null,
+        competenciasPersonales: null,
+      })
+    }
+
+    cargarEvaluacion()
   }, [propuesta?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = sumarPuntos(evalData)
@@ -300,6 +332,13 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
         side="right"
         className="w-full sm:max-w-4xl p-0 gap-0 flex flex-col"
       >
+        {/* Cargando evaluación existente */}
+        {cargando && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
+
         {/* Encabezado */}
         <SheetHeader className="px-4 sm:px-8 pt-5 sm:pt-8 pb-4 sm:pb-5 border-b shrink-0">
           <SheetTitle className="text-2xl">Panel de Calificación</SheetTitle>
@@ -326,7 +365,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
         </div>
 
         {/* Cuerpo: criterios + sidebar */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden min-h-0">
 
           {/* Columna de criterios */}
           <ScrollArea className="flex-1">
@@ -462,7 +501,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
           </ScrollArea>
 
           {/* Sidebar: puntaje en vivo — oculto en mobile */}
-          <aside className="hidden lg:flex w-72 border-l flex-col p-6 gap-5 bg-muted/10 shrink-0">
+          <aside className="hidden lg:flex w-72 border-l flex-col p-6 gap-5 bg-muted/10 shrink-0 overflow-y-auto">
 
             {/* Score total */}
             <div className="space-y-3">
@@ -521,33 +560,33 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
               ))}
             </div>
 
-            {/* Acciones */}
-            <div className="mt-auto space-y-3">
-              {error && (
-                <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 p-3 rounded-md">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-              {!completo && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Selecciona todos los criterios para habilitar el guardado.
-                </p>
-              )}
-              <Button
-                className="w-full gap-2"
-                disabled={!completo || guardando}
-                onClick={handleGuardar}
-              >
-                {guardando
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <CheckCircle2 className="h-4 w-4" />
-                }
-                {guardando ? 'Guardando...' : 'Guardar Calificación'}
-              </Button>
-            </div>
-
           </aside>
+        </div>
+
+        {/* Footer sticky: botón guardar visible en todos los tamaños */}
+        <div className="shrink-0 border-t px-4 sm:px-8 py-4 bg-background space-y-2">
+          {error && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 p-3 rounded-md">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          {!completo && (
+            <p className="text-xs text-muted-foreground text-center">
+              Selecciona todos los criterios para habilitar el guardado.
+            </p>
+          )}
+          <Button
+            className="w-full gap-2"
+            disabled={!completo || guardando}
+            onClick={handleGuardar}
+          >
+            {guardando
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <CheckCircle2 className="h-4 w-4" />
+            }
+            {guardando ? 'Guardando...' : 'Guardar Calificación'}
+          </Button>
         </div>
       </SheetContent>
     </Sheet>

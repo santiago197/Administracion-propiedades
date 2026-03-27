@@ -96,6 +96,7 @@ export default function PropuestasPage() {
   const [loading, setLoading]             = useState(true)
   const [saving, setSaving]               = useState(false)
   const [selectedProceso, setSelectedProceso] = useState<string>('')
+  const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
   const [formData, setFormData]           = useState(FORM_INIT)
 
@@ -129,6 +130,7 @@ export default function PropuestasPage() {
         const conjRes = await fetch('/api/conjuntos')
         if (!conjRes.ok) throw new Error('Error al obtener conjunto')
         const conjunto = await conjRes.json()
+        setConjuntoId(conjunto.id as string)
 
         const procRes = await fetch(`/api/procesos?conjunto_id=${conjunto.id}`)
         if (!procRes.ok) throw new Error('Error al obtener procesos')
@@ -477,6 +479,8 @@ export default function PropuestasPage() {
         <PropuestaDetalle
           propuesta={selectedPropuesta}
           onChanged={handlePropuestaChanged}
+          procesoId={selectedProceso}
+          conjuntoId={conjuntoId}
         />
       )}
 

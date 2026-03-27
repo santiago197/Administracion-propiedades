@@ -230,7 +230,7 @@ export async function getPropuestaConjunto(id: string, conjunto_id: string) {
 
   const { data: propuesta, error: propError } = await supabase
     .from('propuestas')
-    .select('id, proceso_id')
+    .select('id, proceso_id, estado, tipo_persona')
     .eq('id', id)
     .single()
 

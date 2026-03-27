@@ -137,6 +137,7 @@ export interface Propuesta {
   clasificacion?: ClasificacionPropuesta
   cumple_requisitos_legales: boolean
   observaciones_legales?: string
+  checklist_legal?: ChecklistLegal | null
   puntaje_legal: number
   puntaje_tecnico: number
   puntaje_financiero: number
@@ -350,6 +351,56 @@ export interface PropuestaRutDatos {
   created_at: string
   updated_at: string
 }
+
+// ---------------------------------------------------------------------------
+// Checklist de validación legal — guardado como JSONB en propuestas.checklist_legal
+// ---------------------------------------------------------------------------
+
+export type EstadoItemChecklist = 'pendiente' | 'cumple' | 'no_cumple'
+export type CriticidadItem = 'critico' | 'importante' | 'condicionante' | 'informativo'
+
+export interface ItemChecklistLegal {
+  id: string
+  estado: EstadoItemChecklist
+  observacion: string
+}
+
+/** Record completo por propuesta: clave = id del ítem */
+export type ChecklistLegal = Record<string, ItemChecklistLegal>
+
+/** Definición estática de un ítem del checklist */
+export interface DefinicionItemChecklist {
+  id: string
+  seccion: string
+  label: string
+  descripcion: string
+  criticidad: CriticidadItem
+  aplica_a: 'ambos' | 'juridica' | 'natural'
+}
+
+export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [
+  // ── Antecedentes ────────────────────────────────────────────────────────────
+  { id: 'procuraduria',    seccion: 'Antecedentes',           label: 'Procuraduría',                         descripcion: 'Sin antecedentes disciplinarios activos.',            criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'contraloria',     seccion: 'Antecedentes',           label: 'Contraloría',                          descripcion: 'Sin antecedentes fiscales activos.',                  criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'policia',         seccion: 'Antecedentes',           label: 'Policía Nacional',                     descripcion: 'Sin antecedentes judiciales.',                        criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'personeria',      seccion: 'Antecedentes',           label: 'Personería',                           descripcion: 'Sin antecedentes ante la Personería.',                criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'medidas',         seccion: 'Antecedentes',           label: 'Medidas correctivas',                  descripcion: 'Sin medidas correctivas vigentes.',                   criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'redam',           seccion: 'Antecedentes',           label: 'REDAM',                                descripcion: 'No inscrito en el Registro de Deudores Alimentarios Morosos.', criticidad: 'critico', aplica_a: 'ambos'   },
+  { id: 'delitos_sexuales',seccion: 'Antecedentes',           label: 'Inhabilidades por delitos sexuales',   descripcion: 'Sin inhabilidades por delitos sexuales o contra menores.', criticidad: 'critico', aplica_a: 'ambos'     },
+  // ── SARLAFT y documentación básica ──────────────────────────────────────────
+  { id: 'sarlaft',         seccion: 'SARLAFT y documentación',label: 'SARLAFT / Listas restrictivas',        descripcion: 'No aparece en listas Clinton, OFACs ni UIAF.',       criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'rut',             seccion: 'SARLAFT y documentación',label: 'RUT actualizado',                      descripcion: 'RUT vigente y coincidente con datos registrados.',    criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'camara_comercio', seccion: 'SARLAFT y documentación',label: 'Cámara de Comercio vigente',           descripcion: 'Certificado de existencia y representación legal vigente.', criticidad: 'critico', aplica_a: 'juridica'  },
+  { id: 'cedula',          seccion: 'SARLAFT y documentación',label: 'Copia de cédula',                      descripcion: 'Cédula de ciudadanía vigente.',                       criticidad: 'critico',       aplica_a: 'natural'   },
+  // ── Requisitos operativos ────────────────────────────────────────────────────
+  { id: 'parafiscales',    seccion: 'Requisitos operativos',  label: 'Pago de parafiscales',                 descripcion: 'Certificación de pago de aportes parafiscales al día.', criticidad: 'importante',  aplica_a: 'juridica'  },
+  { id: 'sst',             seccion: 'Requisitos operativos',  label: 'Certificación SST vigente',            descripcion: 'Sistema de Seguridad y Salud en el Trabajo activo.', criticidad: 'importante',    aplica_a: 'juridica'  },
+  { id: 'estados_fin',     seccion: 'Requisitos operativos',  label: 'Estados financieros (2 años)',         descripcion: 'Estados financieros de los últimos dos años presentados.', criticidad: 'importante', aplica_a: 'juridica' },
+  { id: 'experiencia',     seccion: 'Requisitos operativos',  label: 'Certificados de experiencia',          descripcion: 'Certificados con NIT, funciones, fechas y cargo desempeñado.', criticidad: 'importante', aplica_a: 'ambos' },
+  // ── Pólizas ─────────────────────────────────────────────────────────────────
+  { id: 'poliza_rc',       seccion: 'Pólizas',                label: 'Póliza Resp. Civil Profesional',       descripcion: 'Póliza vigente. Exigible previo a firma del contrato.',criticidad: 'condicionante', aplica_a: 'ambos'     },
+  { id: 'poliza_do',       seccion: 'Pólizas',                label: 'Póliza D&O para el Consejo',           descripcion: 'A gestionar dentro del primer mes de gestión.',       criticidad: 'informativo',   aplica_a: 'ambos'     },
+]
 
 /** Resultado de la función RPC cambiar_estado_propuesta */
 export interface CambioEstadoResult {

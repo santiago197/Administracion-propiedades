@@ -16,8 +16,39 @@ import {
   ClipboardList,
   AlertCircle,
   ChevronRight,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 import type { Proceso, ProcesoStats, EstadoProceso } from '@/lib/types/index'
+
+function ChecklistItem({
+  ok,
+  label,
+  href,
+  hrefLabel,
+}: {
+  ok: boolean
+  label: string
+  href: string
+  hrefLabel: string
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      {ok
+        ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+        : <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+      }
+      <div className="text-xs">
+        <span className={ok ? 'text-green-700 dark:text-green-300' : 'text-destructive'}>{label}</span>
+        {!ok && (
+          <Link href={href} className="ml-2 text-primary underline hover:no-underline">
+            {hrefLabel}
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const ESTADO_LABEL: Record<EstadoProceso, string> = {
   configuracion: 'Configuración',
@@ -224,9 +255,47 @@ export default function ProcesoDashboard() {
         </div>
 
         {errorEstado && (
-          <Card className="mb-6 border border-destructive/20 bg-destructive/10 p-4 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-destructive">{errorEstado}</p>
+          <Card className="mb-6 border border-destructive/20 bg-destructive/10 p-4">
+            <div className="flex items-start gap-3 mb-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-destructive">No se puede avanzar el proceso</p>
+                <p className="text-sm text-destructive/80 mt-0.5">{errorEstado}</p>
+              </div>
+            </div>
+            {/* Checklist contextual según el estado actual */}
+            {estadoActual === 'configuracion' && (
+              <div className="ml-8 space-y-1.5">
+                <p className="text-xs font-medium text-destructive/70 uppercase tracking-wide mb-2">
+                  Requisitos para iniciar evaluación
+                </p>
+                <ChecklistItem
+                  ok={(stats?.propuestas_activas ?? 0) >= 1}
+                  label={`Mínimo 1 propuesta habilitada — tienes ${stats?.propuestas_activas ?? 0}`}
+                  href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/validacion-legal`}
+                  hrefLabel="Ir a validación legal"
+                />
+                <ChecklistItem
+                  ok={(stats?.total_propuestas ?? 0) >= 3}
+                  label={`Mínimo 3 candidatos registrados — tienes ${stats?.total_propuestas ?? 0}`}
+                  href={`/admin/conjuntos/${conjuntoId}/propuestas`}
+                  hrefLabel="Registrar candidatos"
+                />
+              </div>
+            )}
+            {estadoActual === 'evaluacion' && (
+              <div className="ml-8 space-y-1.5">
+                <p className="text-xs font-medium text-destructive/70 uppercase tracking-wide mb-2">
+                  Requisitos para pasar a votación
+                </p>
+                <ChecklistItem
+                  ok={(stats?.evaluaciones_completadas ?? 0) > 0}
+                  label={`Todas las propuestas evaluadas — ${stats?.evaluaciones_completadas ?? 0} de ${stats?.propuestas_activas ?? 0} evaluadas`}
+                  href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/evaluacion`}
+                  hrefLabel="Ir a evaluación técnica"
+                />
+              </div>
+            )}
           </Card>
         )}
 

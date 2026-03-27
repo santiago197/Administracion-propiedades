@@ -18,9 +18,10 @@ import {
   Clock,
   Users,
   ChevronRight,
+  AlertCircle,
 } from 'lucide-react'
 import { LABEL_ESTADO } from '@/lib/types/index'
-import type { Propuesta, ClasificacionPropuesta, EstadoPropuesta } from '@/lib/types/index'
+import type { Propuesta, ClasificacionPropuesta, EstadoPropuesta, EstadoProceso } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
 // Constantes de presentación
@@ -51,28 +52,84 @@ const ESTADO_COLOR: Partial<Record<EstadoPropuesta, string>> = {
 // Componente principal
 // ---------------------------------------------------------------------------
 
+type EvalResumen = { puntaje_total: number; clasificacion: ClasificacionPropuesta }
+
 export default function EvaluacionPage() {
   const params = useParams()
   const conjuntoId = params.conjuntoId as string
   const procesoId = params.procesoId as string
 
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
+  const [evalMap, setEvalMap] = useState<Map<string, EvalResumen>>(new Map())
+  const [estadoProceso, setEstadoProceso] = useState<EstadoProceso | null>(null)
   const [loading, setLoading] = useState(true)
+  const [avanzando, setAvanzando] = useState(false)
+  const [errorAvance, setErrorAvance] = useState<string | null>(null)
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
   const [panelOpen, setPanelOpen] = useState(false)
 
-  const fetchPropuestas = useCallback(async () => {
+  const fetchDatos = useCallback(async () => {
     try {
-      const res = await fetch(`/api/propuestas?proceso_id=${procesoId}`)
-      if (res.ok) setPropuestas(await res.json())
+      const [propRes, procRes] = await Promise.all([
+        fetch(`/api/propuestas?proceso_id=${procesoId}`),
+        fetch(`/api/procesos/${procesoId}`),
+      ])
+      if (propRes.ok) {
+        const props: Propuesta[] = await propRes.json()
+        setPropuestas(props)
+
+        // Cargar evaluaciones en paralelo para todas las propuestas
+        const evals = await Promise.all(
+          props.map((p) =>
+            fetch(`/api/propuestas/${p.id}/evaluar`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+          )
+        )
+        const map = new Map<string, EvalResumen>()
+        props.forEach((p, i) => {
+          const ev = evals[i]
+          if (ev?.puntaje_total != null && ev?.clasificacion) {
+            map.set(p.id, { puntaje_total: ev.puntaje_total, clasificacion: ev.clasificacion })
+          }
+        })
+        setEvalMap(map)
+      }
+      if (procRes.ok) {
+        const proc = await procRes.json()
+        setEstadoProceso(proc.estado)
+      }
     } catch (err) {
-      console.error('Error al cargar propuestas:', err)
+      console.error('Error al cargar datos:', err)
     } finally {
       setLoading(false)
     }
   }, [procesoId])
 
-  useEffect(() => { fetchPropuestas() }, [fetchPropuestas])
+  useEffect(() => { fetchDatos() }, [fetchDatos])
+
+  const handlePasarAVotacion = async () => {
+    if (!confirm('¿Confirmas que deseas pasar a Votación? Esta acción no se puede deshacer.')) return
+    setAvanzando(true)
+    setErrorAvance(null)
+    try {
+      const res = await fetch(`/api/procesos/${procesoId}/cambiar-estado`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'votacion' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorAvance(data.error ?? 'Error al avanzar el proceso')
+        return
+      }
+      setEstadoProceso('votacion')
+    } catch {
+      setErrorAvance('Error de conexión')
+    } finally {
+      setAvanzando(false)
+    }
+  }
 
   const handleEvaluar = (p: Propuesta) => {
     setSelectedPropuesta(p)
@@ -80,15 +137,20 @@ export default function EvaluacionPage() {
   }
 
   const handleSaved = useCallback(() => {
-    fetchPropuestas()
-  }, [fetchPropuestas])
+    fetchDatos()
+  }, [fetchDatos])
 
   // Propuestas ordenadas: primero por puntaje desc, luego las sin evaluar
-  const sorted = [...propuestas].sort((a, b) => b.puntaje_evaluacion - a.puntaje_evaluacion)
+  const sorted = [...propuestas].sort((a, b) => {
+    const pa = evalMap.get(a.id)?.puntaje_total ?? 0
+    const pb = evalMap.get(b.id)?.puntaje_total ?? 0
+    return pb - pa
+  })
 
-  const evaluadas = propuestas.filter((p) => p.puntaje_evaluacion > 0).length
-  const evaluables = propuestas.filter((p) => p.estado === 'en_evaluacion').length
-  const pendientes = evaluables - evaluadas
+  const evaluables = propuestas.filter((p) => p.estado === 'en_evaluacion')
+  const evaluadas = evaluables.filter((p) => evalMap.has(p.id)).length
+  const pendientes = evaluables.length - evaluadas
+  const todasEvaluadas = evaluables.length > 0 && pendientes === 0
 
   // ---------------------------------------------------------------------------
   // Renders
@@ -117,15 +179,54 @@ export default function EvaluacionPage() {
         </Link>
 
         {/* Encabezado */}
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
-            <BarChart4 className="h-6 w-6 sm:h-8 sm:w-8 text-primary shrink-0" />
-            Evaluación Técnica de Candidatos
-          </h1>
-          <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-            Califica a cada candidato según los criterios ponderados. Los puntajes se guardan automáticamente.
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
+              <BarChart4 className="h-6 w-6 sm:h-8 sm:w-8 text-primary shrink-0" />
+              Evaluación Técnica de Candidatos
+            </h1>
+            <p className="text-muted-foreground mt-2 text-sm sm:text-base">
+              Califica a cada candidato según los criterios ponderados. Los puntajes se guardan automáticamente.
+            </p>
+          </div>
+          {estadoProceso === 'evaluacion' && todasEvaluadas && (
+            <Button
+              onClick={handlePasarAVotacion}
+              disabled={avanzando}
+              className="gap-2 shrink-0"
+            >
+              {avanzando
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <ChevronRight className="h-4 w-4" />
+              }
+              {avanzando ? 'Procesando...' : 'Pasar a Votación'}
+            </Button>
+          )}
         </div>
+
+        {/* Banner: proceso no en evaluación */}
+        {estadoProceso && estadoProceso !== 'evaluacion' && (
+          <Card className="mb-6 border border-amber-200 bg-amber-500/10 p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                {estadoProceso === 'configuracion'
+                  ? 'El proceso aún está en configuración. Inicia la evaluación desde el tablero del proceso.'
+                  : estadoProceso === 'votacion'
+                  ? 'El proceso ya pasó a Votación. Las evaluaciones están cerradas.'
+                  : 'El proceso está finalizado.'}
+              </p>
+            </div>
+          </Card>
+        )}
+
+        {/* Error al avanzar */}
+        {errorAvance && (
+          <Card className="mb-6 border border-destructive/20 bg-destructive/10 p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <p className="text-sm text-destructive">{errorAvance}</p>
+          </Card>
+        )}
 
         {/* Estadísticas */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -158,6 +259,25 @@ export default function EvaluacionPage() {
           </Card>
         </div>
 
+        {/* Barra de progreso de evaluaciones */}
+        {evaluables.length > 0 && (
+          <Card className="p-4 mb-6 border border-border/60">
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-muted-foreground">Progreso de evaluación</span>
+              <span className="font-semibold">
+                {evaluadas} / {evaluables.length} evaluados
+              </span>
+            </div>
+            <Progress value={(evaluadas / evaluables.length) * 100} className="h-2" />
+            {todasEvaluadas && (
+              <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Todas las propuestas están evaluadas. Puedes pasar a Votación.
+              </p>
+            )}
+          </Card>
+        )}
+
         {/* Tabla de candidatos */}
         {propuestas.length === 0 ? (
           <Card className="p-8 sm:p-16 text-center border-dashed">
@@ -183,8 +303,11 @@ export default function EvaluacionPage() {
               </thead>
               <tbody className="divide-y divide-border/50">
                 {sorted.map((p, i) => {
-                  const esLider = i === 0 && p.puntaje_evaluacion > 0
-                  const evaluado = p.puntaje_evaluacion > 0
+                  const ev = evalMap.get(p.id)
+                  const puntaje = ev?.puntaje_total ?? 0
+                  const clasificacion = ev?.clasificacion ?? null
+                  const esLider = i === 0 && puntaje > 0
+                  const evaluado = ev != null
                   const evaluable = p.estado === 'en_evaluacion'
                   const estadoColor = ESTADO_COLOR[p.estado] ?? 'bg-muted/50 text-muted-foreground'
 
@@ -235,19 +358,19 @@ export default function EvaluacionPage() {
                         <div className="space-y-1.5">
                           <div className="flex justify-between text-sm">
                             <span className={`font-bold tabular-nums ${evaluado ? 'text-primary' : 'text-muted-foreground'}`}>
-                              {evaluado ? p.puntaje_evaluacion : '–'}
+                              {evaluado ? puntaje : '–'}
                             </span>
                             <span className="text-muted-foreground">/100</span>
                           </div>
-                          <Progress value={Math.min(p.puntaje_evaluacion, 100)} className="h-1.5" />
+                          <Progress value={Math.min(puntaje, 100)} className="h-1.5" />
                         </div>
                       </td>
 
                       {/* Clasificación */}
                       <td className="px-4 py-4 text-center hidden md:table-cell">
-                        {p.clasificacion ? (
-                          <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${CLAS_BADGE[p.clasificacion]}`}>
-                            {CLAS_LABEL[p.clasificacion]}
+                        {clasificacion ? (
+                          <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${CLAS_BADGE[clasificacion]}`}>
+                            {CLAS_LABEL[clasificacion]}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground italic">Pendiente</span>
