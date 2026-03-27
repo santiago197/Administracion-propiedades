@@ -503,7 +503,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     return (
       <div className="space-y-4">
         {/* Progreso */}
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        <div className={`rounded-lg border p-3 space-y-2 ${docsOk ? 'bg-green-500/5 border-green-500/20' : 'bg-amber-500/5 border-amber-500/20'}`}>
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Documentos obligatorios</span>
             <span className={`font-bold tabular-nums ${docsOk ? 'text-green-600' : 'text-amber-600'}`}>
@@ -511,12 +511,32 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
             </span>
           </div>
           <Progress value={docsPct} className="h-2" />
-          {!docsOk && (
-            <div className="flex items-center gap-2 text-xs text-amber-700">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              La propuesta no puede avanzar a evaluación con documentación incompleta.
+          {docsOk && obligatorios.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-green-700">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              Documentación completa. La propuesta puede avanzar a evaluación.
             </div>
           )}
+          {!docsOk && (() => {
+            const faltantes = obligatorios.filter((d) => d.estado !== 'completo')
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs text-amber-700">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  Faltan {faltantes.length} documento{faltantes.length !== 1 ? 's' : ''} obligatorio{faltantes.length !== 1 ? 's' : ''} para pasar a evaluación:
+                </div>
+                <ul className="ml-5 space-y-0.5">
+                  {faltantes.map((d) => (
+                    <li key={d.id} className="text-xs text-amber-700 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                      {d.nombre}
+                      <span className="text-amber-500 capitalize">({d.estado})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Errors */}
@@ -753,6 +773,208 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     )
   }
 
+  // ----- VALIDACIÓN LEGAL -----
+  function renderValidacionLegal() {
+    const estado = propuesta.estado as EstadoPropuesta
+    const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
+
+    // ── Mensaje de roadmap hacia En Evaluación ──────────────────────────────
+    type RoadmapStep = { label: string; done: boolean; active: boolean }
+    const ROADMAP: RoadmapStep[] = [
+      {
+        label: 'Registrado',
+        done: true,
+        active: estado === 'registro',
+      },
+      {
+        label: 'Revisión documental',
+        done: ['en_validacion', 'habilitada', 'no_apto_legal', 'en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto', 'adjudicado', 'descalificada', 'retirada'].includes(estado),
+        active: ['en_revision', 'incompleto', 'en_subsanacion'].includes(estado),
+      },
+      {
+        label: 'Validación legal',
+        done: ['habilitada', 'en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto', 'adjudicado', 'descalificada'].includes(estado),
+        active: estado === 'en_validacion',
+      },
+      {
+        label: 'En evaluación',
+        done: ['apto', 'destacado', 'condicionado', 'no_apto', 'adjudicado'].includes(estado),
+        active: estado === 'en_evaluacion',
+      },
+    ]
+
+    const mensajeContextual: Record<string, { texto: string; color: string }> = {
+      registro:       { texto: 'La propuesta está registrada. Debe completar la revisión documental para avanzar a validación legal.', color: 'text-muted-foreground' },
+      en_revision:    { texto: 'En revisión documental. Una vez completada, pasará a validación legal.', color: 'text-amber-700' },
+      incompleto:     { texto: 'Documentación incompleta. El candidato debe subsanar para continuar.', color: 'text-destructive' },
+      en_subsanacion: { texto: 'El candidato está subsanando documentación. Esperando correcciones.', color: 'text-amber-700' },
+      en_validacion:  { texto: 'Pendiente de validación legal. Realiza el checklist para habilitar o rechazar este candidato.', color: 'text-amber-700' },
+      habilitada:     { texto: 'Habilitado legalmente. Entrará en evaluación automáticamente cuando el proceso avance a la fase de Evaluación.', color: 'text-green-700' },
+      en_evaluacion:  { texto: 'Ya está en evaluación. Puedes calificarlo desde el tab Evaluación.', color: 'text-green-700' },
+      no_apto_legal:  { texto: 'Rechazado en validación legal. No puede avanzar a evaluación. Puedes editar la decisión si fue un error.', color: 'text-destructive' },
+    }
+
+    const msg = mensajeContextual[estado] ?? { texto: `Estado actual: ${LABEL_ESTADO[estado]}`, color: 'text-muted-foreground' }
+
+    // ── Items aplicables del checklist ──────────────────────────────────────
+    const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
+      (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+    )
+    const secciones = Array.from(new Set(itemsAplicables.map((d) => d.seccion)))
+
+    return (
+      <div className="space-y-5">
+
+        {/* Banner estado legal */}
+        <div className={`flex items-center gap-3 rounded-lg border p-4 ${
+          estadoLegal === 'aprobado'
+            ? 'border-green-500/30 bg-green-500/10'
+            : estadoLegal === 'rechazado'
+            ? 'border-destructive/30 bg-destructive/10'
+            : 'border-amber-500/30 bg-amber-500/10'
+        }`}>
+          {estadoLegal === 'aprobado' && <ShieldCheck className="h-6 w-6 text-green-600 shrink-0" />}
+          {estadoLegal === 'rechazado' && <ShieldAlert className="h-6 w-6 text-destructive shrink-0" />}
+          {estadoLegal === 'pendiente' && <ShieldQuestion className="h-6 w-6 text-amber-600 shrink-0" />}
+          <div>
+            <p className={`text-sm font-semibold ${
+              estadoLegal === 'aprobado' ? 'text-green-700' :
+              estadoLegal === 'rechazado' ? 'text-destructive' : 'text-amber-700'
+            }`}>
+              {estadoLegal === 'aprobado' ? 'Habilitado legalmente' :
+               estadoLegal === 'rechazado' ? 'No apto — rechazado en validación legal' :
+               'Pendiente de validación legal'}
+            </p>
+            <p className={`text-xs mt-0.5 ${msg.color}`}>{msg.texto}</p>
+          </div>
+        </div>
+
+        {/* Roadmap — solo si no está en evaluación */}
+        {estado !== 'en_evaluacion' && estado !== 'no_apto_legal' && (
+          <div className="rounded-lg border border-border/40 bg-muted/20 px-4 py-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Camino hacia En Evaluación
+            </p>
+            <div className="flex items-start gap-0">
+              {ROADMAP.map((step, i) => (
+                <div key={step.label} className="flex-1 flex flex-col items-center gap-1 relative">
+                  {/* Línea conectora */}
+                  {i < ROADMAP.length - 1 && (
+                    <div className={`absolute top-3 left-1/2 w-full h-0.5 ${
+                      step.done ? 'bg-green-500' : 'bg-border'
+                    }`} />
+                  )}
+                  {/* Círculo */}
+                  <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center z-10 ${
+                    step.done
+                      ? 'border-green-500 bg-green-500'
+                      : step.active
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border bg-background'
+                  }`}>
+                    {step.done
+                      ? <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                      : step.active
+                      ? <div className="h-2 w-2 rounded-full bg-primary" />
+                      : <div className="h-2 w-2 rounded-full bg-border" />
+                    }
+                  </div>
+                  {/* Label */}
+                  <p className={`text-[10px] text-center leading-tight mt-1 ${
+                    step.done ? 'text-green-700' : step.active ? 'text-primary font-medium' : 'text-muted-foreground'
+                  }`}>
+                    {step.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Observaciones del rechazo */}
+        {estadoLegal === 'rechazado' && propuesta.observaciones_legales && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1">
+            <p className="text-xs font-semibold text-destructive/70 uppercase tracking-wide">Motivo de rechazo</p>
+            <p className="text-sm text-destructive/90">{propuesta.observaciones_legales}</p>
+          </div>
+        )}
+
+        {/* Checklist guardado (solo lectura) */}
+        {checklistGuardado && Object.keys(checklistGuardado).length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Detalle del checklist de validación
+            </p>
+            {secciones.map((seccion) => {
+              const itemsSeccion = itemsAplicables.filter((d) => d.seccion === seccion)
+              return (
+                <div key={seccion} className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground font-medium">{seccion}</p>
+                  <div className="rounded-lg border border-border/40 divide-y divide-border/30">
+                    {itemsSeccion.map((def) => {
+                      const item = checklistGuardado[def.id]
+                      const itemEstado = item?.estado ?? 'pendiente'
+                      return (
+                        <div key={def.id} className="flex items-center gap-2.5 px-3 py-2">
+                          {itemEstado === 'cumple' && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
+                          {itemEstado === 'no_cumple' && <X className="h-4 w-4 text-destructive shrink-0" />}
+                          {itemEstado === 'pendiente' && <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-medium ${
+                              itemEstado === 'cumple' ? 'text-foreground' :
+                              itemEstado === 'no_cumple' ? 'text-destructive' :
+                              'text-muted-foreground'
+                            }`}>
+                              {def.label}
+                            </p>
+                            {item?.observacion && (
+                              <p className="text-xs text-muted-foreground truncate">{item.observacion}</p>
+                            )}
+                          </div>
+                          <span className={`text-[10px] shrink-0 ${
+                            def.criticidad === 'critico' ? 'text-destructive' :
+                            def.criticidad === 'importante' ? 'text-amber-700' :
+                            'text-muted-foreground'
+                          }`}>
+                            {def.criticidad === 'critico' ? 'Crítico' :
+                             def.criticidad === 'importante' ? 'Importante' :
+                             def.criticidad === 'condicionante' ? 'Pre-firma' : ''}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* CTA — ir a validación legal o editar */}
+        {procesoId && conjuntoId && (
+          <div className="pt-1">
+            <a
+              href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/validacion-legal`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                size="sm"
+                variant={estadoLegal === 'pendiente' ? 'default' : 'outline'}
+                className="gap-2"
+              >
+                {estadoLegal === 'pendiente'
+                  ? <><ShieldCheck className="h-4 w-4" /> Ir a realizar validación legal</>
+                  : <><ExternalLink className="h-4 w-4" /> Editar decisión legal</>
+                }
+              </Button>
+            </a>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ----- HISTORIAL -----
   function renderHistorial() {
     return (
@@ -817,9 +1039,21 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         </div>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="info">
-          <TabsList className="mb-4">
+        <Tabs defaultValue={getDefaultTab()}>
+          <TabsList className="mb-4 flex-wrap h-auto gap-1">
             <TabsTrigger value="info">Info</TabsTrigger>
+            <TabsTrigger value="legal" className="gap-1.5">
+              Validación Legal
+              {estadoLegal === 'rechazado' && (
+                <span className="h-2 w-2 rounded-full bg-destructive inline-block" />
+              )}
+              {legalPendiente && (
+                <span className="h-2 w-2 rounded-full bg-amber-500 inline-block" />
+              )}
+              {estadoLegal === 'aprobado' && (
+                <span className="h-2 w-2 rounded-full bg-green-500 inline-block" />
+              )}
+            </TabsTrigger>
             <TabsTrigger value="documentos">
               Documentos
               {!docsOk && <span className="ml-1.5 h-2 w-2 rounded-full bg-amber-500 inline-block" />}
@@ -829,6 +1063,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
           <TabsContent value="info">{renderInfo()}</TabsContent>
+          <TabsContent value="legal">{renderValidacionLegal()}</TabsContent>
           <TabsContent value="documentos">{renderDocumentos()}</TabsContent>
           <TabsContent value="evaluacion">{renderEvaluacion()}</TabsContent>
           <TabsContent value="rut">

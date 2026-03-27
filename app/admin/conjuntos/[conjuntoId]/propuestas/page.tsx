@@ -14,8 +14,12 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  CheckCircle2,
+  FileText,
 } from 'lucide-react'
-import type { Propuesta, Proceso } from '@/lib/types/index'
+import type { Propuesta, Proceso, Documento } from '@/lib/types/index'
+
+type DocResumen = { obligatorios: number; completos: number; faltantes: string[] }
 
 const MIN_PROPUESTAS = 3
 
@@ -24,12 +28,11 @@ export default function GestionPropuestas() {
   const conjuntoId = params.conjuntoId as string
 
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
+  const [docsMap, setDocsMap] = useState<Map<string, DocResumen>>(new Map())
   const [proceso, setProceso] = useState<Proceso | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  // Track which propuesta card is expanded
   const [expanded, setExpanded] = useState<string | null>(null)
-  // Track individual retire operations
   const [retirandoId, setRetirandoId] = useState<string | null>(null)
 
   // ------------------------------------------------------------------
@@ -68,6 +71,24 @@ export default function GestionPropuestas() {
       }
       const props: Propuesta[] = await propRes.json()
       setPropuestas(props ?? [])
+
+      // 3. Cargar documentos de cada propuesta en paralelo
+      const docsEntries = await Promise.all(
+        (props ?? []).map(async (p) => {
+          try {
+            const r = await fetch(`/api/documentos?propuesta_id=${p.id}`)
+            if (!r.ok) return [p.id, { obligatorios: 0, completos: 0, faltantes: [] }] as const
+            const docs: Documento[] = await r.json()
+            const oblig = docs.filter((d) => d.es_obligatorio)
+            const ok = oblig.filter((d) => d.estado === 'completo')
+            const faltantes = oblig.filter((d) => d.estado !== 'completo').map((d) => d.nombre)
+            return [p.id, { obligatorios: oblig.length, completos: ok.length, faltantes }] as const
+          } catch {
+            return [p.id, { obligatorios: 0, completos: 0, faltantes: [] }] as const
+          }
+        })
+      )
+      setDocsMap(new Map(docsEntries))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       console.error('[GestionPropuestas] fetchData:', msg)
@@ -332,6 +353,35 @@ export default function GestionPropuestas() {
                             <div className="col-span-2">{propuesta.email}</div>
                           )}
                         </div>
+
+                        {/* Estado documentos obligatorios */}
+                        {(() => {
+                          const dr = docsMap.get(propuesta.id)
+                          if (!dr || dr.obligatorios === 0) return null
+                          const ok = dr.completos === dr.obligatorios
+                          return (
+                            <div className={`mt-2 rounded-md border px-3 py-2 text-xs ${ok ? 'border-green-500/20 bg-green-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
+                              <div className={`flex items-center gap-1.5 font-medium ${ok ? 'text-green-700' : 'text-amber-700'}`}>
+                                {ok
+                                  ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                  : <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                }
+                                <FileText className="h-3 w-3 shrink-0" />
+                                Documentos: {dr.completos}/{dr.obligatorios} obligatorios completos
+                              </div>
+                              {!ok && dr.faltantes.length > 0 && (
+                                <ul className="mt-1 ml-5 space-y-0.5 text-amber-700">
+                                  {dr.faltantes.map((nombre) => (
+                                    <li key={nombre} className="flex items-center gap-1">
+                                      <span className="h-1 w-1 rounded-full bg-amber-500 shrink-0" />
+                                      {nombre}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )
+                        })()}
 
                         {/* Detalle expandible */}
                         {isExpanded && (
