@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -109,6 +110,7 @@ const tiposDocumento: Array<{ value: TipoDocumentoValue; label: string }> = [
 ]
 
 export default function DocumentosPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openUpload, setOpenUpload] = useState(false)
@@ -749,9 +751,7 @@ export default function DocumentosPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedPropuestaId(item.propuesta.id)
-                            setUploadForm((prev) => ({ ...prev, propuesta_id: item.propuesta.id }))
-                            setOpenUpload(true)
+                            router.push(`/admin/propuestas/${item.propuesta.id}/documentos`)
                           }}
                           className="font-semibold text-left text-primary hover:underline"
                         >
@@ -836,9 +836,7 @@ export default function DocumentosPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedPropuestaId(doc.propuesta_id)
-                              setUploadForm((prev) => ({ ...prev, propuesta_id: doc.propuesta_id }))
-                              setOpenUpload(true)
+                              router.push(`/admin/propuestas/${doc.propuesta_id}/documentos`)
                             }}
                             className="text-left text-primary hover:underline"
                           >
