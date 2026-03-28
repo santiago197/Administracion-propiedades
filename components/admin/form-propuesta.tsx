@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { ScanSearch, Paperclip, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -71,7 +72,7 @@ function validateForm(data: FormFields): Partial<Record<keyof FormFields, string
 // ---------------------------------------------------------------------------
 // Sub-componente: sección de revisión de datos del RUT (solo lectura + PEP)
 // ---------------------------------------------------------------------------
-function SeccionRevisionRut({ datos }: { datos: DatosRutExtraidos }) {
+export function SeccionRevisionRut({ datos }: { datos: DatosRutExtraidos }) {
   return (
     <div className="space-y-4 rounded-md border border-border/50 bg-muted/20 p-4">
       <p className="text-sm font-medium text-foreground">Datos extraídos del RUT</p>
@@ -153,6 +154,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const rutInputRef = useRef<HTMLInputElement>(null)
+  const [archivoRut, setArchivoRut] = useState<File | null>(null)
   const { extraerRut, extrayendo, progreso, error: errorRut, datos: datosRut, limpiar } =
     useRutAutocompletado()
 
@@ -166,13 +168,15 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
     }
   }
 
-  const handleRutFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleRutFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null
+    setArchivoRut(file)
+  }
 
-    const datos = await extraerRut(file)
+  const handleExtraerRut = async () => {
+    if (!archivoRut) return
+    const datos = await extraerRut(archivoRut)
     if (!datos) return
-
     setFormData((prev) => ({
       ...prev,
       tipo_persona: datos.tipoPersona,
@@ -188,6 +192,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
 
   const handleDescartarRut = () => {
     limpiar()
+    setArchivoRut(null)
     setFormData(EMPTY_FORM)
     setFieldErrors({})
     if (rutInputRef.current) rutInputRef.current.value = ''
@@ -285,44 +290,78 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
             <p className="text-sm font-medium text-foreground">
               RUT {datosRut ? '' : '(opcional)'}
             </p>
-            {datosRut && (
+            {(archivoRut || datosRut) && (
               <button
                 type="button"
                 onClick={handleDescartarRut}
-                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
               >
-                Descartar RUT
+                <X className="h-3 w-3" />
+                Descartar
               </button>
             )}
           </div>
 
-          {!datosRut && (
-            <>
-              <Input
-                ref={rutInputRef}
-                type="file"
-                accept=".pdf"
-                disabled={extrayendo}
-                onChange={handleRutFileChange}
-                className="border-border/50 text-sm"
-              />
+          {/* Input oculto */}
+          <input
+            ref={rutInputRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={handleRutFileChange}
+          />
+
+          {/* Estado: sin archivo seleccionado */}
+          {!archivoRut && !datosRut && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-dashed border-border/70 text-muted-foreground hover:text-foreground hover:border-border"
+                onClick={() => rutInputRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4 mr-2" />
+                Adjuntar RUT (PDF)
+              </Button>
               <p className="text-xs text-muted-foreground">
-                Sube el RUT en PDF para autocompletar razón social, NIT, representante legal y detectar alertas PEP automáticamente.
+                Extrae razón social, NIT, representante legal y detecta alertas PEP automáticamente.
               </p>
-            </>
+            </div>
           )}
 
+          {/* Estado: archivo seleccionado, pendiente de extracción */}
+          {archivoRut && !datosRut && !extrayendo && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2">
+                <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm text-foreground truncate flex-1">{archivoRut.name}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-primary/40 text-primary hover:bg-primary/5"
+                onClick={handleExtraerRut}
+              >
+                <ScanSearch className="h-4 w-4 mr-2" />
+                Extraer información del RUT
+              </Button>
+            </div>
+          )}
+
+          {/* Estado: extrayendo */}
           {extrayendo && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
               <Spinner className="h-4 w-4 shrink-0" />
               <span>{progreso || 'Procesando RUT...'}</span>
             </div>
           )}
 
+          {/* Estado: error */}
           {errorRut && !extrayendo && (
             <p className="text-xs text-destructive">{errorRut}</p>
           )}
 
+          {/* Estado: extracción exitosa */}
           {datosRut && !extrayendo && (
             <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
               RUT procesado · NIT extraído: <span className="font-medium">{datosRut.nitCompleto}</span>

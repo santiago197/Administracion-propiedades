@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -37,8 +37,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { PropuestaDetalle } from '@/components/admin/propuesta-detalle'
+import { SeccionRevisionRut } from '@/components/admin/form-propuesta'
+import { useRutAutocompletado } from '@/components/admin/RegistroAutomaticoProveedores/hooks/useRutAutocompletado'
 import { LABEL_ESTADO, ESTADOS_TERMINALES } from '@/lib/types/index'
 import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona } from '@/lib/types/index'
 
@@ -99,6 +102,12 @@ export default function PropuestasPage() {
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
   const [formData, setFormData]           = useState(FORM_INIT)
+
+  // RUT
+  const rutInputRef = useRef<HTMLInputElement>(null)
+  const [archivoRut, setArchivoRut] = useState<File | null>(null)
+  const { extraerRut, extrayendo, progreso, error: errorRut, datos: datosRut, limpiar } =
+    useRutAutocompletado()
 
   // Retiro
   const [retiroTarget, setRetiroTarget]   = useState<Propuesta | null>(null)
@@ -167,6 +176,46 @@ export default function PropuestasPage() {
   }, [loadPropuestas, selectedProceso, selectedPropuesta])
 
   // ---------------------------------------------------------------------------
+  // RUT handlers
+  // ---------------------------------------------------------------------------
+
+  function handleRutFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setArchivoRut(e.target.files?.[0] ?? null)
+  }
+
+  async function handleExtraerRut() {
+    if (!archivoRut) return
+    const datos = await extraerRut(archivoRut)
+    if (!datos) return
+    setFormData((prev) => ({
+      ...prev,
+      tipo_persona: datos.tipoPersona,
+      razon_social: datos.razonSocial || prev.razon_social,
+      nit_cedula: datos.nitCompleto || prev.nit_cedula,
+      representante_legal: datos.representanteLegal || prev.representante_legal,
+      email: datos.email || prev.email,
+      telefono: datos.telefono || prev.telefono,
+      direccion: datos.direccion || prev.direccion,
+    }))
+  }
+
+  function handleDescartarRut() {
+    limpiar()
+    setArchivoRut(null)
+    if (rutInputRef.current) rutInputRef.current.value = ''
+  }
+
+  function handleCloseDialog(open: boolean) {
+    setCreateOpen(open)
+    if (!open) {
+      limpiar()
+      setArchivoRut(null)
+      setFormData(FORM_INIT)
+      if (rutInputRef.current) rutInputRef.current.value = ''
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Crear propuesta
   // ---------------------------------------------------------------------------
 
@@ -189,9 +238,31 @@ export default function PropuestasPage() {
         const err = await res.json()
         throw new Error(err.error ?? 'Error al crear propuesta')
       }
+      const propuesta = await res.json() as Propuesta
+
+      if (datosRut) {
+        const nitCoincide = formData.nit_cedula.trim()
+          .replace(/[^0-9]/g, '')
+          .startsWith(datosRut.nit.replace(/[^0-9]/g, ''))
+        await fetch('/api/propuestas/rut-datos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propuesta_id: propuesta.id,
+            nit_extraido: datosRut.nit,
+            dv_extraido: datosRut.dv,
+            razon_social_extraida: datosRut.razonSocial,
+            tipo_contribuyente: datosRut.tipoPersona === 'juridica' ? 'Persona jurídica' : 'Persona natural',
+            representantes_legales: datosRut.representantes,
+            socios: datosRut.socios,
+            hay_alerta_pep: datosRut.hayAlertaPep,
+            nit_coincide: nitCoincide,
+          }),
+        })
+      }
+
       await loadPropuestas(selectedProceso)
-      setFormData(FORM_INIT)
-      setCreateOpen(false)
+      handleCloseDialog(false)
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Error al crear propuesta')
     } finally {
@@ -243,7 +314,7 @@ export default function PropuestasPage() {
             Tabla + detalle: documentos, evaluación, puntaje y trazabilidad.
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={handleCloseDialog}>
           <DialogTrigger asChild>
             <Button disabled={procesos.length === 0}>Agregar propuesta</Button>
           </DialogTrigger>
@@ -254,6 +325,74 @@ export default function PropuestasPage() {
                 <DialogDescription>Registra un nuevo candidato para el proceso de selección.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+
+                {/* ── RUT ── */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>RUT {!datosRut && <span className="text-muted-foreground font-normal">(opcional)</span>}</Label>
+                    {(archivoRut || datosRut) && (
+                      <button
+                        type="button"
+                        onClick={handleDescartarRut}
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                        Descartar
+                      </button>
+                    )}
+                  </div>
+
+                  <input ref={rutInputRef} type="file" accept=".pdf" className="hidden" onChange={handleRutFileChange} />
+
+                  {!archivoRut && !datosRut && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-dashed border-border/70 text-muted-foreground hover:text-foreground hover:border-border"
+                      onClick={() => rutInputRef.current?.click()}
+                    >
+                      <Paperclip className="h-4 w-4 mr-2" />
+                      Adjuntar RUT (PDF)
+                    </Button>
+                  )}
+
+                  {archivoRut && !datosRut && !extrayendo && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2">
+                        <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="text-sm text-foreground truncate flex-1">{archivoRut.name}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-primary/40 text-primary hover:bg-primary/5"
+                        onClick={handleExtraerRut}
+                      >
+                        <ScanSearch className="h-4 w-4 mr-2" />
+                        Extraer información del RUT
+                      </Button>
+                    </div>
+                  )}
+
+                  {extrayendo && (
+                    <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      <Spinner className="h-4 w-4 shrink-0" />
+                      <span>{progreso || 'Procesando RUT...'}</span>
+                    </div>
+                  )}
+
+                  {errorRut && !extrayendo && (
+                    <p className="text-xs text-destructive">{errorRut}</p>
+                  )}
+
+                  {datosRut && !extrayendo && (
+                    <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">
+                      RUT procesado · NIT extraído: <span className="font-medium">{datosRut.nitCompleto}</span>
+                    </div>
+                  )}
+
+                  {datosRut && <SeccionRevisionRut datos={datosRut} />}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Tipo de persona *</Label>
@@ -353,8 +492,8 @@ export default function PropuestasPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</Button>
+                <Button type="button" variant="outline" onClick={() => handleCloseDialog(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving || extrayendo}>{saving ? 'Guardando...' : 'Guardar'}</Button>
               </DialogFooter>
             </form>
           </DialogContent>

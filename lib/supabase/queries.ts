@@ -19,6 +19,8 @@ import type {
   FilaMatrizEvaluacion,
   DetallesCriterio,
   ClasificacionPropuesta,
+  TipoDocumentoConfig,
+  TipoPersona,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
 
@@ -220,6 +222,18 @@ export async function createPropuesta(data: CreatePropuestaInput) {
   return supabase.from('propuestas').insert([data]).select().single()
 }
 
+export async function existePropuestaPorDocumento(proceso_id: string, nit_cedula: string) {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('propuestas')
+    .select('id')
+    .eq('proceso_id', proceso_id)
+    .eq('nit_cedula', nit_cedula)
+    .neq('estado', 'retirada')
+    .maybeSingle()
+  return { existe: !!data, error }
+}
+
 export async function getPropuestas(proceso_id: string) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
@@ -311,15 +325,19 @@ export async function validarDocumentacionObligatoria(propuesta_id: string) {
   const supabase = await createServerClient()
   const { data: documentos, error } = await supabase
     .from('documentos')
-    .select('es_obligatorio, estado')
+    .select('es_obligatorio, estado, nombre')
     .eq('propuesta_id', propuesta_id)
 
   if (error) throw error
 
-  const faltantes =
-    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo').length || 0
+  const incompletos =
+    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo') ?? []
 
-  return { completa: faltantes === 0, faltantes }
+  return {
+    completa: incompletos.length === 0,
+    faltantes: incompletos.length,
+    documentos_faltantes: incompletos.map((d) => d.nombre as string),
+  }
 }
 
 export async function getDocumentoConjunto(id: string, conjunto_id: string) {
@@ -767,4 +785,71 @@ export async function getPropuestaRutDatos(propuesta_id: string) {
     .select('*')
     .eq('propuesta_id', propuesta_id)
     .maybeSingle()
+}
+
+// TIPOS DOCUMENTO — CRUD
+export async function createTipoDocumento(
+  data: Omit<TipoDocumentoConfig, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').insert([data]).select().single()
+}
+
+export async function updateTipoDocumento(
+  id: string,
+  data: Partial<Omit<TipoDocumentoConfig, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').update(data).eq('id', id).select().single()
+}
+
+export async function deleteTipoDocumento(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').delete().eq('id', id)
+}
+
+/**
+ * Retorna los tipos de documento requeridos que no han sido cubiertos por la propuesta.
+ * Considera todos los tipos activos aplicables al tipo_persona de la propuesta.
+ */
+export async function getDocumentosFaltantes(propuesta_id: string): Promise<{
+  faltantes: TipoDocumentoConfig[]
+  cubiertos: TipoDocumentoConfig[]
+  tipoPersona: TipoPersona | null
+}> {
+  const supabase = await createServerClient()
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('tipo_persona')
+    .eq('id', propuesta_id)
+    .single()
+
+  if (propError || !propuesta) return { faltantes: [], cubiertos: [], tipoPersona: null }
+
+  const tipoPersona = propuesta.tipo_persona as TipoPersona
+
+  const { data: tipos } = await supabase
+    .from('tipos_documento')
+    .select('*')
+    .eq('activo', true)
+    .in('tipo_persona', [tipoPersona, 'ambos'])
+    .order('es_obligatorio', { ascending: false })
+
+  if (!tipos || tipos.length === 0) return { faltantes: [], cubiertos: [], tipoPersona }
+
+  const { data: documentos } = await supabase
+    .from('documentos')
+    .select('tipo_documento_id')
+    .eq('propuesta_id', propuesta_id)
+    .not('tipo_documento_id', 'is', null)
+
+  const tiposCubiertos = new Set((documentos ?? []).map((d) => d.tipo_documento_id as string))
+
+  const faltantes = (tipos as TipoDocumentoConfig[]).filter(
+    (t) => t.es_obligatorio && !tiposCubiertos.has(t.id)
+  )
+  const cubiertos = (tipos as TipoDocumentoConfig[]).filter((t) => tiposCubiertos.has(t.id))
+
+  return { faltantes, cubiertos, tipoPersona }
 }

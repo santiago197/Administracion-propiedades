@@ -53,6 +53,7 @@ import type {
   TipoPersona,
   EstadoPropuesta,
   ChecklistLegal,
+  TipoDocumentoConfig,
 } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,7 @@ type EditForm = {
 type DocForm = {
   nombre: string
   tipo: TipoDocumento
+  tipo_documento_id: string
   es_obligatorio: boolean
   fecha_vencimiento: string
   file: File | null
@@ -160,13 +162,16 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // Add doc dialog
   const [docDialogOpen, setDocDialogOpen] = useState(false)
   const [docForm, setDocForm]             = useState<DocForm>({
-    nombre: '', tipo: 'otro', es_obligatorio: false, fecha_vencimiento: '', file: null,
+    nombre: '', tipo: 'otro', tipo_documento_id: '', es_obligatorio: false, fecha_vencimiento: '', file: null,
   })
   const [docSaving, setDocSaving] = useState(false)
   const [docError, setDocError]   = useState<string | null>(null)
 
   // Evaluation panel
   const [evalPanelOpen, setEvalPanelOpen] = useState(false)
+
+  // Tipos de documento configurados
+  const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
 
   // ---------------------------------------------------------------------------
   // Loaders
@@ -175,6 +180,11 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   const loadDocs = useCallback(() => {
     setDocsLoading(true)
     setDocsError(null)
+    // Cargar tipos de documento configurados (para el checklist)
+    fetch('/api/tipos-documento')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: TipoDocumentoConfig[]) => setTiposDocumento(data))
+      .catch(() => { /* no bloquear si falla */ })
     fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar documentos'))))
       .then((data: Documento[]) => setDocs(data))
@@ -266,10 +276,11 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          propuesta_id:     propuesta.id,
-          tipo:             docForm.tipo,
-          nombre:           docForm.nombre.trim(),
-          es_obligatorio:   docForm.es_obligatorio,
+          propuesta_id:      propuesta.id,
+          tipo:              docForm.tipo,
+          tipo_documento_id: docForm.tipo_documento_id || null,
+          nombre:            docForm.nombre.trim(),
+          es_obligatorio:    docForm.es_obligatorio,
           fecha_vencimiento: docForm.fecha_vencimiento || null,
           archivo_url,
           archivo_pathname,
@@ -281,7 +292,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         throw new Error(body.error ?? 'Error al crear documento')
       }
       setDocDialogOpen(false)
-      setDocForm({ nombre: '', tipo: 'otro', es_obligatorio: false, fecha_vencimiento: '', file: null })
+      setDocForm({ nombre: '', tipo: 'otro', tipo_documento_id: '', es_obligatorio: false, fecha_vencimiento: '', file: null })
       loadDocs()
     } catch (e) {
       setDocError(e instanceof Error ? e.message : 'Error desconocido')
@@ -500,8 +511,55 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
   // ----- DOCUMENTOS -----
   function renderDocumentos() {
+    // Checklist por tipos configurados
+    const tiposAplicables = tiposDocumento.filter(
+      (t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona)
+    )
+    const tiposCubiertos = new Set(docs.map((d) => d.tipo_documento_id).filter(Boolean))
+    const tiposRequeridos = tiposAplicables.filter((t) => t.es_obligatorio)
+    const faltanRequeridos = tiposRequeridos.filter((t) => !tiposCubiertos.has(t.id))
+
     return (
       <div className="space-y-4">
+        {/* Checklist de tipos configurados */}
+        {tiposAplicables.length > 0 && (
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Checklist de documentos requeridos
+            </p>
+            <div className="space-y-1">
+              {tiposAplicables.map((t) => {
+                const cubierto = tiposCubiertos.has(t.id)
+                return (
+                  <div key={t.id} className="flex items-center gap-2 text-xs">
+                    {cubierto
+                      ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                      : <Circle className={`h-3.5 w-3.5 shrink-0 ${t.es_obligatorio ? 'text-amber-500' : 'text-muted-foreground/50'}`} />
+                    }
+                    <span className={cubierto ? 'text-foreground' : t.es_obligatorio ? 'text-amber-700' : 'text-muted-foreground'}>
+                      {t.nombre}
+                    </span>
+                    {t.es_obligatorio && !cubierto && (
+                      <span className="ml-auto text-amber-500 font-medium">Pendiente</span>
+                    )}
+                    {!t.es_obligatorio && !cubierto && (
+                      <span className="ml-auto text-muted-foreground">Opcional</span>
+                    )}
+                    {cubierto && (
+                      <span className="ml-auto text-green-600">Cargado</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {faltanRequeridos.length > 0 && (
+              <p className="text-xs text-amber-700 pt-1 border-t border-amber-200">
+                Faltan {faltanRequeridos.length} tipo{faltanRequeridos.length !== 1 ? 's' : ''} de documento obligatorio{faltanRequeridos.length !== 1 ? 's' : ''} por cargar.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Progreso */}
         <div className={`rounded-lg border p-3 space-y-2 ${docsOk ? 'bg-green-500/5 border-green-500/20' : 'bg-amber-500/5 border-amber-500/20'}`}>
           <div className="flex items-center justify-between text-sm">
@@ -644,8 +702,35 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                   placeholder="Ej: Cámara de Comercio 2025"
                 />
               </div>
+              {tiposDocumento.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label>Tipo de documento requerido</Label>
+                  <Select
+                    value={docForm.tipo_documento_id}
+                    onValueChange={(v) => {
+                      const found = tiposDocumento.find((t) => t.id === v)
+                      setDocForm({
+                        ...docForm,
+                        tipo_documento_id: v,
+                        nombre: docForm.nombre || (found?.nombre ?? ''),
+                        es_obligatorio: found?.es_obligatorio ?? docForm.es_obligatorio,
+                      })
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecciona un tipo (opcional)" /></SelectTrigger>
+                    <SelectContent>
+                      {tiposDocumento
+                        .filter((t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona))
+                        .map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Asociar al tipo ayuda al seguimiento del checklist.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
-                <Label>Tipo</Label>
+                <Label>Tipo (legado)</Label>
                 <Select value={docForm.tipo} onValueChange={(v) => setDocForm({ ...docForm, tipo: v as TipoDocumento })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -954,7 +1039,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         {procesoId && conjuntoId && (
           <div className="pt-1">
             <a
-              href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/validacion-legal`}
+              href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/validacion-legal?propuestaId=${propuesta.id}`}
               target="_blank"
               rel="noopener noreferrer"
             >

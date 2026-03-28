@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createPropuesta, getPropuestas, getProcesoConjunto, contarPropuestasTotales } from '@/lib/supabase/queries'
+import { createPropuesta, getPropuestas, getProcesoConjunto, contarPropuestasTotales, existePropuestaPorDocumento } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 
 // ---------------------------------------------------------------------------
@@ -102,6 +102,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'Proceso no pertenece al conjunto del usuario' },
       { status: 403 }
+    )
+  }
+
+  // --- Validación: documento único por proceso ---
+  const { existe, error: dupError } = await existePropuestaPorDocumento(payload.proceso_id, payload.nit_cedula)
+  if (dupError) {
+    console.error('[propuestas] POST duplicado check error:', dupError)
+    return NextResponse.json({ error: 'Error al verificar duplicados' }, { status: 500 })
+  }
+  if (existe) {
+    return NextResponse.json(
+      { error: `Ya existe una propuesta registrada con el número de documento ${payload.nit_cedula} para este proceso.` },
+      { status: 409 }
     )
   }
 

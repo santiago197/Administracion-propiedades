@@ -76,6 +76,8 @@ export const LABEL_ESTADO: Record<EstadoPropuesta, string> = {
 }
 export type EstadoDocumento = 'pendiente' | 'completo' | 'incompleto' | 'vencido'
 export type TipoDocumento = 'camara_comercio' | 'rut' | 'certificacion' | 'poliza' | 'estados_financieros' | 'referencia' | 'otro'
+export type CategoriaDocumento = 'legal' | 'financiero' | 'tecnico' | 'referencia'
+export type TipoPersonaDocumento = 'juridica' | 'natural' | 'ambos'
 export type TipoCriterio = 'numerico' | 'booleano' | 'escala'
 
 export interface Conjunto {
@@ -153,6 +155,7 @@ export interface Propuesta {
 export interface Documento {
   id: string
   propuesta_id: string
+  tipo_documento_id?: string
   tipo: TipoDocumento
   nombre: string
   archivo_url?: string
@@ -163,6 +166,32 @@ export interface Documento {
   observaciones?: string
   created_at: string
   updated_at: string
+}
+
+export interface TipoDocumentoConfig {
+  id: string
+  codigo: string
+  nombre: string
+  categoria: CategoriaDocumento
+  es_obligatorio: boolean
+  tipo_persona: TipoPersonaDocumento
+  dias_vigencia: number
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const LABEL_CATEGORIA_DOCUMENTO: Record<CategoriaDocumento, string> = {
+  legal:      'Legal',
+  financiero: 'Financiero',
+  tecnico:    'Técnico',
+  referencia: 'Referencias',
+}
+
+export const LABEL_TIPO_PERSONA_DOCUMENTO: Record<TipoPersonaDocumento, string> = {
+  ambos:    'General',
+  natural:  'Persona Natural',
+  juridica: 'Persona Jurídica',
 }
 
 export interface Criterio {
@@ -387,6 +416,7 @@ export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [
   { id: 'medidas',         seccion: 'Antecedentes',           label: 'Medidas correctivas',                  descripcion: 'Sin medidas correctivas vigentes.',                   criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'redam',           seccion: 'Antecedentes',           label: 'REDAM',                                descripcion: 'No inscrito en el Registro de Deudores Alimentarios Morosos.', criticidad: 'critico', aplica_a: 'ambos'   },
   { id: 'delitos_sexuales',seccion: 'Antecedentes',           label: 'Inhabilidades por delitos sexuales',   descripcion: 'Sin inhabilidades por delitos sexuales o contra menores.', criticidad: 'critico', aplica_a: 'ambos'     },
+  { id: 'procesos_legales',seccion: 'Antecedentes',           label: 'Sin procesos legales activos',         descripcion: 'No se encuentra incurso en procesos legales (penales, civiles o administrativos) vigentes que comprometan su idoneidad. Soportar con declaración bajo juramento o certificación de secretaría de juzgados.', criticidad: 'critico', aplica_a: 'ambos' },
   // ── SARLAFT y documentación básica ──────────────────────────────────────────
   { id: 'sarlaft',         seccion: 'SARLAFT y documentación',label: 'SARLAFT / Listas restrictivas',        descripcion: 'No aparece en listas Clinton, OFACs ni UIAF.',       criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'rut',             seccion: 'SARLAFT y documentación',label: 'RUT actualizado',                      descripcion: 'RUT vigente y coincidente con datos registrados.',    criticidad: 'critico',       aplica_a: 'ambos'     },

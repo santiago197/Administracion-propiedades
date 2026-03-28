@@ -5,6 +5,7 @@ import {
   getTransicionesDisponibles,
   getPropuesta,
   getPropuestaConjunto,
+  validarDocumentacionObligatoria,
 } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import type { EstadoPropuesta } from '@/lib/types/index'
@@ -140,6 +141,25 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       },
       { status: 400 }
     )
+  }
+
+  // Bloqueo: antes de pasar a validación legal, todos los docs obligatorios deben estar completos
+  if (estado === 'en_validacion') {
+    try {
+      const { completa, documentos_faltantes } = await validarDocumentacionObligatoria(id)
+      if (!completa) {
+        return NextResponse.json(
+          {
+            error: 'DOCUMENTACION_INCOMPLETA',
+            mensaje: 'No se puede iniciar la validación legal hasta que todos los documentos obligatorios estén completos.',
+            documentos_faltantes,
+          },
+          { status: 422 }
+        )
+      }
+    } catch {
+      return NextResponse.json({ error: 'Error al verificar documentación' }, { status: 500 })
+    }
   }
 
   // Recopilar metadata de contexto para trazabilidad

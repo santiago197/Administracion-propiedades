@@ -5,8 +5,13 @@ import { createClient } from '@/lib/supabase/server'
 import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
-// Estados que permiten re-validación directa por la máquina de estados
+// Estados donde se puede cambiar entre habilitada ↔ no_apto_legal
 const ESTADOS_REVALIDABLES: EstadoPropuesta[] = ['habilitada', 'no_apto_legal']
+
+// Estados post-validación donde solo se actualizan los campos legales (sin cambio de estado)
+const ESTADOS_SOLO_ACTUALIZAR: EstadoPropuesta[] = [
+  'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado',
+]
 
 /**
  * Dado un checklist completo, calcula si la propuesta cumple o no.
@@ -79,20 +84,37 @@ export async function POST(request: NextRequest) {
       ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona)
       : (obsManual ?? '')
 
-    const camposLegales = {
-      cumple_requisitos_legales: cumple,
-      observaciones_legales: observaciones || null,
-      checklist_legal: checklist ?? null,
+    // Intentar actualizar con checklist_legal; si falla por columna faltante, reintentar sin él
+    async function actualizarCamposLegales(conChecklist: boolean) {
+      const campos = conChecklist
+        ? { cumple_requisitos_legales: cumple, observaciones_legales: observaciones || null, checklist_legal: checklist ?? null }
+        : { cumple_requisitos_legales: cumple, observaciones_legales: observaciones || null }
+      return supabase.from('propuestas').update(campos).eq('id', propuesta_id)
     }
 
-    // Si la propuesta ya tiene una decisión legal, actualizar directamente
-    if (ESTADOS_REVALIDABLES.includes(propuesta.estado as EstadoPropuesta)) {
-      const { error: updateErr } = await supabase.from('propuestas').update(camposLegales).eq('id', propuesta_id)
-      if (updateErr) throw updateErr
+    const estadoActual = propuesta.estado as EstadoPropuesta
 
-      const estadoActual = propuesta.estado as EstadoPropuesta
+    // Helper compartido para el update con retry
+    async function ejecutarUpdate() {
+      let { error } = await actualizarCamposLegales(true)
+      if (error?.code === 'PGRST204') {
+        const retry = await actualizarCamposLegales(false)
+        error = retry.error
+      }
+      if (error) throw error
+    }
+
+    // Caso 1: Estado en evaluación o posterior — solo actualizar campos, sin cambio de estado
+    if (ESTADOS_SOLO_ACTUALIZAR.includes(estadoActual)) {
+      await ejecutarUpdate()
+      return NextResponse.json({ success: true, estado: estadoActual }, { status: 200 })
+    }
+
+    // Caso 2: Ya tiene decisión legal (habilitada ↔ no_apto_legal) — actualizar y re-transicionar si cambió
+    if (ESTADOS_REVALIDABLES.includes(estadoActual)) {
+      await ejecutarUpdate()
+
       const estadoObjetivo: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
-
       if (estadoActual !== estadoObjetivo) {
         const { error: rpcErr } = await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta_id,
@@ -107,10 +129,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, estado: estadoObjetivo }, { status: 200 })
     }
 
-    // Flujo normal: propuesta en revisión — actualizar campos antes de cambiar estado
-    const { error: updateErr } = await supabase.from('propuestas').update(camposLegales).eq('id', propuesta_id)
-    if (updateErr) throw updateErr
-
+    // Caso 3: Flujo normal (en_validacion, en_revision, etc.) — transición por máquina de estados
+    await ejecutarUpdate()
     const { success, estado } = await procesarValidacionLegal(propuesta_id, cumple, observaciones)
     return NextResponse.json({ success, estado }, { status: 200 })
   } catch (error) {

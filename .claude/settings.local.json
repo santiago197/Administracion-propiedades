@@ -25,7 +25,14 @@
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -path *procesos* -name page.tsx)",
       "Bash(ls:*)",
       "Bash(pnpm lint:*)",
-      "Bash(pnpm exec:*)"
+      "Bash(pnpm exec:*)",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -path ./.next -prune -o -type f -name *.sql -print)",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -path ./.next -prune -o -type f \\\\\\(-name *migration* -o -name *schema* \\\\\\) -print)",
+      "Bash(grep -r \"ChecklistLegal\\\\|ITEMS_VALIDACION_LEGAL\" /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/components /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app --include=*.tsx --include=*.ts)",
+      "Bash(grep -r \"validar-legal\\\\|validacion-legal\\\\|ValidacionLegal\" /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app --include=*.tsx --include=*.ts)",
+      "Bash(grep -n \"validacion-legal\\\\|en_validacion\\\\|no_apto_legal\" /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin/conjuntos/[conjuntoId]/procesos/[procesoId]/page.tsx)",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -type f \\\\\\(-name *propuesta* -o -name *rut* \\\\\\))",
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin -type f -name *.tsx -o -name *.ts)"
     ]
   }
 }

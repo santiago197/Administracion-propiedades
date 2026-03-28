@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { useParams } from 'next/navigation'
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import {
   ArrowLeft,
+  ArrowRight,
   Loader,
   ShieldCheck,
   ShieldAlert,
@@ -24,6 +25,8 @@ import {
   Clock,
   AlertTriangle,
   Circle,
+  FileCheck,
+  Play,
 } from 'lucide-react'
 import type {
   Propuesta,
@@ -36,14 +39,71 @@ import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
-type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente'
+type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente' | 'no_disponible'
+
+// ─── Flujo de estados ─────────────────────────────────────────────────────────
+
+interface PasoFlujo {
+  estado: string
+  nombre: string
+  descripcion: string
+  numero: number
+}
+
+const FLUJO_ESTADOS: PasoFlujo[] = [
+  { estado: 'registro', nombre: 'Registro', descripcion: 'Candidato registrado', numero: 1 },
+  { estado: 'en_revision', nombre: 'Revisión documental', descripcion: 'Admin revisa documentos', numero: 2 },
+  { estado: 'en_validacion', nombre: 'Validación legal', descripcion: 'Revisión SARLAFT, antecedentes', numero: 3 },
+  { estado: 'habilitada', nombre: 'Habilitado', descripcion: 'Listo para evaluación', numero: 4 },
+  { estado: 'en_evaluacion', nombre: 'En evaluación', descripcion: 'Evaluación por consejeros', numero: 5 },
+]
+
+// Mapeo de estado actual → siguiente estado en el flujo principal
+const SIGUIENTE_ESTADO: Record<string, { estado: string; label: string; accion: string }> = {
+  'registro': { estado: 'en_revision', label: 'Iniciar revisión', accion: 'Comenzar revisión documental' },
+  'en_revision': { estado: 'en_validacion', label: 'Pasar a validación', accion: 'Documentación completa, avanzar a validación legal' },
+  'incompleto': { estado: 'en_subsanacion', label: 'Notificar subsanación', accion: 'Notificar al candidato para corregir documentos' },
+  'en_subsanacion': { estado: 'en_validacion', label: 'Subsanación completada', accion: 'El candidato corrigió los documentos' },
+  'en_validacion': { estado: 'habilitada', label: 'Habilitar candidato', accion: 'Aprobar validación legal' },
+  'habilitada': { estado: 'en_evaluacion', label: 'Iniciar evaluación', accion: 'Activar evaluación por consejeros' },
+}
+
+function getPasoActual(estado: string): PasoFlujo | null {
+  // Para estados especiales, mapear al paso equivalente
+  if (estado === 'incompleto' || estado === 'en_subsanacion') {
+    return FLUJO_ESTADOS.find(p => p.estado === 'en_revision') ?? null
+  }
+  return FLUJO_ESTADOS.find(p => p.estado === estado) ?? null
+}
+
+function getPasoDestino(estado: string): number {
+  // El destino es "habilitada" (paso 4) para validación legal
+  return 4
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Estados que ya fueron validados
+const ESTADOS_YA_VALIDADOS = ['habilitada', 'no_apto_legal', 'en_evaluacion']
+// Estados terminales que no pueden validarse
+const ESTADOS_TERMINALES = ['adjudicado', 'descalificada', 'retirada']
 
 function getEstadoLegal(p: Propuesta): EstadoLegal {
   if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') return 'aprobado'
   if (p.estado === 'no_apto_legal') return 'rechazado'
+  // Permitir validar cualquier propuesta que no esté en estado terminal
+  if (ESTADOS_TERMINALES.includes(p.estado)) return 'no_disponible'
+  // Todos los demás (registro, en_revision, incompleto, en_subsanacion, en_validacion) son pendientes
   return 'pendiente'
+}
+
+function getOrdenEstado(p: Propuesta): number {
+  const estado = getEstadoLegal(p)
+  // Orden: pendientes primero, luego aprobados, luego rechazados, luego no disponibles
+  if (estado === 'pendiente') return 0
+  if (estado === 'aprobado') return 1
+  if (estado === 'rechazado') return 2
+  return 3
 }
 
 /** Calcula si el checklist local permite confirmar */
@@ -99,7 +159,7 @@ function inicializarChecklist(
 
 // ─── Sub-componentes ─────────────────────────────────────────────────────────
 
-function BadgeEstado({ estado }: { estado: EstadoLegal }) {
+function BadgeEstado({ estado, estadoPropuesta }: { estado: EstadoLegal; estadoPropuesta?: string }) {
   if (estado === 'aprobado') {
     return (
       <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-700 gap-1.5">
@@ -116,10 +176,31 @@ function BadgeEstado({ estado }: { estado: EstadoLegal }) {
       </Badge>
     )
   }
+  if (estado === 'no_disponible') {
+    const labelEstado: Record<string, string> = {
+      adjudicado: 'Adjudicado',
+      retirada: 'Retirado del proceso',
+      descalificada: 'Descalificado',
+    }
+    return (
+      <Badge variant="outline" className="border-muted-foreground/30 bg-muted/30 text-muted-foreground gap-1.5">
+        <Circle className="h-3.5 w-3.5" />
+        {labelEstado[estadoPropuesta ?? ''] ?? 'No disponible'}
+      </Badge>
+    )
+  }
+  // Estado pendiente - mostrar el estado actual de la propuesta
+  const labelEstadoPendiente: Record<string, string> = {
+    registro: 'Nuevo — pendiente validación',
+    en_revision: 'En revisión — pendiente validación',
+    incompleto: 'Incompleto — pendiente validación',
+    en_subsanacion: 'Subsanando — pendiente validación',
+    en_validacion: 'En validación legal',
+  }
   return (
     <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 gap-1.5">
       <Clock className="h-3.5 w-3.5" />
-      Pendiente de validación
+      {labelEstadoPendiente[estadoPropuesta ?? ''] ?? 'Pendiente de validación'}
     </Badge>
   )
 }
@@ -135,6 +216,106 @@ function BadgeCriticidad({ def }: { def: DefinicionItemChecklist }) {
     return <span className="text-[10px] text-blue-700 border border-blue-400/30 bg-blue-500/5 rounded px-1.5 py-0.5 uppercase tracking-wide">Pre-firma</span>
   }
   return <span className="text-[10px] text-muted-foreground border border-border/30 rounded px-1.5 py-0.5 uppercase tracking-wide">Informativo</span>
+}
+
+/** Indicador visual del flujo de estados y botón de avance */
+function IndicadorFlujo({
+  propuesta,
+  onAvanzarEstado,
+  processing,
+}: {
+  propuesta: Propuesta
+  onAvanzarEstado: (nuevoEstado: string, observacion?: string) => Promise<void>
+  processing: boolean
+}) {
+  const pasoActual = getPasoActual(propuesta.estado)
+  const siguiente = SIGUIENTE_ESTADO[propuesta.estado]
+  const estadoLegal = getEstadoLegal(propuesta)
+  
+  // Si ya está aprobado o rechazado, no mostrar flujo
+  if (estadoLegal === 'aprobado' || estadoLegal === 'rechazado') {
+    return null
+  }
+
+  // Estados especiales que requieren observación
+  const estadosEspeciales: Record<string, string> = {
+    incompleto: 'Documentación incompleta — requiere subsanación',
+    en_subsanacion: 'Candidato está corrigiendo documentos',
+  }
+
+  return (
+    <div className="bg-blue-50/50 border border-blue-200/50 rounded-lg p-4 space-y-3">
+      {/* Barra de progreso del flujo */}
+      <div className="flex items-center gap-1 mb-3">
+        {FLUJO_ESTADOS.map((paso, idx) => {
+          const esActual = pasoActual?.numero === paso.numero
+          const esCompletado = (pasoActual?.numero ?? 0) > paso.numero
+          const esFuturo = (pasoActual?.numero ?? 0) < paso.numero
+          
+          return (
+            <div key={paso.estado} className="flex items-center flex-1">
+              <div className="flex flex-col items-center flex-1">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                    esCompletado
+                      ? 'bg-green-500 text-white'
+                      : esActual
+                      ? 'bg-blue-500 text-white ring-2 ring-blue-300'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {esCompletado ? <CheckCircle2 className="h-3.5 w-3.5" /> : paso.numero}
+                </div>
+                <span className={`text-[10px] mt-1 text-center ${esActual ? 'font-medium text-blue-700' : 'text-muted-foreground'}`}>
+                  {paso.nombre}
+                </span>
+              </div>
+              {idx < FLUJO_ESTADOS.length - 1 && (
+                <div className={`h-0.5 w-full mx-1 ${esCompletado ? 'bg-green-500' : 'bg-muted'}`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Estado actual e información */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-blue-900">
+            Paso actual: {pasoActual?.nombre ?? propuesta.estado}
+          </p>
+          {estadosEspeciales[propuesta.estado] && (
+            <p className="text-xs text-amber-700 mt-0.5 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {estadosEspeciales[propuesta.estado]}
+            </p>
+          )}
+          {siguiente && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Siguiente: {siguiente.accion}
+            </p>
+          )}
+        </div>
+
+        {/* Botón de avance */}
+        {siguiente && (
+          <Button
+            size="sm"
+            className="gap-2 shrink-0"
+            disabled={processing}
+            onClick={() => onAvanzarEstado(siguiente.estado)}
+          >
+            {processing ? (
+              <Loader className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="h-4 w-4" />
+            )}
+            {siguiente.label}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function ItemChecklist({
@@ -227,10 +408,12 @@ function ItemChecklist({
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function ValidacionLegalPage() {
+function ValidacionLegalContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const conjuntoId = params.conjuntoId as string
   const procesoId = params.procesoId as string
+  const propuestaIdParam = searchParams.get('propuestaId')
 
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [proceso, setProceso] = useState<Proceso | null>(null)
@@ -241,6 +424,20 @@ export default function ValidacionLegalPage() {
   const [panelAbierto, setPanelAbierto] = useState<Record<string, boolean>>({})
   const [checklists, setChecklists] = useState<Record<string, ChecklistLegal>>({})
   const [docsRut, setDocsRut] = useState<Record<string, { nombre: string; archivo_url?: string | null }[]>>({})
+  const [panelInicialAbierto, setPanelInicialAbierto] = useState(false)
+
+  // Función para abrir panel (extraída para reutilizar)
+  const abrirPanelPropuesta = useCallback((p: Propuesta, checklists: Record<string, ChecklistLegal>) => {
+    if (!checklists[p.id]) {
+      const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
+      setChecklists((prev) => ({
+        ...prev,
+        [p.id]: inicializarChecklist(p, checklistGuardado),
+      }))
+    }
+    setPanelAbierto((prev) => ({ ...prev, [p.id]: true }))
+    setErrorPorId((prev) => ({ ...prev, [p.id]: '' }))
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -252,17 +449,13 @@ export default function ValidacionLegalPage() {
 
         if (propRes.ok) {
           const data: Propuesta[] = await propRes.json()
-          const filtradas = data.filter(
-            (p) =>
-              p.estado === 'habilitada' ||
-              p.estado === 'no_apto_legal' ||
-              p.estado === 'en_evaluacion' ||
-              p.estado === 'en_validacion'
-          )
-          setPropuestas(filtradas)
+          // Mostrar TODAS las propuestas, ordenadas por estado
+          const ordenadas = [...data].sort((a, b) => getOrdenEstado(a) - getOrdenEstado(b))
+          setPropuestas(ordenadas)
 
+          // Cargar documentos RUT
           const rutEntries = await Promise.all(
-            filtradas.map(async (p) => {
+            ordenadas.map(async (p) => {
               const res = await fetch(`/api/documentos?propuesta_id=${p.id}`)
               if (!res.ok) return [p.id, []] as const
               const docs = await res.json()
@@ -273,6 +466,28 @@ export default function ValidacionLegalPage() {
             })
           )
           setDocsRut(Object.fromEntries(rutEntries))
+
+          // Si viene propuestaId en la URL, abrir automáticamente ese panel
+          if (propuestaIdParam && !panelInicialAbierto) {
+            const propuestaSeleccionada = ordenadas.find((p) => p.id === propuestaIdParam)
+            if (propuestaSeleccionada) {
+              const estadoLegal = getEstadoLegal(propuestaSeleccionada)
+              // Solo abrir si es validable
+              if (estadoLegal !== 'no_disponible') {
+                const checklistGuardado = (propuestaSeleccionada as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
+                setChecklists((prev) => ({
+                  ...prev,
+                  [propuestaSeleccionada.id]: inicializarChecklist(propuestaSeleccionada, checklistGuardado),
+                }))
+                setPanelAbierto((prev) => ({ ...prev, [propuestaSeleccionada.id]: true }))
+                setPanelInicialAbierto(true)
+                // Scroll al elemento
+                setTimeout(() => {
+                  document.getElementById(`propuesta-${propuestaIdParam}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 100)
+              }
+            }
+          }
         }
 
         if (procRes.ok) {
@@ -286,9 +501,12 @@ export default function ValidacionLegalPage() {
       }
     }
     fetchData()
-  }, [procesoId, conjuntoId])
+  }, [procesoId, conjuntoId, propuestaIdParam, panelInicialAbierto])
 
   const abrirPanel = (p: Propuesta) => {
+    // No permitir abrir panel para estados no disponibles
+    if (getEstadoLegal(p) === 'no_disponible') return
+    
     if (!checklists[p.id]) {
       // Intentar leer checklist_legal desde la propuesta (campo JSONB)
       const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
@@ -389,11 +607,56 @@ export default function ValidacionLegalPage() {
     }
   }
 
+  /** Avanzar al siguiente estado del flujo */
+  const avanzarEstado = async (propuesta: Propuesta, nuevoEstado: string, observacion?: string) => {
+    setProcessingId(propuesta.id)
+    setErrorPorId((prev) => ({ ...prev, [propuesta.id]: '' }))
+
+    try {
+      const response = await fetch(`/api/propuestas/${propuesta.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estado: nuevoEstado,
+          observacion: observacion ?? null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Actualizar el estado local
+        setPropuestas((prev) =>
+          prev.map((p) =>
+            p.id === propuesta.id
+              ? { ...p, estado: nuevoEstado }
+              : p
+          )
+        )
+      } else {
+        // Mostrar mensaje de error específico si hay documentos faltantes
+        let mensaje = data.error ?? 'Error al cambiar estado'
+        if (data.documentos_faltantes && Array.isArray(data.documentos_faltantes)) {
+          mensaje = `${data.mensaje ?? mensaje}\nDocumentos faltantes: ${data.documentos_faltantes.join(', ')}`
+        }
+        setErrorPorId((prev) => ({
+          ...prev,
+          [propuesta.id]: mensaje,
+        }))
+      }
+    } catch {
+      setErrorPorId((prev) => ({ ...prev, [propuesta.id]: 'Error de conexión' }))
+    } finally {
+      setProcessingId(null)
+    }
+  }
+
   // ─── Contadores ─────────────────────────────────────────────────────────────
 
   const aprobadas = propuestas.filter((p) => getEstadoLegal(p) === 'aprobado').length
   const rechazadas = propuestas.filter((p) => getEstadoLegal(p) === 'rechazado').length
-  const pendientes = propuestas.filter((p) => getEstadoLegal(p) === 'pendiente').length
+  const pendientesValidacion = propuestas.filter((p) => getEstadoLegal(p) === 'pendiente').length
+  const noDisponibles = propuestas.filter((p) => getEstadoLegal(p) === 'no_disponible').length
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -439,6 +702,10 @@ export default function ValidacionLegalPage() {
         {/* Resumen de estado */}
         {propuestas.length > 0 && (
           <div className="grid grid-cols-3 gap-3 mb-6">
+            <Card className="p-3 text-center border border-amber-500/20 bg-amber-500/5">
+              <p className="text-2xl font-bold text-amber-700">{pendientesValidacion}</p>
+              <p className="text-xs text-amber-700 mt-0.5">Pendientes</p>
+            </Card>
             <Card className="p-3 text-center border border-green-500/20 bg-green-500/5">
               <p className="text-2xl font-bold text-green-700">{aprobadas}</p>
               <p className="text-xs text-green-700 mt-0.5">Habilitados</p>
@@ -446,10 +713,6 @@ export default function ValidacionLegalPage() {
             <Card className="p-3 text-center border border-destructive/20 bg-destructive/5">
               <p className="text-2xl font-bold text-destructive">{rechazadas}</p>
               <p className="text-xs text-destructive mt-0.5">Rechazados</p>
-            </Card>
-            <Card className="p-3 text-center border border-amber-500/20 bg-amber-500/5">
-              <p className="text-2xl font-bold text-amber-700">{pendientes}</p>
-              <p className="text-xs text-amber-700 mt-0.5">Pendientes</p>
             </Card>
           </div>
         )}
@@ -480,6 +743,7 @@ export default function ValidacionLegalPage() {
               const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
                 (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
               )
+              const esValidable = estadoLegal !== 'no_disponible'
 
               // Progreso del checklist abierto
               const revisados = itemsAplicables.filter(
@@ -494,11 +758,14 @@ export default function ValidacionLegalPage() {
               return (
                 <Card
                   key={p.id}
+                  id={`propuesta-${p.id}`}
                   className={`border transition-all ${
                     estadoLegal === 'aprobado'
                       ? 'border-green-500/20 bg-green-500/5'
                       : estadoLegal === 'rechazado'
                       ? 'border-destructive/20 bg-destructive/5'
+                      : estadoLegal === 'no_disponible'
+                      ? 'border-muted-foreground/20 bg-muted/10'
                       : 'border-amber-500/20 bg-amber-500/5'
                   }`}
                 >
@@ -510,13 +777,14 @@ export default function ValidacionLegalPage() {
                           {estadoLegal === 'aprobado' && <ShieldCheck className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />}
                           {estadoLegal === 'rechazado' && <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />}
                           {estadoLegal === 'pendiente' && <ShieldQuestion className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />}
-                          <h3 className="text-lg font-semibold text-foreground">{p.razon_social}</h3>
+                          {estadoLegal === 'no_disponible' && <Circle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />}
+                          <h3 className={`text-lg font-semibold ${estadoLegal === 'no_disponible' ? 'text-muted-foreground' : 'text-foreground'}`}>{p.razon_social}</h3>
                           <span className="text-xs text-muted-foreground border border-border/30 rounded px-2 py-0.5 bg-background">
                             {p.tipo_persona === 'juridica' ? 'Persona Jurídica' : 'Persona Natural'}
                           </span>
                         </div>
 
-                        <BadgeEstado estado={estadoLegal} />
+                        <BadgeEstado estado={estadoLegal} estadoPropuesta={p.estado} />
 
                         <p className="text-sm text-muted-foreground mt-2">
                           {p.tipo_persona === 'juridica' ? 'NIT' : 'CC'}: {p.nit_cedula}
@@ -556,6 +824,15 @@ export default function ValidacionLegalPage() {
                             <p className="text-destructive/90 text-xs">{p.observaciones_legales}</p>
                           </div>
                         )}
+
+                        {/* Mensaje para propuestas en estados terminales */}
+                        {estadoLegal === 'no_disponible' && (
+                          <div className="mt-3 p-3 bg-muted/30 rounded-md border border-muted-foreground/20 text-sm">
+                            <p className="text-xs text-muted-foreground">
+                              Este proponente está en un estado terminal y no puede ser modificado.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Acciones */}
@@ -566,25 +843,46 @@ export default function ValidacionLegalPage() {
                         >
                           <Button variant="outline" size="sm" className="gap-2 bg-background">
                             <ExternalLink className="h-4 w-4" />
-                            Ver docs
+                            {esValidable ? 'Ver docs' : 'Ir a revisión'}
                           </Button>
                         </Link>
 
-                        <Button
-                          variant={estadoLegal === 'pendiente' ? 'default' : 'outline'}
-                          size="sm"
-                          className="gap-2 bg-background"
-                          onClick={() => abrirPanel(p)}
-                        >
-                          {abierto ? <ChevronUp className="h-4 w-4" /> : estadoLegal === 'pendiente' ? <ShieldCheck className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-                          {abierto ? 'Cerrar' : estadoLegal === 'pendiente' ? 'Validar' : 'Editar decisión'}
-                        </Button>
+                        {esValidable && (
+                          <Button
+                            variant={estadoLegal === 'pendiente' ? 'default' : 'outline'}
+                            size="sm"
+                            className="gap-2 bg-background"
+                            onClick={() => abrirPanel(p)}
+                          >
+                            {abierto ? <ChevronUp className="h-4 w-4" /> : estadoLegal === 'pendiente' ? <ShieldCheck className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                            {abierto ? 'Cerrar' : estadoLegal === 'pendiente' ? 'Validar' : 'Editar decisión'}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
 
+                  {/* Indicador de flujo — muestra el paso actual y permite avanzar */}
+                  {esValidable && estadoLegal === 'pendiente' && (
+                    <div className="border-t border-border/40 px-5 sm:px-6 py-4 bg-background/30">
+                      <IndicadorFlujo
+                        propuesta={p}
+                        onAvanzarEstado={async (nuevoEstado, observacion) => {
+                          await avanzarEstado(p, nuevoEstado, observacion)
+                        }}
+                        processing={processingId === p.id}
+                      />
+                      {/* Mostrar error si existe */}
+                      {errorLocal && (
+                        <div className="mt-3 rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive whitespace-pre-wrap">
+                          {errorLocal}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Panel de validación */}
-                  {abierto && (
+                  {abierto && esValidable && (
                     <div className="border-t border-border/40 px-5 sm:px-6 pb-6 pt-5 space-y-5 bg-background/60">
 
                       {/* Barra de progreso del checklist */}
@@ -724,5 +1022,19 @@ function EstadoCalculadoChecklist({
         </div>
       )}
     </div>
+  )
+}
+
+// ─── Export con Suspense ───────────────────────────────────────────────────────
+
+export default function ValidacionLegalPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <ValidacionLegalContent />
+    </Suspense>
   )
 }
