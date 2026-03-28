@@ -48,6 +48,9 @@ const EMPTY_FORM: FormFields = {
 interface FormPropuestaProps {
   procesoId: string
   onSuccess: (propuesta: Propuesta) => void
+  onCancel?: () => void
+  className?: string
+  hideCard?: boolean
 }
 
 function validateForm(data: FormFields): Partial<Record<keyof FormFields, string>> | null {
@@ -74,8 +77,8 @@ function validateForm(data: FormFields): Partial<Record<keyof FormFields, string
 // ---------------------------------------------------------------------------
 export function SeccionRevisionRut({ datos }: { datos: DatosRutExtraidos }) {
   return (
-    <div className="space-y-4 rounded-md border border-border/50 bg-muted/20 p-4">
-      <p className="text-sm font-medium text-foreground">Datos extraídos del RUT</p>
+    <div className="space-y-4 rounded-lg border border-border/50 bg-muted/20 p-3 sm:p-4">
+      <p className="text-sm font-semibold text-foreground">Datos extraídos del RUT</p>
 
       {/* Alerta PEP */}
       {datos.hayAlertaPep && (
@@ -147,7 +150,13 @@ export function SeccionRevisionRut({ datos }: { datos: DatosRutExtraidos }) {
 // ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
-export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
+export function FormPropuesta({
+  procesoId,
+  onSuccess,
+  onCancel,
+  className,
+  hideCard = false,
+}: FormPropuestaProps) {
   const [formData, setFormData] = useState<FormFields>(EMPTY_FORM)
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormFields, string>>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -280,9 +289,8 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
   // ------------------------------------------------------------------
   // Render
   // ------------------------------------------------------------------
-  return (
-    <Card className="border border-border/50 bg-card/50 p-6">
-      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+  const content = (
+    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
         {/* ── Carga de RUT ── */}
         <div className="space-y-3">
@@ -379,26 +387,50 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </p>
         )}
 
-        {/* Tipo de persona */}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="tipo_persona">Tipo de Persona</FieldLabel>
-            <select
-              id="tipo_persona"
-              name="tipo_persona"
-              value={formData.tipo_persona}
-              onChange={handleChange}
-              disabled={isSubmitting}
-              className="flex h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
-            >
-              <option value="juridica" className="bg-card">Persona Jurídica</option>
-              <option value="natural" className="bg-card">Persona Natural</option>
-            </select>
-          </Field>
-        </FieldGroup>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* Tipo de persona */}
+          <FieldGroup className="gap-1.5">
+            <Field>
+              <FieldLabel htmlFor="tipo_persona">Tipo de Persona</FieldLabel>
+              <select
+                id="tipo_persona"
+                name="tipo_persona"
+                value={formData.tipo_persona}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                className="flex h-11 sm:h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground disabled:opacity-50"
+              >
+                <option value="juridica" className="bg-card">Persona Jurídica</option>
+                <option value="natural" className="bg-card">Persona Natural</option>
+              </select>
+            </Field>
+          </FieldGroup>
+
+          {/* NIT / Cédula */}
+          <FieldGroup className="gap-1.5">
+            <Field>
+              <FieldLabel htmlFor="nit_cedula">
+                {formData.tipo_persona === 'juridica' ? 'NIT' : 'Cédula'}
+                <span className="text-destructive ml-1">*</span>
+              </FieldLabel>
+              <Input
+                id="nit_cedula"
+                name="nit_cedula"
+                placeholder="Ej: 900123456-1"
+                value={formData.nit_cedula}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                className={`h-11 sm:h-10 border-border/50 ${fieldErrors.nit_cedula ? 'border-destructive' : ''}`}
+              />
+              {fieldErrors.nit_cedula && (
+                <p className="text-xs text-destructive mt-1">{fieldErrors.nit_cedula}</p>
+              )}
+            </Field>
+          </FieldGroup>
+        </div>
 
         {/* Razón social */}
-        <FieldGroup>
+        <FieldGroup className="gap-1.5">
           <Field>
             <FieldLabel htmlFor="razon_social">
               {formData.tipo_persona === 'juridica' ? 'Razón Social' : 'Nombre Completo'}
@@ -415,7 +447,7 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.razon_social}
               onChange={handleChange}
               disabled={isSubmitting}
-              className={`border-border/50 ${fieldErrors.razon_social ? 'border-destructive' : ''}`}
+              className={`h-11 sm:h-10 border-border/50 ${fieldErrors.razon_social ? 'border-destructive' : ''}`}
             />
             {fieldErrors.razon_social && (
               <p className="text-xs text-destructive mt-1">{fieldErrors.razon_social}</p>
@@ -423,31 +455,9 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </Field>
         </FieldGroup>
 
-        {/* NIT / Cédula */}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="nit_cedula">
-              {formData.tipo_persona === 'juridica' ? 'NIT' : 'Cédula'}
-              <span className="text-destructive ml-1">*</span>
-            </FieldLabel>
-            <Input
-              id="nit_cedula"
-              name="nit_cedula"
-              placeholder="Ej: 900123456-1"
-              value={formData.nit_cedula}
-              onChange={handleChange}
-              disabled={isSubmitting}
-              className={`border-border/50 ${fieldErrors.nit_cedula ? 'border-destructive' : ''}`}
-            />
-            {fieldErrors.nit_cedula && (
-              <p className="text-xs text-destructive mt-1">{fieldErrors.nit_cedula}</p>
-            )}
-          </Field>
-        </FieldGroup>
-
         {/* Representante legal (solo jurídica) */}
         {formData.tipo_persona === 'juridica' && (
-          <FieldGroup>
+          <FieldGroup className="gap-1.5">
             <Field>
               <FieldLabel htmlFor="representante_legal">Representante Legal</FieldLabel>
               <Input
@@ -457,89 +467,91 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
                 value={formData.representante_legal}
                 onChange={handleChange}
                 disabled={isSubmitting}
-                className="border-border/50"
+                className="h-11 sm:h-10 border-border/50"
               />
             </Field>
           </FieldGroup>
         )}
 
         {/* Experiencia y unidades */}
-        <div className="grid grid-cols-2 gap-4">
-          <FieldGroup>
+        <div className="grid grid-cols-2 gap-4 sm:gap-5">
+          <FieldGroup className="gap-1.5">
             <Field>
-              <FieldLabel htmlFor="anios_experiencia">Años de Experiencia</FieldLabel>
+              <FieldLabel htmlFor="anios_experiencia" className="truncate text-[11px] sm:text-xs">Experiencia</FieldLabel>
               <Input
                 id="anios_experiencia"
                 name="anios_experiencia"
                 type="number"
                 min="0"
                 max="99"
-                placeholder="Ej: 5"
+                placeholder="Años"
                 value={formData.anios_experiencia}
                 onChange={handleChange}
                 disabled={isSubmitting}
-                className="border-border/50"
+                className="h-11 sm:h-10 border-border/50 px-2 sm:px-3"
               />
             </Field>
           </FieldGroup>
-          <FieldGroup>
+          <FieldGroup className="gap-1.5">
             <Field>
-              <FieldLabel htmlFor="unidades_administradas">Unidades Administradas</FieldLabel>
+              <FieldLabel htmlFor="unidades_administradas" className="truncate text-[11px] sm:text-xs">U. Admin</FieldLabel>
               <Input
                 id="unidades_administradas"
                 name="unidades_administradas"
                 type="number"
                 min="0"
-                placeholder="Ej: 120"
+                placeholder="Unidades"
                 value={formData.unidades_administradas}
                 onChange={handleChange}
                 disabled={isSubmitting}
-                className="border-border/50"
+                className="h-11 sm:h-10 border-border/50 px-2 sm:px-3"
               />
             </Field>
           </FieldGroup>
         </div>
 
-        {/* Email */}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="email">
-              Email <span className="text-destructive ml-1">*</span>
-            </FieldLabel>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Ej: contacto@administradora.com"
-              value={formData.email}
-              onChange={handleChange}
-              disabled={isSubmitting}
-              className={`border-border/50 ${fieldErrors.email ? 'border-destructive' : ''}`}
-            />
-            {fieldErrors.email && (
-              <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
-            )}
-          </Field>
-        </FieldGroup>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {/* Email */}
+          <FieldGroup className="gap-1.5">
+            <Field>
+              <FieldLabel htmlFor="email">
+                Email <span className="text-destructive ml-1">*</span>
+              </FieldLabel>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="Ej: contacto@administradora.com"
+                value={formData.email}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                className={`h-11 sm:h-10 border-border/50 ${fieldErrors.email ? 'border-destructive' : ''}`}
+              />
+              {fieldErrors.email && (
+                <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
+              )}
+            </Field>
+          </FieldGroup>
 
-        {/* Teléfono */}
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="telefono">Teléfono</FieldLabel>
-            <Input
-              id="telefono"
-              name="telefono"
-              placeholder="Ej: +57 312 345 6789"
-              value={formData.telefono}
-              onChange={handleChange}
-              disabled={isSubmitting}
-              className="border-border/50"
-            />
-          </Field>
-        </FieldGroup>
+          {/* Teléfono */}
+          <FieldGroup className="gap-1.5">
+            <Field>
+              <FieldLabel htmlFor="telefono">Teléfono</FieldLabel>
+              <Input
+                id="telefono"
+                name="telefono"
+                placeholder="Ej: +57 312 345 6789"
+                value={formData.telefono}
+                onChange={handleChange}
+                disabled={isSubmitting}
+                className="h-11 sm:h-10 border-border/50"
+              />
+            </Field>
+          </FieldGroup>
+        </div>
 
         {/* Dirección */}
-        <FieldGroup>
+        <FieldGroup className="gap-1.5">
           <Field>
             <FieldLabel htmlFor="direccion">Dirección</FieldLabel>
             <Input
@@ -549,13 +561,13 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.direccion}
               onChange={handleChange}
               disabled={isSubmitting}
-              className="border-border/50"
+              className="h-11 sm:h-10 border-border/50"
             />
           </Field>
         </FieldGroup>
 
         {/* Valor honorarios */}
-        <FieldGroup>
+        <FieldGroup className="gap-1.5">
           <Field>
             <FieldLabel htmlFor="valor_honorarios">Valor de Honorarios Mensuales</FieldLabel>
             <Input
@@ -568,13 +580,13 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
               value={formData.valor_honorarios}
               onChange={handleChange}
               disabled={isSubmitting}
-              className="border-border/50"
+              className="h-11 sm:h-10 border-border/50"
             />
           </Field>
         </FieldGroup>
 
         {/* Observaciones */}
-        <FieldGroup>
+        <FieldGroup className="gap-1.5">
           <Field>
             <FieldLabel htmlFor="observaciones">Observaciones</FieldLabel>
             <textarea
@@ -596,17 +608,43 @@ export function FormPropuesta({ procesoId, onSuccess }: FormPropuestaProps) {
           </div>
         )}
 
-        <Button type="submit" disabled={isSubmitting || extrayendo} className="w-full">
-          {isSubmitting ? (
-            <>
-              <Spinner className="h-4 w-4 mr-2" />
-              Registrando...
-            </>
-          ) : (
-            'Registrar Propuesta'
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+          {onCancel && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto sm:flex-1 h-11 sm:h-10"
+            >
+              Cancelar
+            </Button>
           )}
-        </Button>
+          <Button
+            type="submit"
+            disabled={isSubmitting || extrayendo}
+            className="w-full sm:flex-1 h-11 sm:h-10"
+          >
+            {isSubmitting ? (
+              <>
+                <Spinner className="h-4 w-4 mr-2" />
+                Registrando...
+              </>
+            ) : (
+              'Registrar Propuesta'
+            )}
+          </Button>
+        </div>
       </form>
+  )
+
+  if (hideCard) {
+    return <div className={className}>{content}</div>
+  }
+
+  return (
+    <Card className={`border border-border/50 bg-card/50 p-4 sm:p-6 ${className ?? ''}`}>
+      {content}
     </Card>
   )
 }
