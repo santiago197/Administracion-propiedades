@@ -26,6 +26,7 @@ import type { Documento, TipoDocumentoConfig, TipoPersonaDocumento } from '@/lib
 
 interface DocumentosStatus {
   propuesta_id: string
+  razon_social?: string
   tipo_persona: TipoPersonaDocumento
   documentos: Documento[]
   tipos_faltantes: TipoDocumentoConfig[]
@@ -40,7 +41,7 @@ interface DocumentosStatus {
 }
 
 export default function DocumentosPropuestaPage() {
-  const { isLoading: authLoading } = useProtectedPage()
+  useProtectedPage()
   const params = useParams()
   const router = useRouter()
   const propuestaId = params.propuestaId as string
@@ -69,10 +70,10 @@ export default function DocumentosPropuestaPage() {
   }
 
   useEffect(() => {
-    if (!authLoading && propuestaId) {
+    if (propuestaId) {
       cargarStatus()
     }
-  }, [authLoading, propuestaId])
+  }, [propuestaId])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0] || !selectedTipo) return
@@ -189,7 +190,7 @@ export default function DocumentosPropuestaPage() {
     }
   }
 
-  if (authLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -217,13 +218,14 @@ export default function DocumentosPropuestaPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button variant="ghost" size="icon" onClick={() => router.push('/admin/documentos')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Documentos de la Propuesta</h1>
+          <p className="text-sm text-muted-foreground">Documentos de propuesta</p>
+          <h1 className="text-2xl font-bold">{status.razon_social || 'Propuesta'}</h1>
           <p className="text-muted-foreground">
-            Gestión de documentos - Tipo: {status.tipo_persona === 'natural' ? 'Persona Natural' : 'Persona Jurídica'}
+            Tipo: {status.tipo_persona === 'natural' ? 'Persona Natural' : 'Persona Jurídica'}
           </p>
         </div>
       </div>

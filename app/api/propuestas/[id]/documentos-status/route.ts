@@ -43,6 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     return NextResponse.json({
       propuesta_id: id,
+      razon_social: propuesta.razon_social,
       tipo_persona: tipoPersona,
       documentos: documentos ?? [],
       tipos_faltantes: faltantes,

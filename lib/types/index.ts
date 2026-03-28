@@ -440,3 +440,53 @@ export interface CambioEstadoResult {
   estado_nuevo: EstadoPropuesta
   razon_social: string
 }
+
+// ---------------------------------------------------------------------------
+// Roles y Permisos configurables
+// ---------------------------------------------------------------------------
+
+export type CategoriaPermiso = 'procesos' | 'consejeros' | 'documentos' | 'evaluacion' | 'votacion' | 'reportes' | 'finanzas' | 'auditoria' | 'configuracion' | 'general'
+
+export interface Permiso {
+  id: string
+  codigo: string
+  nombre: string
+  descripcion?: string
+  categoria: CategoriaPermiso
+  created_at: string
+}
+
+export interface Rol {
+  id: string
+  conjunto_id: string | null
+  nombre: string
+  descripcion?: string
+  es_sistema: boolean
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface RolPermiso {
+  id: string
+  rol_id: string
+  permiso_id: string
+  created_at: string
+}
+
+export interface RolConPermisos extends Rol {
+  permisos: Pick<Permiso, 'id' | 'codigo' | 'nombre' | 'categoria'>[]
+}
+
+export const LABEL_CATEGORIA_PERMISO: Record<CategoriaPermiso, string> = {
+  procesos:      'Procesos',
+  consejeros:    'Consejeros',
+  documentos:    'Documentos',
+  evaluacion:    'Evaluación',
+  votacion:      'Votación',
+  reportes:      'Reportes',
+  finanzas:      'Finanzas',
+  auditoria:     'Auditoría',
+  configuracion: 'Configuración',
+  general:       'General',
+}
