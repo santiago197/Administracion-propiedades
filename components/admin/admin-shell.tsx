@@ -55,6 +55,7 @@ const navItems: NavItem[] = [
     icon: Settings,
     children: [
       { title: 'Roles y accesos', href: '/admin/configuracion/roles', icon: ShieldCheck },
+      { title: 'Usuarios', href: '/admin/configuracion/usuarios', icon: Users },
       { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: CheckSquare },
     ],
   },

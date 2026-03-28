@@ -1011,3 +1011,87 @@ export async function deleteRol(id: string) {
 
   return { success: true }
 }
+
+// USUARIOS — CRUD
+import type { Usuario, UsuarioConConjunto, RolUsuario } from '../types/index'
+
+export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioConConjunto[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (conjunto_id) {
+    query = query.eq('conjunto_id', conjunto_id)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data ?? []) as UsuarioConConjunto[]
+}
+
+export async function getUsuario(id: string): Promise<UsuarioConConjunto | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .eq('id', id)
+    .single()
+
+  if (error) return null
+  return data as UsuarioConConjunto
+}
+
+export async function updateUsuario(
+  id: string,
+  data: {
+    nombre?: string
+    rol?: RolUsuario
+    activo?: boolean
+    conjunto_id?: string | null
+  }
+) {
+  const supabase = await createServerClient()
+
+  const updateData: Partial<Usuario> = {}
+  if (data.nombre !== undefined) updateData.nombre = data.nombre
+  if (data.rol !== undefined) updateData.rol = data.rol
+  if (data.activo !== undefined) updateData.activo = data.activo
+  if (data.conjunto_id !== undefined) updateData.conjunto_id = data.conjunto_id
+
+  const { data: updated, error } = await supabase
+    .from('usuarios')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return updated as Usuario
+}
+
+export async function deleteUsuario(id: string) {
+  const supabase = await createServerClient()
+
+  // No permitir eliminar el propio usuario
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id === id) {
+    throw new Error('No puedes eliminar tu propio usuario')
+  }
+
+  // Eliminar de la tabla usuarios (auth.users se maneja por separado)
+  const { error } = await supabase.from('usuarios').delete().eq('id', id)
+  if (error) throw error
+
+  return { success: true }
+}

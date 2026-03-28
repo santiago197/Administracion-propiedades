@@ -490,3 +490,35 @@ export const LABEL_CATEGORIA_PERMISO: Record<CategoriaPermiso, string> = {
   configuracion: 'Configuración',
   general:       'General',
 }
+
+// ---------------------------------------------------------------------------
+// Usuarios del sistema
+// ---------------------------------------------------------------------------
+
+export type RolUsuario = 'superadmin' | 'admin' | 'evaluador' | 'consejero'
+
+export interface Usuario {
+  id: string
+  email: string
+  nombre?: string
+  rol: RolUsuario
+  conjunto_id: string | null
+  activo: boolean
+  ultimo_acceso?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface UsuarioConConjunto extends Usuario {
+  conjunto?: {
+    id: string
+    nombre: string
+  } | null
+}
+
+export const LABEL_ROL_USUARIO: Record<RolUsuario, string> = {
+  superadmin: 'Super Administrador',
+  admin:      'Administrador',
+  evaluador:  'Evaluador',
+  consejero:  'Consejero',
+}
