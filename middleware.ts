@@ -59,15 +59,28 @@ export async function middleware(request: NextRequest) {
 
   if (user && !isPublicRoute) {
     // Buscar el registro en usuarios por el id de auth (PK esperada en la tabla)
-    const { data: dbUser, error } = await supabase
-      .from('usuarios')
-      .select('id, activo, conjunto_id')
-      .eq('id', user.id)
-      .maybeSingle()
+    let dbUser: { id: string; activo: boolean; conjunto_id: string | null } | null = null
+    let queryError: unknown | null = null
 
-    if (error) {
+    const { data: profileData, error: profileError } = await supabase.rpc('get_current_user_profile')
+
+    if (profileError) {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('id, activo, conjunto_id')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      dbUser = data
+      queryError = error ?? profileError
+    } else {
+      const profile = Array.isArray(profileData) ? profileData[0] : profileData
+      dbUser = profile ?? null
+    }
+
+    if (queryError) {
       console.error('[auth] Error consultando usuarios:', {
-        error,
+        error: queryError,
         userId: user.id,
         path: pathname,
       })
