@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
+import { logAuthEvent } from '@/lib/supabase/audit'
 // import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
@@ -9,6 +10,7 @@ export async function POST(request: NextRequest) {
   // }
 
   const { email, password } = await request.json()
+  const normalizedEmail = String(email ?? '').trim().toLowerCase()
 
   if (!email || !password) {
     return NextResponse.json(
@@ -50,6 +52,12 @@ export async function POST(request: NextRequest) {
     })
 
     if (error) {
+      await logAuthEvent({
+        request,
+        accion: 'LOGIN_FAILED',
+        entidadId: null,
+        datosNuevos: { email: normalizedEmail },
+      })
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
         { status: 401 }
@@ -63,6 +71,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    let conjuntoId: string | null = null
+    const { data: usuarioRow, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('conjunto_id')
+      .eq('id', data.user.id)
+      .maybeSingle()
+    if (usuarioError) {
+      console.warn('[login] No se pudo obtener conjunto_id:', usuarioError.message)
+    }
+    conjuntoId = usuarioRow?.conjunto_id ?? null
+
     // Actualizar ultimo_acceso del usuario
     const { error: updateError } = await supabase
       .from('usuarios')
@@ -73,12 +92,26 @@ export async function POST(request: NextRequest) {
       console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
     }
 
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_SUCCESS',
+      entidadId: data.user.id,
+      conjuntoId,
+      supabase,
+    })
+
     const setCookieHeaders = response.cookies.getAll().map(c => c.name)
     console.log('[login] cookies en respuesta:', setCookieHeaders)
 
     return response
   } catch (error) {
     console.error('[auth] Login error:', error)
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_FAILED',
+      entidadId: null,
+      datosNuevos: { email: normalizedEmail },
+    })
     return NextResponse.json(
       { error: 'Error al procesar login' },
       { status: 500 }

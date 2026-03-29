@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
+import { logAuthEvent } from '@/lib/supabase/audit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +22,29 @@ export async function POST(request: NextRequest) {
         },
       }
     )
+
+    const { data: { user } } = await supabase.auth.getUser()
+    let conjuntoId: string | null = null
+
+    if (user) {
+      const { data: usuario, error: usuarioError } = await supabase
+        .from('usuarios')
+        .select('conjunto_id')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (usuarioError) {
+        console.warn('[logout] No se pudo obtener conjunto_id:', usuarioError.message)
+      }
+      conjuntoId = usuario?.conjunto_id ?? null
+
+      await logAuthEvent({
+        request,
+        accion: 'LOGOUT',
+        entidadId: user.id,
+        conjuntoId,
+        supabase,
+      })
+    }
 
     await supabase.auth.signOut({ scope: 'global' })
 

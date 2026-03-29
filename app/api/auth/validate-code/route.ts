@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { setConsejeroSessionCookie } from '@/lib/consejero-session'
+import { logAuthEvent } from '@/lib/supabase/audit'
 // import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
@@ -29,6 +30,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error || !consejero) {
+      await logAuthEvent({
+        request,
+        accion: 'LOGIN_FAILED',
+        entidadId: null,
+        datosNuevos: { codigo_acceso: String(codigo_acceso).toUpperCase() },
+      })
       return NextResponse.json(
         { error: 'Código de acceso inválido' },
         { status: 401 }
@@ -58,9 +65,23 @@ export async function POST(request: NextRequest) {
       issuedAt: Date.now(),
     })
 
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_SUCCESS',
+      entidadId: consejero.id,
+      consejeroId: consejero.id,
+      conjuntoId: consejero.conjunto_id,
+    })
+
     return response
   } catch (error) {
     console.error('[v0] Validation error:', error)
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_FAILED',
+      entidadId: null,
+      datosNuevos: { codigo_acceso: String(codigo_acceso ?? '').toUpperCase() },
+    })
     return NextResponse.json({ error: 'Error en la validación' }, { status: 500 })
   }
 }
