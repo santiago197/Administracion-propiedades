@@ -56,6 +56,8 @@ const navItems: NavItem[] = [
   { title: 'Evaluación Técnica', href: '/admin/evaluacion', icon: ClipboardList },
   { title: 'Ranking', href: '/admin/ranking', icon: BarChart3 },
   { title: 'Votación Consejo', href: '/admin/votacion', icon: CheckSquare },
+  { title: 'Contratos', href: '/admin/contratos', icon: ScrollText },
+  { title: 'Finanzas', href: '/admin/finanzas', icon: BarChart3 },
   { title: 'Informes / Auditoría', href: '/admin/reportes', icon: ScrollText },
   {
     title: 'Configuración',
@@ -65,6 +67,7 @@ const navItems: NavItem[] = [
       { title: 'Roles y accesos', href: '/admin/configuracion/roles', icon: ShieldCheck },
       { title: 'Usuarios', href: '/admin/configuracion/usuarios', icon: Users },
       { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: CheckSquare },
+      { title: 'Criterios de evaluación', href: '/admin/configuracion/criterios', icon: ClipboardList },
     ],
   },
 ]
