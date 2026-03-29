@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +32,7 @@ import {
   Save,
   X,
   Plus,
+  Upload,
   CheckCircle2,
   ArrowRight,
   ShieldCheck,
@@ -173,6 +174,10 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // Tipos de documento configurados
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
 
+  // Direct upload
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingTipoId, setUploadingTipoId] = useState<string | null>(null)
+
   // ---------------------------------------------------------------------------
   // Loaders
   // ---------------------------------------------------------------------------
@@ -308,12 +313,72 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       body: JSON.stringify({ id: docId, estado }),
     })
     loadDocs()
+    onChanged()
   }
 
   async function handleDocDelete(docId: string) {
     if (!confirm('¿Eliminar este documento?')) return
     await fetch(`/api/documentos?id=${docId}`, { method: 'DELETE' })
     loadDocs()
+    onChanged()
+  }
+
+  async function handleTriggerDirectUpload(tipoId: string) {
+    setUploadingTipoId(tipoId)
+    fileInputRef.current?.click()
+  }
+
+  async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !uploadingTipoId) return
+
+    const tipoConfig = tiposDocumento.find(t => t.id === uploadingTipoId)
+    if (!tipoConfig) return
+
+    setDocsLoading(true)
+    setDocsError(null)
+
+    try {
+      // 1. Upload
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('type', 'documento')
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!uploadRes.ok) {
+        const body = await uploadRes.json()
+        throw new Error(body.error ?? 'Error al subir archivo')
+      }
+      const uploadData = await uploadRes.json()
+
+      // 2. Crear documento
+      const res = await fetch('/api/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propuesta_id:      propuesta.id,
+          tipo:              tipoConfig.categoria === 'legal' ? 'camara_comercio' : 'otro', // Mapeo simple o usar 'otro'
+          tipo_documento_id: tipoConfig.id,
+          nombre:            tipoConfig.nombre,
+          es_obligatorio:    tipoConfig.es_obligatorio,
+          archivo_url:       uploadData.url,
+          archivo_pathname:  uploadData.pathname,
+          estado:           'completo',
+        }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al crear documento')
+      }
+
+      loadDocs()
+      onChanged()
+    } catch (err) {
+      setDocsError(err instanceof Error ? err.message : 'Error al subir documento')
+    } finally {
+      setUploadingTipoId(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -530,24 +595,52 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
             <div className="space-y-1">
               {tiposAplicables.map((t) => {
                 const cubierto = tiposCubiertos.has(t.id)
+                const isUploading = uploadingTipoId === t.id
                 return (
-                  <div key={t.id} className="flex items-center gap-2 text-xs">
+                  <div key={t.id} className="flex items-center gap-2 py-1 border-b border-border/20 last:border-0 min-h-[32px]">
                     {cubierto
                       ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
-                      : <Circle className={`h-3.5 w-3.5 shrink-0 ${t.es_obligatorio ? 'text-amber-500' : 'text-muted-foreground/50'}`} />
+                      : <Circle className={`h-3.5 w-3.5 shrink-0 ${t.es_obligatorio ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
                     }
-                    <span className={cubierto ? 'text-foreground' : t.es_obligatorio ? 'text-amber-700' : 'text-muted-foreground'}>
-                      {t.nombre}
-                    </span>
-                    {t.es_obligatorio && !cubierto && (
-                      <span className="ml-auto text-amber-500 font-medium">Pendiente</span>
-                    )}
-                    {!t.es_obligatorio && !cubierto && (
-                      <span className="ml-auto text-muted-foreground">Opcional</span>
-                    )}
-                    {cubierto && (
-                      <span className="ml-auto text-green-600">Cargado</span>
-                    )}
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <span className={`text-xs font-medium truncate ${cubierto ? 'text-foreground' : t.es_obligatorio ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                        {t.nombre}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] uppercase font-bold tracking-tight ${t.es_obligatorio ? 'text-amber-600/70' : 'text-muted-foreground/60'}`}>
+                          {t.es_obligatorio ? 'Obligatorio' : 'Requerido'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-auto">
+                      {!cubierto && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-[10px] gap-1.5 hover:bg-primary/5 hover:text-primary"
+                          onClick={() => handleTriggerDirectUpload(t.id)}
+                          disabled={isUploading || docsLoading}
+                        >
+                          {isUploading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Upload className="h-3 w-3" />
+                          )}
+                          Adjuntar
+                        </Button>
+                      )}
+
+                      {cubierto ? (
+                        <span className="text-[10px] font-semibold text-green-600 bg-green-500/10 px-1.5 py-0.5 rounded">
+                          Cargado
+                        </span>
+                      ) : (
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${t.es_obligatorio ? 'text-amber-600 bg-amber-500/10' : 'text-muted-foreground bg-muted'}`}>
+                          Pendiente
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -1156,6 +1249,15 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           </TabsContent>
           <TabsContent value="historial">{renderHistorial()}</TabsContent>
         </Tabs>
+
+        {/* Hidden file input for direct upload */}
+        <input
+          type="file"
+          className="hidden"
+          ref={fileInputRef}
+          onChange={onFileChange}
+          accept=".pdf,.doc,.docx"
+        />
       </CardContent>
     </Card>
   )

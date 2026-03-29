@@ -244,7 +244,7 @@ export async function getPropuestaConjunto(id: string, conjunto_id: string) {
 
   const { data: propuesta, error: propError } = await supabase
     .from('propuestas')
-    .select('id, proceso_id, estado, tipo_persona')
+    .select('id, proceso_id, estado, tipo_persona, razon_social')
     .eq('id', id)
     .single()
 
@@ -852,4 +852,246 @@ export async function getDocumentosFaltantes(propuesta_id: string): Promise<{
   const cubiertos = (tipos as TipoDocumentoConfig[]).filter((t) => tiposCubiertos.has(t.id))
 
   return { faltantes, cubiertos, tipoPersona }
+}
+
+// ROLES Y PERMISOS — CRUD
+import type { Rol, Permiso, RolConPermisos } from '../types/index'
+
+export async function getPermisos(): Promise<Permiso[]> {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('permisos')
+    .select('*')
+    .order('categoria', { ascending: true })
+    .order('nombre', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as Permiso[]
+}
+
+export async function getRoles(conjunto_id?: string | null): Promise<RolConPermisos[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase.from('vista_roles_permisos').select('*')
+
+  if (conjunto_id) {
+    query = query.or(`es_sistema.eq.true,conjunto_id.eq.${conjunto_id}`)
+  }
+
+  const { data, error } = await query.order('es_sistema', { ascending: false }).order('nombre', { ascending: true })
+
+  if (error) throw error
+
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.rol_id as string,
+    conjunto_id: row.conjunto_id as string | null,
+    nombre: row.rol_nombre as string,
+    descripcion: row.rol_descripcion as string | undefined,
+    es_sistema: row.es_sistema as boolean,
+    activo: row.activo as boolean,
+    permisos: row.permisos as RolConPermisos['permisos'],
+    created_at: '',
+    updated_at: '',
+  }))
+}
+
+export async function getRol(id: string): Promise<RolConPermisos | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('vista_roles_permisos')
+    .select('*')
+    .eq('rol_id', id)
+    .single()
+
+  if (error || !data) return null
+
+  const row = data as Record<string, unknown>
+  return {
+    id: row.rol_id as string,
+    conjunto_id: row.conjunto_id as string | null,
+    nombre: row.rol_nombre as string,
+    descripcion: row.rol_descripcion as string | undefined,
+    es_sistema: row.es_sistema as boolean,
+    activo: row.activo as boolean,
+    permisos: row.permisos as RolConPermisos['permisos'],
+    created_at: '',
+    updated_at: '',
+  }
+}
+
+export async function createRol(data: {
+  nombre: string
+  descripcion?: string
+  conjunto_id: string
+  permisos_ids?: string[]
+}) {
+  const supabase = await createServerClient()
+
+  const { data: rol, error: rolError } = await supabase
+    .from('roles')
+    .insert([{
+      nombre: data.nombre,
+      descripcion: data.descripcion,
+      conjunto_id: data.conjunto_id,
+      es_sistema: false,
+      activo: true,
+    }])
+    .select()
+    .single()
+
+  if (rolError) throw rolError
+
+  if (data.permisos_ids && data.permisos_ids.length > 0) {
+    const rolesPermisos = data.permisos_ids.map((permiso_id) => ({
+      rol_id: rol.id,
+      permiso_id,
+    }))
+
+    const { error: rpError } = await supabase.from('roles_permisos').insert(rolesPermisos)
+    if (rpError) throw rpError
+  }
+
+  return rol as Rol
+}
+
+export async function updateRol(
+  id: string,
+  data: {
+    nombre?: string
+    descripcion?: string
+    activo?: boolean
+    permisos_ids?: string[]
+  }
+) {
+  const supabase = await createServerClient()
+
+  const updateData: Partial<Rol> = {}
+  if (data.nombre !== undefined) updateData.nombre = data.nombre
+  if (data.descripcion !== undefined) updateData.descripcion = data.descripcion
+  if (data.activo !== undefined) updateData.activo = data.activo
+
+  if (Object.keys(updateData).length > 0) {
+    const { error: rolError } = await supabase.from('roles').update(updateData).eq('id', id)
+    if (rolError) throw rolError
+  }
+
+  if (data.permisos_ids !== undefined) {
+    const { error: deleteError } = await supabase.from('roles_permisos').delete().eq('rol_id', id)
+    if (deleteError) throw deleteError
+
+    if (data.permisos_ids.length > 0) {
+      const rolesPermisos = data.permisos_ids.map((permiso_id) => ({
+        rol_id: id,
+        permiso_id,
+      }))
+      const { error: insertError } = await supabase.from('roles_permisos').insert(rolesPermisos)
+      if (insertError) throw insertError
+    }
+  }
+
+  return getRol(id)
+}
+
+export async function deleteRol(id: string) {
+  const supabase = await createServerClient()
+
+  // Primero verificar que no es de sistema
+  const { data: rol, error: checkError } = await supabase
+    .from('roles')
+    .select('es_sistema')
+    .eq('id', id)
+    .single()
+
+  if (checkError) throw checkError
+  if (rol?.es_sistema) throw new Error('No se puede eliminar un rol de sistema')
+
+  const { error } = await supabase.from('roles').delete().eq('id', id)
+  if (error) throw error
+
+  return { success: true }
+}
+
+// USUARIOS — CRUD
+import type { Usuario, UsuarioConConjunto, RolUsuario } from '../types/index'
+
+export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioConConjunto[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (conjunto_id) {
+    query = query.eq('conjunto_id', conjunto_id)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data ?? []) as UsuarioConConjunto[]
+}
+
+export async function getUsuario(id: string): Promise<UsuarioConConjunto | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .eq('id', id)
+    .single()
+
+  if (error) return null
+  return data as UsuarioConConjunto
+}
+
+export async function updateUsuario(
+  id: string,
+  data: {
+    nombre?: string
+    rol?: RolUsuario
+    activo?: boolean
+    conjunto_id?: string | null
+  }
+) {
+  const supabase = await createServerClient()
+
+  const updateData: Partial<Usuario> = {}
+  if (data.nombre !== undefined) updateData.nombre = data.nombre
+  if (data.rol !== undefined) updateData.rol = data.rol
+  if (data.activo !== undefined) updateData.activo = data.activo
+  if (data.conjunto_id !== undefined) updateData.conjunto_id = data.conjunto_id
+
+  const { data: updated, error } = await supabase
+    .from('usuarios')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return updated as Usuario
+}
+
+export async function deleteUsuario(id: string) {
+  const supabase = await createServerClient()
+
+  // No permitir eliminar el propio usuario
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id === id) {
+    throw new Error('No puedes eliminar tu propio usuario')
+  }
+
+  // Eliminar de la tabla usuarios (auth.users se maneja por separado)
+  const { error } = await supabase.from('usuarios').delete().eq('id', id)
+  if (error) throw error
+
+  return { success: true }
 }

@@ -70,11 +70,23 @@ export async function requireAuth(
 
   try {
     const supabase = await getSupabaseClient()
-    const { data: perfil, error: perfilError } = await supabase
-      .from('usuarios')
-      .select('conjunto_id, activo')
-      .eq('id', user.id)
-      .single()
+    let perfil: { conjunto_id: string | null } | null = null
+    let perfilError: unknown | null = null
+
+    const { data: perfilData, error: perfilRpcError } = await supabase.rpc('get_current_user_profile')
+
+    if (perfilRpcError) {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('conjunto_id, activo')
+        .eq('id', user.id)
+        .single()
+
+      perfil = data
+      perfilError = error ?? perfilRpcError
+    } else {
+      perfil = (Array.isArray(perfilData) ? perfilData[0] : perfilData) ?? null
+    }
 
     if (perfilError) {
       console.error('[v0] Error obteniendo perfil de usuario:', perfilError)
