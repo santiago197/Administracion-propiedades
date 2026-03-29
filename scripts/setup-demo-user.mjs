@@ -37,6 +37,11 @@ const demoUsers = [
     password: 'Consejero@2024!Seguro',
     displayName: 'Consejero Demo',
   },
+  {
+    email: 'demo@demo.com',
+    password: 'demo123',
+    displayName: 'Usuario Demo',
+  },
 ]
 
 async function setupDemoUsers() {
@@ -52,7 +57,8 @@ async function setupDemoUsers() {
         password: user.password,
         email_confirm: true, // Confirmar email automáticamente
         user_metadata: {
-          display_name: user.displayName,
+          nombre: user.displayName,
+          rol: user.email.includes('admin') ? 'admin' : (user.email.includes('consejero') ? 'consejero' : 'evaluador')
         },
       })
 

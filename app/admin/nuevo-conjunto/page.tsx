@@ -6,7 +6,7 @@ import { FormConjunto } from '@/components/admin/form-conjunto'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import type { Conjunto } from '@/lib/types'
+import type { Conjunto } from '@/lib/types/index'
 
 export default function NuevoConjunto() {
   const router = useRouter()

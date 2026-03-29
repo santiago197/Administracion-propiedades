@@ -6,9 +6,18 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
-import type { Consejero, CargoCohnsejero } from '@/lib/types'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { Consejero, CargoCohnsejero } from '@/lib/types/index'
 
-const CARGOS: CargoCohnsejero[] = ['presidente', 'vicepresidente', 'secretario', 'vocal', 'fiscal']
+const CARGOS: Array<{ value: CargoCohnsejero; label: string }> = [
+  { value: 'presidente', label: 'Presidente' },
+  { value: 'vicepresidente', label: 'Vicepresidente' },
+  { value: 'secretario', label: 'Secretario' },
+  { value: 'tesorero', label: 'Tesorero' },
+  { value: 'vocal_principal', label: 'Vocal principal' },
+  { value: 'consejero', label: 'Consejero' },
+  { value: 'consejero_suplente', label: 'Consejero suplente' },
+]
 
 interface FormConsejeroProps {
   conjuntoId: string
@@ -19,7 +28,7 @@ interface FormConsejeroProps {
 export function FormConsejero({ conjuntoId, onSuccess, loading = false }: FormConsejeroProps) {
   const [formData, setFormData] = useState({
     nombre_completo: '',
-    cargo: 'vocal' as CargoCohnsejero,
+    cargo: 'consejero' as CargoCohnsejero,
     apartamento: '',
     torre: '',
     email: '',
@@ -28,11 +37,18 @@ export function FormConsejero({ conjuntoId, onSuccess, loading = false }: FormCo
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({
       ...prev,
       [name]: value,
+    }))
+  }
+
+  const handleCargoChange = (value: CargoCohnsejero) => {
+    setFormData((prev) => ({
+      ...prev,
+      cargo: value,
     }))
   }
 
@@ -58,7 +74,7 @@ export function FormConsejero({ conjuntoId, onSuccess, loading = false }: FormCo
       const data = await response.json()
       setFormData({
         nombre_completo: '',
-        cargo: 'vocal',
+        cargo: 'consejero',
         apartamento: '',
         torre: '',
         email: '',
@@ -97,21 +113,23 @@ export function FormConsejero({ conjuntoId, onSuccess, loading = false }: FormCo
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="cargo">Cargo</FieldLabel>
-              <select
-                id="cargo"
-                name="cargo"
+              <Select
                 value={formData.cargo}
-                onChange={handleChange}
-                required
+                onValueChange={handleCargoChange}
                 disabled={loading || isSubmitting}
-                className="flex h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+                required
               >
-                {CARGOS.map((cargo) => (
-                  <option key={cargo} value={cargo} className="bg-card">
-                    {cargo.charAt(0).toUpperCase() + cargo.slice(1)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecciona un cargo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CARGOS.map((cargo) => (
+                    <SelectItem key={cargo.value} value={cargo.value}>
+                      {cargo.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
           </FieldGroup>
 

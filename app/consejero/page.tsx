@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -15,11 +15,31 @@ export default function ConsejeroLogin() {
   const [codigo, setCodigo] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/consejero/perfil')
+        if (res.ok) {
+          router.replace('/consejero/perfil')
+          return
+        }
+      } catch (err) {
+        console.error('[consejero] check session error:', err)
+      } finally {
+        setCheckingSession(false)
+      }
+    }
+
+    void checkSession()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setCheckingSession(false)
 
     try {
       if (!codigo.trim()) {
@@ -39,11 +59,12 @@ export default function ConsejeroLogin() {
       }
 
       const data = await response.json()
-      // Guardar en sessionStorage para mantener la sesión
-      sessionStorage.setItem('consejero_id', data.consejero_id)
-      sessionStorage.setItem('proceso_id', data.proceso_id)
+      if (data.proceso_id) {
+        router.push(`/consejero/evaluacion/${data.proceso_id}`)
+        return
+      }
 
-      router.push(`/consejero/evaluacion/${data.proceso_id}`)
+      router.push('/consejero/perfil')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
       setError(message)
@@ -51,6 +72,23 @@ export default function ConsejeroLogin() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <Card className="border border-border/50 bg-card/50 p-8">
+            <div className="text-center">
+              <Spinner className="h-6 w-6 mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground">
+                Verificando tu sesión de consejero...
+              </p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (

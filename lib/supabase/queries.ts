@@ -1,15 +1,27 @@
 import { createClient as createServerClient } from './server'
-import { createClient as createBrowserClient } from './client'
+import { randomBytes } from 'node:crypto'
 import type {
   Conjunto,
   Proceso,
   Consejero,
   Propuesta,
-  Criterio,
+  EstadoPropuesta,
+  Documento,
   Evaluacion,
+  Voto,
   ProcesoStats,
   ResultadoFinal,
-} from '../types'
+  HistorialEstado,
+  TransicionEstado,
+  CambioEstadoResult,
+  PropuestaRutDatos,
+  FilaMatrizEvaluacion,
+  DetallesCriterio,
+  ClasificacionPropuesta,
+  TipoDocumentoConfig,
+  TipoPersona,
+} from '../types/index'
+import { CRITERIOS_MATRIZ } from '../types/index'
 
 // CONJUNTOS
 export async function createConjunto(data: Omit<Conjunto, 'id' | 'created_at' | 'updated_at'>) {
@@ -41,6 +53,11 @@ export async function createProceso(data: Omit<Proceso, 'id' | 'created_at' | 'u
 export async function getProcesos(conjunto_id: string) {
   const supabase = await createServerClient()
   return supabase.from('procesos').select('*').eq('conjunto_id', conjunto_id)
+}
+
+export async function getProcesoConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('procesos').select('*').eq('id', id).eq('conjunto_id', conjunto_id).single()
 }
 
 export async function getProceso(id: string) {
@@ -75,11 +92,12 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
+  // "Activas" para estadísticas = candidatos en evaluación activa
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,
@@ -97,14 +115,70 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
 }
 
 // CONSEJEROS
-export async function createConsejero(data: Omit<Consejero, 'id' | 'codigo_acceso' | 'created_at' | 'updated_at'>) {
+export async function createConsejero(data: Omit<Consejero, 'id' | 'created_at' | 'updated_at'>) {
   const supabase = await createServerClient()
   return supabase.from('consejeros').insert([data]).select().single()
 }
 
-export async function getConsejeros(conjunto_id: string) {
+export async function getConsejeros(conjunto_id: string, includeInactive = false) {
   const supabase = await createServerClient()
-  return supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id).eq('activo', true)
+  let query = supabase.from('consejeros').select('*').eq('conjunto_id', conjunto_id)
+  
+  if (!includeInactive) {
+    query = query.eq('activo', true)
+  }
+  
+  return query.order('created_at', { ascending: false })
+}
+
+export async function generateUniqueCodigoAcceso(conjuntoNombre?: string): Promise<string> {
+  const supabase = await createServerClient()
+
+  // Prefijo = primeras 3 letras del nombre del conjunto (solo letras, mayúsculas)
+  const rawPrefix =
+    conjuntoNombre?.replace(/[^A-Za-z]/g, '').toUpperCase() || 'CON'
+  const prefix = rawPrefix.padEnd(3, 'X').slice(0, 3)
+
+  // Año = últimos 2 dígitos
+  const year = new Date().getFullYear().toString().slice(-2)
+
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const codigoLength = 8
+  const randomLength = codigoLength - prefix.length - year.length // Prefijo + Año + Random
+
+  if (randomLength <= 0) {
+    throw new Error('Configuración inválida para la generación de códigos')
+  }
+
+  let codigo: string
+  let attempts = 0
+  const maxAttempts = 10
+
+  do {
+    const bytes = randomBytes(randomLength)
+    const random = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('')
+
+    // Final: Prefijo + Año + Random
+    codigo = `${prefix}${year}${random}`
+
+    const { data, error } = await supabase
+      .from('consejeros')
+      .select('id')
+      .eq('codigo_acceso', codigo)
+      .maybeSingle()
+
+    if (error) throw error
+
+    if (!data) break
+
+    attempts++
+  } while (attempts < maxAttempts)
+
+  if (attempts >= maxAttempts) {
+    throw new Error('No se pudo generar un código único')
+  }
+
+  return codigo
 }
 
 export async function getConsejero(id: string) {
@@ -113,7 +187,7 @@ export async function getConsejero(id: string) {
 }
 
 export async function getConsejeroByCodigo(codigo: string) {
-  const supabase = await createBrowserClient()
+  const supabase = await createServerClient()
   return supabase.from('consejeros').select('*').eq('codigo_acceso', codigo).single()
 }
 
@@ -123,14 +197,71 @@ export async function updateConsejero(id: string, data: Partial<Consejero>) {
 }
 
 // PROPUESTAS
-export async function createPropuesta(data: Omit<Propuesta, 'id' | 'puntaje_evaluacion' | 'votos_recibidos' | 'puntaje_final' | 'created_at' | 'updated_at'>) {
+export type CreatePropuestaInput = Omit<
+  Propuesta,
+  | 'id'
+  | 'estado'
+  | 'clasificacion'
+  | 'cumple_requisitos_legales'
+  | 'observaciones_legales'
+  | 'puntaje_legal'
+  | 'puntaje_tecnico'
+  | 'puntaje_financiero'
+  | 'puntaje_referencias'
+  | 'puntaje_propuesta'
+  | 'puntaje_evaluacion'
+  | 'votos_recibidos'
+  | 'puntaje_final'
+  | 'created_at'
+  | 'updated_at'
+>
+
+export async function createPropuesta(data: CreatePropuestaInput) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').insert([data]).select().single()
+}
+
+export async function existePropuestaPorDocumento(proceso_id: string, nit_cedula: string) {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('propuestas')
+    .select('id')
+    .eq('proceso_id', proceso_id)
+    .eq('nit_cedula', nit_cedula)
+    .neq('estado', 'retirada')
+    .maybeSingle()
+  return { existe: !!data, error }
 }
 
 export async function getPropuestas(proceso_id: string) {
   const supabase = await createServerClient()
   return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
+}
+
+export async function getPropuestaConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('id, proceso_id, estado, tipo_persona, razon_social')
+    .eq('id', id)
+    .single()
+
+  if (propError || !propuesta) {
+    return { data: null, error: propError }
+  }
+
+  const { data: proceso, error: procError } = await supabase
+    .from('procesos')
+    .select('conjunto_id')
+    .eq('id', propuesta.proceso_id)
+    .single()
+
+  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
+    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
+  }
+
+  return { data: propuesta, error: null }
 }
 
 export async function getPropuesta(id: string) {
@@ -143,47 +274,105 @@ export async function updatePropuesta(id: string, data: Partial<Propuesta>) {
   return supabase.from('propuestas').update(data).eq('id', id).select().single()
 }
 
+/**
+ * Cuenta propuestas en estados "activos" (no terminales) de un proceso.
+ * Para la evaluación, solo considera las que están en 'en_evaluacion'.
+ */
 export async function contarPropuestasActivas(proceso_id: string) {
   const supabase = await createServerClient()
   const { count } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
   return count || 0
 }
 
-// CRITERIOS
-export async function createCriterio(data: Omit<Criterio, 'id' | 'created_at' | 'updated_at'>) {
+export async function contarPropuestasTotales(proceso_id: string) {
   const supabase = await createServerClient()
-  return supabase.from('criterios').insert([data]).select().single()
-}
-
-export async function getCriterios(proceso_id: string) {
-  const supabase = await createServerClient()
-  return supabase
-    .from('criterios')
-    .select('*')
+  const { count } = await supabase
+    .from('propuestas')
+    .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('activo', true)
-    .order('orden', { ascending: true })
+  return count || 0
 }
 
-export async function updateCriterio(id: string, data: Partial<Criterio>) {
+// DOCUMENTOS
+export async function createDocumento(
+  data: Omit<Documento, 'id' | 'created_at' | 'updated_at'>
+) {
   const supabase = await createServerClient()
-  return supabase.from('criterios').update(data).eq('id', id).select().single()
+  return supabase.from('documentos').insert([data]).select().single()
 }
 
-export async function validarSumaPesos(proceso_id: string) {
+export async function getDocumentos(propuesta_id: string) {
   const supabase = await createServerClient()
-  const { data: criterios } = await supabase
-    .from('criterios')
-    .select('peso')
-    .eq('proceso_id', proceso_id)
-    .eq('activo', true)
+  return supabase.from('documentos').select('*').eq('propuesta_id', propuesta_id)
+}
 
-  const sumaTotal = criterios?.reduce((sum, c) => sum + (c.peso || 0), 0) || 0
-  return Math.abs(sumaTotal - 100) < 0.01 // Permitir pequeños errores de redondeo
+export async function updateDocumento(id: string, data: Partial<Documento>) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').update(data).eq('id', id).select().single()
+}
+
+export async function deleteDocumento(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('documentos').delete().eq('id', id)
+}
+
+export async function validarDocumentacionObligatoria(propuesta_id: string) {
+  const supabase = await createServerClient()
+  const { data: documentos, error } = await supabase
+    .from('documentos')
+    .select('es_obligatorio, estado, nombre')
+    .eq('propuesta_id', propuesta_id)
+
+  if (error) throw error
+
+  const incompletos =
+    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo') ?? []
+
+  return {
+    completa: incompletos.length === 0,
+    faltantes: incompletos.length,
+    documentos_faltantes: incompletos.map((d) => d.nombre as string),
+  }
+}
+
+export async function getDocumentoConjunto(id: string, conjunto_id: string) {
+  const supabase = await createServerClient()
+
+  const { data: documento, error: docError } = await supabase
+    .from('documentos')
+    .select('id, propuesta_id')
+    .eq('id', id)
+    .single()
+
+  if (docError || !documento) {
+    return { data: null, error: docError }
+  }
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('proceso_id')
+    .eq('id', documento.propuesta_id)
+    .single()
+
+  if (propError || !propuesta) {
+    return { data: null, error: propError }
+  }
+
+  const { data: proceso, error: procError } = await supabase
+    .from('procesos')
+    .select('conjunto_id')
+    .eq('id', propuesta.proceso_id)
+    .single()
+
+  if (procError || !proceso || proceso.conjunto_id !== conjunto_id) {
+    return { data: null, error: procError ?? { message: 'FORBIDDEN' } }
+  }
+
+  return { data: documento, error: null }
 }
 
 // EVALUACIONES
@@ -201,15 +390,138 @@ export async function getEvaluacionesConsejero(consejero_id: string, proceso_id:
     .eq('proceso_id', proceso_id)
 }
 
+/**
+ * Valida si la documentación de una propuesta está completa.
+ * Usa la máquina de estados para la transición — no hace UPDATE directo.
+ * La propuesta debe estar en 'en_revision' para llamar esta función.
+ *
+ * Transiciones posibles:
+ *   en_revision → incompleto  (falta algún documento obligatorio)
+ *   en_revision → en_validacion (documentación completa)
+ */
+export async function validarDocumentacionPropuesta(
+  propuesta_id: string,
+  usuario_id: string | null = null
+) {
+  const supabase = await createServerClient()
+
+  const { data: documentos, error: docsError } = await supabase
+    .from('documentos')
+    .select('es_obligatorio, estado')
+    .eq('propuesta_id', propuesta_id)
+
+  if (docsError) throw docsError
+
+  const hayObligatoriosFaltantes = documentos?.some(
+    (d) => d.es_obligatorio && d.estado !== 'completo'
+  )
+
+  if (hayObligatoriosFaltantes) {
+    const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+      p_propuesta_id: propuesta_id,
+      p_estado_nuevo: 'incompleto',
+      p_usuario_id: usuario_id,
+      p_observacion: 'Documentación obligatoria incompleta detectada en revisión automática',
+      p_metadata: { origen: 'validarDocumentacionPropuesta' },
+    })
+    if (error) throw error
+    return { success: true, estado: 'incompleto' as EstadoPropuesta, detalle: data }
+  }
+
+  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: 'en_validacion',
+    p_usuario_id: usuario_id,
+    p_observacion: null,
+    p_metadata: { origen: 'validarDocumentacionPropuesta' },
+  })
+  if (error) throw error
+  return { success: true, estado: 'en_validacion' as EstadoPropuesta, detalle: data }
+}
+
+/**
+ * Registra el resultado de la validación legal (SARLAFT, antecedentes, etc.).
+ * Usa la máquina de estados — no hace UPDATE directo.
+ * La propuesta debe estar en 'en_validacion'.
+ *
+ * Transiciones posibles:
+ *   en_validacion → habilitada     (cumple todos los requisitos)
+ *   en_validacion → no_apto_legal  (ELIMINATORIO)
+ */
+export async function procesarValidacionLegal(
+  propuesta_id: string,
+  cumple: boolean,
+  observaciones: string,
+  usuario_id: string | null = null
+) {
+  const supabase = await createServerClient()
+
+  const nuevoEstado: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
+
+  // Actualizar campos legales en la misma transacción lógica
+  await supabase
+    .from('propuestas')
+    .update({
+      cumple_requisitos_legales: cumple,
+      observaciones_legales: observaciones,
+    })
+    .eq('id', propuesta_id)
+
+  const { data, error } = await supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: nuevoEstado,
+    p_usuario_id: usuario_id,
+    p_observacion: observaciones,
+    p_metadata: { origen: 'procesarValidacionLegal', cumple_requisitos: cumple },
+  })
+
+  if (error) throw error
+  return { success: true, estado: nuevoEstado, detalle: data }
+}
+
+export async function validarDocumento(id: string, estado: string, observaciones: string, userId: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('documentos')
+    .update({
+      estado,
+      observaciones,
+      validado_por: userId,
+      fecha_validacion: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+
+  // Registrar auditoría
+  await supabase.from('audit_log').insert({
+    accion: estado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
+    entidad: 'documentos',
+    entidad_id: id,
+    datos_nuevos: { estado, observaciones },
+    consejero_id: userId // Usar como responsable genérico si aplica
+  })
+
+  return data
+}
+
+export async function getTiposDocumento() {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').select('*').eq('activo', true)
+}
+
 export async function verificarEvaluacionCompleta(consejero_id: string, proceso_id: string) {
   const supabase = await createServerClient()
 
-  // Obtener total de propuestas activas
+  // Solo las propuestas en 'en_evaluacion' requieren ser evaluadas
   const { count: total_propuestas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .eq('estado', 'en_evaluacion')
 
   // Obtener propuestas evaluadas por consejero
   const { data: propuestas_evaluadas } = await supabase
@@ -249,15 +561,75 @@ export async function verificarYaVoto(proceso_id: string, consejero_id: string) 
   return (data?.length || 0) > 0
 }
 
+// MÁQUINA DE ESTADOS
+
+/**
+ * Ejecuta un cambio de estado validado a través de la función Postgres
+ * `cambiar_estado_propuesta`. Registra historial y audit_log automáticamente.
+ *
+ * Errores con prefijo conocido:
+ *   PROPUESTA_NOT_FOUND  → 404
+ *   INVALID_TRANSITION   → 422
+ *   OBSERVACION_REQUERIDA → 400
+ */
+export async function cambiarEstadoPropuesta(
+  propuesta_id: string,
+  estado_nuevo: EstadoPropuesta,
+  usuario_id: string | null,
+  observacion: string | null,
+  metadata?: Record<string, unknown>
+) {
+  const supabase = await createServerClient()
+  return supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: estado_nuevo,
+    p_usuario_id:   usuario_id,
+    p_observacion:  observacion,
+    p_metadata:     metadata ?? null,
+  }) as Promise<{ data: CambioEstadoResult | null; error: { message: string } | null }>
+}
+
+/**
+ * Devuelve el historial completo de estados de una propuesta,
+ * ordenado cronológicamente (más antiguo primero).
+ */
+export async function getHistorialEstados(propuesta_id: string) {
+  const supabase = await createServerClient()
+      return supabase
+        .from('historial_estados_propuesta')
+        .select('*')
+        .eq('propuesta_id', propuesta_id)
+        .order('created_at', { ascending: true }) as Promise<{
+      data: HistorialEstado[] | null
+      error: { message: string } | null
+    }>
+}
+
+/**
+ * Consulta la tabla transiciones_estado para devolver
+ * las transiciones disponibles desde el estado actual.
+ * Usado por el frontend para renderizar solo opciones válidas.
+ */
+export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta) {
+  const supabase = await createServerClient()
+  return supabase.rpc('get_transiciones_disponibles', {
+    p_estado_actual: estado_actual,
+  }) as Promise<{
+    data: TransicionEstado[] | null
+    error: { message: string } | null
+  }>
+}
+
 // RESULTADOS
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
+  // Incluir en resultados: candidatos que llegaron al ranking (evaluados o clasificados)
   const { data: propuestas } = await supabase
     .from('vista_propuestas_resumen')
     .select('*')
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'activa')
+    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
     .order('puntaje_final', { ascending: false })
 
   if (!propuestas) return []
@@ -284,4 +656,498 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       estado_semaforo,
     }
   })
+}
+
+// MATRIZ DE EVALUACIÓN ADMIN
+
+type EvaluacionAdminRow = {
+  id: string
+  propuesta_id: string
+  puntaje_total: number
+  clasificacion: string
+  created_at: string
+  puntajes_criterio: Array<{ criterio_codigo: string; puntaje: number }>
+}
+
+/**
+ * Retorna la matriz de evaluación del admin por propuesta para un proceso.
+ * Incluye el desglose por los 9 criterios con respuesta (Sí/No), peso y puntaje.
+ */
+export async function getMatrizEvaluacionAdmin(proceso_id: string): Promise<FilaMatrizEvaluacion[]> {
+  const supabase = await createServerClient()
+
+  const { data: propuestas } = await supabase
+    .from('propuestas')
+    .select('id, razon_social, clasificacion')
+    .eq('proceso_id', proceso_id)
+    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .order('razon_social', { ascending: true })
+
+  if (!propuestas || propuestas.length === 0) return []
+
+  const propuestaIds = propuestas.map((p) => p.id)
+
+  const { data: evaluaciones } = await supabase
+    .from('evaluaciones_admin')
+    .select('id, propuesta_id, puntaje_total, clasificacion, created_at, puntajes_criterio(criterio_codigo, puntaje)')
+    .in('propuesta_id', propuestaIds)
+    .order('created_at', { ascending: false })
+
+  // Más reciente por propuesta
+  const evalByPropuesta = new Map<string, EvaluacionAdminRow>()
+  for (const ev of ((evaluaciones ?? []) as EvaluacionAdminRow[])) {
+    if (!evalByPropuesta.has(ev.propuesta_id)) {
+      evalByPropuesta.set(ev.propuesta_id, ev)
+    }
+  }
+
+  return propuestas.map((p) => {
+    const ev = evalByPropuesta.get(p.id)
+
+    const puntajeMap = new Map<string, number>()
+    for (const pc of (ev?.puntajes_criterio ?? [])) {
+      puntajeMap.set(pc.criterio_codigo, pc.puntaje)
+    }
+
+    const criterios: DetallesCriterio[] = CRITERIOS_MATRIZ.map((c) => {
+      const puntaje = puntajeMap.get(c.codigo) ?? 0
+      return {
+        criterio_codigo: c.codigo,
+        nombre: c.nombre,
+        descripcion: c.descripcion,
+        respuesta: puntaje > 0,
+        peso: c.peso,
+        puntaje,
+      }
+    })
+
+    return {
+      propuesta_id: p.id,
+      razon_social: p.razon_social,
+      puntaje_total: ev?.puntaje_total ?? 0,
+      clasificacion: ((ev?.clasificacion ?? p.clasificacion) as ClasificacionPropuesta) ?? null,
+      fecha_evaluacion: ev?.created_at ?? null,
+      criterios: ev ? criterios : [],
+    }
+  })
+}
+
+// PROPUESTA RUT DATOS
+export async function upsertPropuestaRutDatos(
+  data: Omit<PropuestaRutDatos, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('propuesta_rut_datos')
+    .upsert(data, { onConflict: 'propuesta_id' })
+    .select()
+    .single()
+}
+
+export async function getPropuestaRutDatos(propuesta_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('propuesta_rut_datos')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+    .maybeSingle()
+}
+
+// TIPOS DOCUMENTO — CRUD
+export async function createTipoDocumento(
+  data: Omit<TipoDocumentoConfig, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').insert([data]).select().single()
+}
+
+export async function updateTipoDocumento(
+  id: string,
+  data: Partial<Omit<TipoDocumentoConfig, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').update(data).eq('id', id).select().single()
+}
+
+export async function deleteTipoDocumento(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('tipos_documento').delete().eq('id', id)
+}
+
+/**
+ * Retorna los tipos de documento requeridos que no han sido cubiertos por la propuesta.
+ * Considera todos los tipos activos aplicables al tipo_persona de la propuesta.
+ */
+export async function getDocumentosFaltantes(propuesta_id: string): Promise<{
+  faltantes: TipoDocumentoConfig[]
+  cubiertos: TipoDocumentoConfig[]
+  tipoPersona: TipoPersona | null
+}> {
+  const supabase = await createServerClient()
+
+  const { data: propuesta, error: propError } = await supabase
+    .from('propuestas')
+    .select('tipo_persona')
+    .eq('id', propuesta_id)
+    .single()
+
+  if (propError || !propuesta) return { faltantes: [], cubiertos: [], tipoPersona: null }
+
+  const tipoPersona = propuesta.tipo_persona as TipoPersona
+
+  const { data: tipos } = await supabase
+    .from('tipos_documento')
+    .select('*')
+    .eq('activo', true)
+    .in('tipo_persona', [tipoPersona, 'ambos'])
+    .order('es_obligatorio', { ascending: false })
+
+  if (!tipos || tipos.length === 0) return { faltantes: [], cubiertos: [], tipoPersona }
+
+  const { data: documentos } = await supabase
+    .from('documentos')
+    .select('tipo_documento_id')
+    .eq('propuesta_id', propuesta_id)
+    .not('tipo_documento_id', 'is', null)
+
+  const tiposCubiertos = new Set((documentos ?? []).map((d) => d.tipo_documento_id as string))
+
+  const faltantes = (tipos as TipoDocumentoConfig[]).filter(
+    (t) => t.es_obligatorio && !tiposCubiertos.has(t.id)
+  )
+  const cubiertos = (tipos as TipoDocumentoConfig[]).filter((t) => tiposCubiertos.has(t.id))
+
+  return { faltantes, cubiertos, tipoPersona }
+}
+
+// ROLES Y PERMISOS — CRUD
+import type { Rol, Permiso, RolConPermisos } from '../types/index'
+
+export async function getPermisos(): Promise<Permiso[]> {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('permisos')
+    .select('*')
+    .order('categoria', { ascending: true })
+    .order('nombre', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as Permiso[]
+}
+
+export async function getRoles(conjunto_id?: string | null): Promise<RolConPermisos[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase.from('vista_roles_permisos').select('*')
+
+  if (conjunto_id) {
+    query = query.or(`es_sistema.eq.true,conjunto_id.eq.${conjunto_id}`)
+  }
+
+  const { data, error } = await query.order('es_sistema', { ascending: false }).order('nombre', { ascending: true })
+
+  if (error) throw error
+
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.rol_id as string,
+    conjunto_id: row.conjunto_id as string | null,
+    nombre: row.rol_nombre as string,
+    descripcion: row.rol_descripcion as string | undefined,
+    es_sistema: row.es_sistema as boolean,
+    activo: row.activo as boolean,
+    permisos: row.permisos as RolConPermisos['permisos'],
+    created_at: '',
+    updated_at: '',
+  }))
+}
+
+export async function getRol(id: string): Promise<RolConPermisos | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('vista_roles_permisos')
+    .select('*')
+    .eq('rol_id', id)
+    .single()
+
+  if (error || !data) return null
+
+  const row = data as Record<string, unknown>
+  return {
+    id: row.rol_id as string,
+    conjunto_id: row.conjunto_id as string | null,
+    nombre: row.rol_nombre as string,
+    descripcion: row.rol_descripcion as string | undefined,
+    es_sistema: row.es_sistema as boolean,
+    activo: row.activo as boolean,
+    permisos: row.permisos as RolConPermisos['permisos'],
+    created_at: '',
+    updated_at: '',
+  }
+}
+
+export async function createRol(data: {
+  nombre: string
+  descripcion?: string
+  conjunto_id: string
+  permisos_ids?: string[]
+}) {
+  const supabase = await createServerClient()
+
+  const { data: rol, error: rolError } = await supabase
+    .from('roles')
+    .insert([{
+      nombre: data.nombre,
+      descripcion: data.descripcion,
+      conjunto_id: data.conjunto_id,
+      es_sistema: false,
+      activo: true,
+    }])
+    .select()
+    .single()
+
+  if (rolError) throw rolError
+
+  if (data.permisos_ids && data.permisos_ids.length > 0) {
+    const rolesPermisos = data.permisos_ids.map((permiso_id) => ({
+      rol_id: rol.id,
+      permiso_id,
+    }))
+
+    const { error: rpError } = await supabase.from('roles_permisos').insert(rolesPermisos)
+    if (rpError) throw rpError
+  }
+
+  return rol as Rol
+}
+
+export async function updateRol(
+  id: string,
+  data: {
+    nombre?: string
+    descripcion?: string
+    activo?: boolean
+    permisos_ids?: string[]
+  }
+) {
+  const supabase = await createServerClient()
+
+  const updateData: Partial<Rol> = {}
+  if (data.nombre !== undefined) updateData.nombre = data.nombre
+  if (data.descripcion !== undefined) updateData.descripcion = data.descripcion
+  if (data.activo !== undefined) updateData.activo = data.activo
+
+  if (Object.keys(updateData).length > 0) {
+    const { error: rolError } = await supabase.from('roles').update(updateData).eq('id', id)
+    if (rolError) throw rolError
+  }
+
+  if (data.permisos_ids !== undefined) {
+    const { error: deleteError } = await supabase.from('roles_permisos').delete().eq('rol_id', id)
+    if (deleteError) throw deleteError
+
+    if (data.permisos_ids.length > 0) {
+      const rolesPermisos = data.permisos_ids.map((permiso_id) => ({
+        rol_id: id,
+        permiso_id,
+      }))
+      const { error: insertError } = await supabase.from('roles_permisos').insert(rolesPermisos)
+      if (insertError) throw insertError
+    }
+  }
+
+  return getRol(id)
+}
+
+export async function deleteRol(id: string) {
+  const supabase = await createServerClient()
+
+  // Primero verificar que no es de sistema
+  const { data: rol, error: checkError } = await supabase
+    .from('roles')
+    .select('es_sistema')
+    .eq('id', id)
+    .single()
+
+  if (checkError) throw checkError
+  if (rol?.es_sistema) throw new Error('No se puede eliminar un rol de sistema')
+
+  const { error } = await supabase.from('roles').delete().eq('id', id)
+  if (error) throw error
+
+  return { success: true }
+}
+
+// USUARIOS — CRUD
+import type { Usuario, UsuarioConConjunto, RolUsuario } from '../types/index'
+
+export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioConConjunto[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (conjunto_id) {
+    query = query.eq('conjunto_id', conjunto_id)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data ?? []) as UsuarioConConjunto[]
+}
+
+export async function getUsuario(id: string): Promise<UsuarioConConjunto | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select(`
+      *,
+      conjunto:conjuntos(id, nombre)
+    `)
+    .eq('id', id)
+    .single()
+
+  if (error) return null
+  return data as UsuarioConConjunto
+}
+
+export async function updateUsuario(
+  id: string,
+  data: {
+    nombre?: string
+    rol?: RolUsuario
+    activo?: boolean
+    conjunto_id?: string | null
+  }
+) {
+  const supabase = await createServerClient()
+
+  const updateData: Partial<Usuario> = {}
+  if (data.nombre !== undefined) updateData.nombre = data.nombre
+  if (data.rol !== undefined) updateData.rol = data.rol
+  if (data.activo !== undefined) updateData.activo = data.activo
+  if (data.conjunto_id !== undefined) updateData.conjunto_id = data.conjunto_id
+
+  const { data: updated, error } = await supabase
+    .from('usuarios')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return updated as Usuario
+}
+
+export async function deleteUsuario(id: string) {
+  const supabase = await createServerClient()
+
+  // No permitir eliminar el propio usuario
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user?.id === id) {
+    throw new Error('No puedes eliminar tu propio usuario')
+  }
+
+  // Eliminar de la tabla usuarios (auth.users se maneja por separado)
+  const { error } = await supabase.from('usuarios').delete().eq('id', id)
+  if (error) throw error
+
+  return { success: true }
+}
+
+// CRITERIOS DE EVALUACIÓN — CRUD
+import type { CriterioEvaluacion } from '../types/index'
+
+export async function getCriterios(soloActivos = false): Promise<CriterioEvaluacion[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase
+    .from('criterios_evaluacion')
+    .select('*')
+    .order('orden', { ascending: true })
+
+  if (soloActivos) {
+    query = query.eq('activo', true)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data ?? []) as CriterioEvaluacion[]
+}
+
+export async function getCriterio(id: string): Promise<CriterioEvaluacion | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('criterios_evaluacion')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) return null
+  return data as CriterioEvaluacion
+}
+
+export async function createCriterio(
+  data: Omit<CriterioEvaluacion, 'id' | 'created_at' | 'updated_at'>
+): Promise<CriterioEvaluacion> {
+  const supabase = await createServerClient()
+
+  const { data: created, error } = await supabase
+    .from('criterios_evaluacion')
+    .insert([data])
+    .select()
+    .single()
+
+  if (error) throw error
+  return created as CriterioEvaluacion
+}
+
+export async function updateCriterio(
+  id: string,
+  data: Partial<Omit<CriterioEvaluacion, 'id' | 'created_at' | 'updated_at'>>
+): Promise<CriterioEvaluacion> {
+  const supabase = await createServerClient()
+
+  const { data: updated, error } = await supabase
+    .from('criterios_evaluacion')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return updated as CriterioEvaluacion
+}
+
+export async function deleteCriterio(id: string): Promise<{ success: boolean }> {
+  const supabase = await createServerClient()
+
+  const { error } = await supabase
+    .from('criterios_evaluacion')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw error
+  return { success: true }
+}
+
+export async function getPesoTotalCriterios(): Promise<number> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('criterios_evaluacion')
+    .select('peso')
+    .eq('activo', true)
+
+  if (error) throw error
+  return (data ?? []).reduce((sum, c) => sum + (c.peso ?? 0), 0)
 }

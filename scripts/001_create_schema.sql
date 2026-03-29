@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS procesos (
   peso_evaluacion INTEGER DEFAULT 70 CHECK (peso_evaluacion >= 0 AND peso_evaluacion <= 100),
   peso_votacion INTEGER DEFAULT 30 CHECK (peso_votacion >= 0 AND peso_votacion <= 100),
   estado VARCHAR(20) DEFAULT 'configuracion' CHECK (estado IN ('configuracion', 'evaluacion', 'votacion', 'finalizado', 'cancelado')),
+  created_by UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT peso_total_check CHECK (peso_evaluacion + peso_votacion = 100)
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS consejeros (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   conjunto_id UUID NOT NULL REFERENCES conjuntos(id) ON DELETE CASCADE,
   nombre_completo VARCHAR(255) NOT NULL,
-  cargo VARCHAR(50) NOT NULL CHECK (cargo IN ('presidente', 'vicepresidente', 'secretario', 'vocal', 'fiscal')),
+  cargo VARCHAR(50) NOT NULL CHECK (cargo IN ('presidente', 'vicepresidente', 'secretario', 'tesorero', 'vocal_principal', 'consejero', 'consejero_suplente')),
   torre VARCHAR(50),
   apartamento VARCHAR(50) NOT NULL,
   email VARCHAR(255),
@@ -50,6 +51,16 @@ CREATE TABLE IF NOT EXISTS consejeros (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS cargo TEXT;
+
+ALTER TABLE consejeros
+  ADD COLUMN IF NOT EXISTS codigo_acceso TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS consejeros_codigo_acceso_unique
+  ON consejeros (codigo_acceso)
+  WHERE codigo_acceso IS NOT NULL;
 
 -- 4. TABLA: PROPUESTAS DE ADMINISTRADORES
 -- =====================================================
@@ -67,30 +78,62 @@ CREATE TABLE IF NOT EXISTS propuestas (
   direccion TEXT,
   valor_honorarios DECIMAL(15, 2),
   observaciones TEXT,
-  estado VARCHAR(20) DEFAULT 'activa' CHECK (estado IN ('activa', 'descalificada', 'retirada')),
+  estado VARCHAR(20) DEFAULT 'registro' CHECK (estado IN ('registro', 'incompleto', 'no_apto_legal', 'habilitada', 'en_evaluacion', 'no_apto', 'adjudicado', 'descalificada', 'retirada')),
+  clasificacion VARCHAR(20) CHECK (clasificacion IN ('destacado', 'apto', 'condicionado', 'no_apto')),
+  cumple_requisitos_legales BOOLEAN DEFAULT false,
+  observaciones_legales TEXT,
+  puntaje_legal DECIMAL(5, 2) DEFAULT 0,
+  puntaje_tecnico DECIMAL(5, 2) DEFAULT 0,
+  puntaje_financiero DECIMAL(5, 2) DEFAULT 0,
+  puntaje_referencias DECIMAL(5, 2) DEFAULT 0,
+  puntaje_propuesta DECIMAL(5, 2) DEFAULT 0,
   puntaje_evaluacion DECIMAL(5, 2) DEFAULT 0,
   votos_recibidos INTEGER DEFAULT 0,
   puntaje_final DECIMAL(5, 2) DEFAULT 0,
+  created_by UUID REFERENCES usuarios(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 5. TABLA: DOCUMENTOS
+-- 10. TABLA: CATÁLOGO DE TIPOS DE DOCUMENTO
+-- =====================================================
+CREATE TABLE IF NOT EXISTS tipos_documento (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  codigo VARCHAR(50) UNIQUE NOT NULL,
+  nombre VARCHAR(255) NOT NULL,
+  categoria VARCHAR(20) NOT NULL CHECK (categoria IN ('legal', 'financiero', 'tecnico', 'referencia')),
+  es_obligatorio BOOLEAN DEFAULT true,
+  tipo_persona VARCHAR(20) NOT NULL DEFAULT 'ambos' CHECK (tipo_persona IN ('juridica', 'natural', 'ambos')),
+  dias_vigencia INTEGER DEFAULT 365,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. TABLA: DOCUMENTOS (Actualizada para gestión y validación)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS documentos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   propuesta_id UUID NOT NULL REFERENCES propuestas(id) ON DELETE CASCADE,
-  tipo VARCHAR(50) NOT NULL CHECK (tipo IN ('camara_comercio', 'rut', 'certificacion', 'poliza', 'estados_financieros', 'referencia', 'otro')),
+  tipo_documento_id UUID REFERENCES tipos_documento(id) ON DELETE SET NULL,
+  tipo VARCHAR(50) NOT NULL, -- Mantener por compatibilidad
   nombre VARCHAR(255) NOT NULL,
   archivo_url TEXT,
   archivo_pathname TEXT,
   es_obligatorio BOOLEAN DEFAULT false,
-  estado VARCHAR(20) DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'completo', 'incompleto', 'vencido')),
+  estado VARCHAR(20) DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'CARGADO', 'EN_REVISION', 'APROBADO', 'RECHAZADO', 'VENCIDO')),
   fecha_vencimiento DATE,
   observaciones TEXT,
+  validado_por UUID REFERENCES usuarios(id) ON DELETE SET NULL,
+  fecha_validacion TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Triggers para tipos_documento
+CREATE TRIGGER update_tipos_documento_updated_at BEFORE UPDATE ON tipos_documento
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 6. TABLA: CRITERIOS DE EVALUACIÓN
 -- =====================================================
@@ -110,6 +153,31 @@ CREATE TABLE IF NOT EXISTS criterios (
 );
 
 -- 7. TABLA: EVALUACIONES
+-- 7. TABLA: EVALUACIONES (Actualizada para gestión administrativa)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS evaluaciones_admin (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  propuesta_id UUID NOT NULL REFERENCES propuestas(id) ON DELETE CASCADE,
+  evaluador_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  puntaje_total DECIMAL(5, 2) NOT NULL DEFAULT 0,
+  clasificacion VARCHAR(20) CHECK (clasificacion IN ('destacado', 'apto', 'condicionado', 'no_apto')),
+  observaciones TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 11. TABLA: PUNTAJES DETALLADOS (1 por criterio)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS puntajes_criterio (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluacion_id UUID NOT NULL REFERENCES evaluaciones_admin(id) ON DELETE CASCADE,
+  criterio_codigo VARCHAR(50) NOT NULL,
+  puntaje DECIMAL(5, 2) NOT NULL,
+  valor_original TEXT, -- Para guardar qué opción seleccionó
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. TABLA: EVALUACIONES (Original para Consejeros)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS evaluaciones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -169,6 +237,26 @@ CREATE INDEX IF NOT EXISTS idx_votos_proceso ON votos(proceso_id);
 CREATE INDEX IF NOT EXISTS idx_audit_conjunto ON audit_log(conjunto_id);
 CREATE INDEX IF NOT EXISTS idx_audit_proceso ON audit_log(proceso_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- =====================================================
+-- SEED DATA: Tipos de Documento
+-- =====================================================
+INSERT INTO tipos_documento (codigo, nombre, categoria, es_obligatorio, tipo_persona) VALUES
+-- Jurídica
+('CAMARA_COMERCIO', 'Cámara de Comercio (vigente)', 'legal', true, 'juridica'),
+('RUT_JUR', 'RUT Empresa', 'legal', true, 'juridica'),
+('POLIZA_RC', 'Póliza Responsabilidad Civil', 'legal', true, 'juridica'),
+('POLIZA_CUMPLIMIENTO', 'Póliza de Cumplimiento', 'legal', true, 'juridica'),
+('ESTADOS_FINANCIEROS', 'Estados Financieros (último año)', 'financiero', true, 'juridica'),
+-- Natural
+('CEDULA', 'Cédula de Ciudadanía', 'legal', true, 'natural'),
+('RUT_NAT', 'RUT Persona Natural', 'legal', true, 'natural'),
+('HOJA_VIDA', 'Hoja de Vida Detallada', 'tecnico', true, 'natural'),
+('ANTECEDENTES', 'Certificado de Antecedentes (Procuraduría/Policía)', 'legal', true, 'natural'),
+-- Ambos
+('REFERENCIAS', 'Referencias Comerciales/Personales', 'referencia', true, 'ambos'),
+('PROPUESTA_TEC', 'Propuesta Técnica y Económica', 'tecnico', true, 'ambos')
+ON CONFLICT (codigo) DO NOTHING;
 
 -- =====================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -264,7 +352,25 @@ CREATE TRIGGER set_consejero_codigo_trigger BEFORE INSERT ON consejeros
   FOR EACH ROW EXECUTE FUNCTION set_consejero_codigo();
 
 -- =====================================================
+-- FUNCIÓN: Verificar vencimiento automático de documentos
+-- =====================================================
+CREATE OR REPLACE FUNCTION verificar_vencimiento_documentos()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.fecha_vencimiento IS NOT NULL AND NEW.fecha_vencimiento < CURRENT_DATE THEN
+    NEW.estado = 'VENCIDO';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_verificar_vencimiento
+  BEFORE INSERT OR UPDATE ON documentos
+  FOR EACH ROW EXECUTE FUNCTION verificar_vencimiento_documentos();
+
+-- =====================================================
 -- FUNCIÓN: Calcular puntaje ponderado de propuesta
+-- Escala 0-100 con criterios específicos del flujo
 -- =====================================================
 CREATE OR REPLACE FUNCTION calcular_puntaje_propuesta(p_propuesta_id UUID)
 RETURNS DECIMAL(5, 2) AS $$
@@ -285,9 +391,10 @@ BEGIN
     RETURN 0;
   END IF;
   
-  -- Calcular puntaje ponderado promedio
+  -- Calcular puntaje ponderado promedio (escala 0-100)
+  -- Asumiendo que e.valor está en escala 1-5, convertimos a base 100
   SELECT COALESCE(
-    SUM(e.valor * c.peso / v_total_peso) / NULLIF(COUNT(DISTINCT e.consejero_id), 0),
+    SUM((e.valor / c.valor_maximo * 100) * c.peso / v_total_peso) / NULLIF(COUNT(DISTINCT e.consejero_id), 0),
     0
   ) INTO v_puntaje
   FROM evaluaciones e
@@ -295,6 +402,20 @@ BEGIN
   WHERE e.propuesta_id = p_propuesta_id AND c.activo = true;
   
   RETURN ROUND(v_puntaje, 2);
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCIÓN: Clasificar automáticamente al candidato
+-- =====================================================
+CREATE OR REPLACE FUNCTION clasificar_candidato(p_puntaje DECIMAL)
+RETURNS VARCHAR AS $$
+BEGIN
+  IF p_puntaje >= 85 THEN RETURN 'destacado';
+  ELSIF p_puntaje >= 70 THEN RETURN 'apto';
+  ELSIF p_puntaje >= 55 THEN RETURN 'condicionado';
+  ELSE RETURN 'no_apto';
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -307,17 +428,29 @@ DECLARE
   v_peso_evaluacion INTEGER;
   v_peso_votacion INTEGER;
   v_max_votos INTEGER;
-  v_max_puntaje DECIMAL(5, 2);
+  v_total_consejeros INTEGER;
 BEGIN
   -- Obtener pesos del proceso
   SELECT peso_evaluacion, peso_votacion 
   INTO v_peso_evaluacion, v_peso_votacion
   FROM procesos WHERE id = p_proceso_id;
+
+  -- Obtener total de consejeros activos del conjunto
+  SELECT COUNT(*) INTO v_total_consejeros
+  FROM consejeros co
+  JOIN procesos pr ON pr.conjunto_id = co.conjunto_id
+  WHERE pr.id = p_proceso_id AND co.activo = true;
   
-  -- Actualizar puntajes de evaluación
+  -- Actualizar puntajes de evaluación y clasificación inicial
   UPDATE propuestas 
-  SET puntaje_evaluacion = calcular_puntaje_propuesta(id)
-  WHERE proceso_id = p_proceso_id AND estado = 'activa';
+  SET
+    puntaje_evaluacion = calcular_puntaje_propuesta(id),
+    estado = CASE
+      WHEN calcular_puntaje_propuesta(id) < 55 THEN 'no_apto'
+      ELSE 'en_evaluacion'
+    END,
+    clasificacion = clasificar_candidato(calcular_puntaje_propuesta(id))
+  WHERE proceso_id = p_proceso_id AND estado IN ('habilitada', 'en_evaluacion');
   
   -- Contar votos por propuesta
   UPDATE propuestas p
@@ -326,21 +459,91 @@ BEGIN
   )
   WHERE proceso_id = p_proceso_id;
   
-  -- Obtener máximos para normalización
-  SELECT MAX(votos_recibidos), MAX(puntaje_evaluacion)
-  INTO v_max_votos, v_max_puntaje
-  FROM propuestas WHERE proceso_id = p_proceso_id AND estado = 'activa';
-  
-  -- Calcular puntaje final normalizado
+  -- Calcular puntaje final normalizado (escala 0-100)
+  -- El puntaje de evaluación ya está en escala 100.
+  -- Los votos se normalizan según el total de consejeros.
   UPDATE propuestas
   SET puntaje_final = ROUND(
-    (CASE WHEN v_max_puntaje > 0 THEN (puntaje_evaluacion / v_max_puntaje) * 5 ELSE 0 END) * v_peso_evaluacion / 100 +
-    (CASE WHEN v_max_votos > 0 THEN (votos_recibidos::DECIMAL / v_max_votos) * 5 ELSE 0 END) * v_peso_votacion / 100,
+    (puntaje_evaluacion * v_peso_evaluacion / 100) +
+    (CASE WHEN v_total_consejeros > 0 THEN (votos_recibidos::DECIMAL / v_total_consejeros * 100) ELSE 0 END) * v_peso_votacion / 100,
     2
   )
-  WHERE proceso_id = p_proceso_id AND estado = 'activa';
+  WHERE proceso_id = p_proceso_id AND estado != 'no_apto_legal' AND estado != 'retirada' AND estado != 'descalificada';
 END;
 $$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- FUNCIÓN: Verificar completitud de documentos de propuesta
+-- =====================================================
+CREATE OR REPLACE FUNCTION verificar_documentos_propuesta(p_propuesta_id UUID)
+RETURNS VARCHAR AS $$
+DECLARE
+  v_tipo_persona VARCHAR;
+  v_faltantes INTEGER;
+BEGIN
+  -- Obtener tipo de persona de la propuesta
+  SELECT tipo_persona INTO v_tipo_persona FROM propuestas WHERE id = p_propuesta_id;
+
+  -- Contar tipos de documento obligatorios para ese tipo de persona que NO están aprobados
+  -- (Consideramos que una propuesta está 'completa' solo si todos los obligatorios están APROBADOS o al menos CARGADOS según lógica de negocio)
+  -- Aquí definimos que deben estar APROBADOS para avanzar de fase.
+
+  SELECT COUNT(*) INTO v_faltantes
+  FROM tipos_documento td
+  WHERE td.activo = true
+    AND td.es_obligatorio = true
+    AND (td.tipo_persona = v_tipo_persona OR td.tipo_persona = 'ambos')
+    AND NOT EXISTS (
+      SELECT 1 FROM documentos d
+      WHERE d.propuesta_id = p_propuesta_id
+        AND d.tipo_documento_id = td.id
+        AND d.estado IN ('APROBADO', 'CARGADO', 'EN_REVISION')
+    );
+
+  IF v_faltantes > 0 THEN
+    RETURN 'INCOMPLETA';
+  ELSE
+    RETURN 'COMPLETA';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para actualizar estado de propuesta basado en documentos
+CREATE OR REPLACE FUNCTION actualizar_estado_por_documentos()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_completitud VARCHAR;
+  v_todos_aprobados BOOLEAN;
+BEGIN
+  v_completitud := verificar_documentos_propuesta(NEW.propuesta_id);
+
+  -- Verificar si TODOS los documentos obligatorios están ya APROBADOS
+  SELECT NOT EXISTS (
+    SELECT 1 FROM tipos_documento td
+    WHERE td.activo = true
+      AND td.es_obligatorio = true
+      AND (td.tipo_persona = (SELECT tipo_persona FROM propuestas WHERE id = NEW.propuesta_id) OR td.tipo_persona = 'ambos')
+      AND NOT EXISTS (
+        SELECT 1 FROM documentos d
+        WHERE d.propuesta_id = NEW.propuesta_id
+          AND d.tipo_documento_id = td.id
+          AND d.estado = 'APROBADO'
+      )
+  ) INTO v_todos_aprobados;
+
+  IF v_completitud = 'INCOMPLETA' THEN
+    UPDATE propuestas SET estado = 'incompleto' WHERE id = NEW.propuesta_id AND estado IN ('registro', 'habilitada', 'incompleto');
+  ELSIF v_todos_aprobados THEN
+    UPDATE propuestas SET estado = 'habilitada' WHERE id = NEW.propuesta_id AND estado IN ('registro', 'incompleto');
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_actualizar_estado_propuesta
+  AFTER INSERT OR UPDATE OF estado ON documentos
+  FOR EACH ROW EXECUTE FUNCTION actualizar_estado_por_documentos();
 
 -- =====================================================
 -- VISTA: Resumen de propuestas con estadísticas

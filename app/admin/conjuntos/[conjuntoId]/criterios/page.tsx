@@ -8,7 +8,7 @@ import { FormCriterio } from '@/components/admin/form-criterio'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
-import type { Criterio, Proceso } from '@/lib/types'
+import type { Criterio, Proceso } from '@/lib/types/index'
 
 export default function GestionCriterios() {
   const params = useParams()

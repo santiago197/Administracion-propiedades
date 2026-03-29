@@ -1,7 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { setConsejeroSessionCookie } from '@/lib/consejero-session'
+// import { rateLimit } from '@/lib/rate-limit'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1'
+  // if (!rateLimit(`validate-code:${ip}`, 10, 10 * 60 * 1000)) {
+  //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
+  // }
+
   try {
     const { codigo_acceso } = await request.json()
 
@@ -28,25 +35,30 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener el proceso activo del conjunto
-    const { data: proceso, error: procError } = await supabase
+    // Obtener el proceso activo del conjunto (si existe)
+    const { data: proceso } = await supabase
       .from('procesos')
       .select('id')
       .eq('conjunto_id', consejero.conjunto_id)
       .eq('estado', 'evaluacion')
-      .single()
+      .maybeSingle()
 
-    if (procError || !proceso) {
-      return NextResponse.json(
-        { error: 'No hay un proceso de evaluación activo' },
-        { status: 404 }
-      )
-    }
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       consejero_id: consejero.id,
-      proceso_id: proceso.id,
+      conjunto_id: consejero.conjunto_id,
+      proceso_id: proceso?.id ?? null,
+      tiene_proceso_activo: Boolean(proceso?.id),
+      perfil_url: '/consejero/perfil',
     })
+
+    setConsejeroSessionCookie(response, {
+      consejeroId: consejero.id,
+      conjuntoId: consejero.conjunto_id,
+      procesoId: proceso?.id ?? null,
+      issuedAt: Date.now(),
+    })
+
+    return response
   } catch (error) {
     console.error('[v0] Validation error:', error)
     return NextResponse.json({ error: 'Error en la validación' }, { status: 500 })
