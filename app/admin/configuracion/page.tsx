@@ -80,6 +80,18 @@ export default function ConfiguracionPage() {
             </Button>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Criterios de evaluación</CardTitle>
+            <CardDescription>Matriz de calificación de candidatos.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-between">
+            <div className="text-sm text-muted-foreground">Pesos y criterios configurables.</div>
+            <Button variant="outline" asChild>
+              <Link href="/admin/configuracion/criterios">Ver criterios</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

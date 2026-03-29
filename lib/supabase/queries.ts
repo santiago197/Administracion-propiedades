@@ -7,7 +7,6 @@ import type {
   Propuesta,
   EstadoPropuesta,
   Documento,
-  Criterio,
   Evaluacion,
   Voto,
   ProcesoStats,
@@ -374,39 +373,6 @@ export async function getDocumentoConjunto(id: string, conjunto_id: string) {
   }
 
   return { data: documento, error: null }
-}
-
-// CRITERIOS
-export async function createCriterio(data: Omit<Criterio, 'id' | 'created_at' | 'updated_at'>) {
-  const supabase = await createServerClient()
-  return supabase.from('criterios').insert([data]).select().single()
-}
-
-export async function getCriterios(proceso_id: string) {
-  const supabase = await createServerClient()
-  return supabase
-    .from('criterios')
-    .select('*')
-    .eq('proceso_id', proceso_id)
-    .eq('activo', true)
-    .order('orden', { ascending: true })
-}
-
-export async function updateCriterio(id: string, data: Partial<Criterio>) {
-  const supabase = await createServerClient()
-  return supabase.from('criterios').update(data).eq('id', id).select().single()
-}
-
-export async function validarSumaPesos(proceso_id: string) {
-  const supabase = await createServerClient()
-  const { data: criterios } = await supabase
-    .from('criterios')
-    .select('peso')
-    .eq('proceso_id', proceso_id)
-    .eq('activo', true)
-
-  const sumaTotal = criterios?.reduce((sum, c) => sum + (c.peso || 0), 0) || 0
-  return Math.abs(sumaTotal - 100) < 0.01 // Permitir pequeños errores de redondeo
 }
 
 // EVALUACIONES
@@ -1094,4 +1060,94 @@ export async function deleteUsuario(id: string) {
   if (error) throw error
 
   return { success: true }
+}
+
+// CRITERIOS DE EVALUACIÓN — CRUD
+import type { CriterioEvaluacion } from '../types/index'
+
+export async function getCriterios(soloActivos = false): Promise<CriterioEvaluacion[]> {
+  const supabase = await createServerClient()
+
+  let query = supabase
+    .from('criterios_evaluacion')
+    .select('*')
+    .order('orden', { ascending: true })
+
+  if (soloActivos) {
+    query = query.eq('activo', true)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return (data ?? []) as CriterioEvaluacion[]
+}
+
+export async function getCriterio(id: string): Promise<CriterioEvaluacion | null> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('criterios_evaluacion')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) return null
+  return data as CriterioEvaluacion
+}
+
+export async function createCriterio(
+  data: Omit<CriterioEvaluacion, 'id' | 'created_at' | 'updated_at'>
+): Promise<CriterioEvaluacion> {
+  const supabase = await createServerClient()
+
+  const { data: created, error } = await supabase
+    .from('criterios_evaluacion')
+    .insert([data])
+    .select()
+    .single()
+
+  if (error) throw error
+  return created as CriterioEvaluacion
+}
+
+export async function updateCriterio(
+  id: string,
+  data: Partial<Omit<CriterioEvaluacion, 'id' | 'created_at' | 'updated_at'>>
+): Promise<CriterioEvaluacion> {
+  const supabase = await createServerClient()
+
+  const { data: updated, error } = await supabase
+    .from('criterios_evaluacion')
+    .update(data)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return updated as CriterioEvaluacion
+}
+
+export async function deleteCriterio(id: string): Promise<{ success: boolean }> {
+  const supabase = await createServerClient()
+
+  const { error } = await supabase
+    .from('criterios_evaluacion')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw error
+  return { success: true }
+}
+
+export async function getPesoTotalCriterios(): Promise<number> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('criterios_evaluacion')
+    .select('peso')
+    .eq('activo', true)
+
+  if (error) throw error
+  return (data ?? []).reduce((sum, c) => sum + (c.peso ?? 0), 0)
 }

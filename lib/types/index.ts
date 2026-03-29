@@ -522,3 +522,19 @@ export const LABEL_ROL_USUARIO: Record<RolUsuario, string> = {
   evaluador:  'Evaluador',
   consejero:  'Consejero',
 }
+
+// ---------------------------------------------------------------------------
+// Criterios de evaluación (dinámicos desde BD)
+// ---------------------------------------------------------------------------
+
+export interface CriterioEvaluacion {
+  id: string
+  codigo: string
+  nombre: string
+  descripcion: string | null
+  peso: number
+  activo: boolean
+  orden: number
+  created_at: string
+  updated_at: string
+}
