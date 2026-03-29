@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 // import { rateLimit } from '@/lib/rate-limit'
 
@@ -19,37 +18,40 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies()
+    // La respuesta se crea primero para que setAll pueda escribir cookies en ella.
+    const response = NextResponse.json({ success: true }, { status: 200 })
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll()
+            return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => {
-                cookieStore.set(name, value, options)
-              })
-            } catch (error) {
-              console.error('[v0] Error setting cookies:', error)
-            }
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options)
+            })
           },
         },
       }
     )
 
-    // Intentar login con Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
+    console.log('[login] signInWithPassword result:', {
+      userId: data.user?.id,
+      hasSession: !!data.session,
+      error: error?.message,
+    })
+
     if (error) {
       return NextResponse.json(
-        { error: error.message || 'Credenciales inválidas' },
+        { error: 'Credenciales inválidas' },
         { status: 401 }
       )
     }
@@ -61,12 +63,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json(
-      { success: true },
-      { status: 200 }
-    )
+    const setCookieHeaders = response.cookies.getAll().map(c => c.name)
+    console.log('[login] cookies en respuesta:', setCookieHeaders)
+
+    return response
   } catch (error) {
-    console.error('[v0] Login error:', error)
+    console.error('[auth] Login error:', error)
     return NextResponse.json(
       { error: 'Error al procesar login' },
       { status: 500 }

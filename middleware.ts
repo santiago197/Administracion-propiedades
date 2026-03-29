@@ -50,7 +50,10 @@ export async function middleware(request: NextRequest) {
 
   const {
     data: { user },
+    error: getUserError,
   } = await supabase.auth.getUser()
+
+  console.log('[middleware]', pathname, '→ user:', user?.id ?? null, getUserError?.message ?? '')
 
   // Construye un redirect a /login que también limpia las cookies de sesión.
   // Debe llamarse DESPUÉS de supabase.auth.signOut() para que setAll haya actualizado supabaseResponse.
@@ -89,6 +92,8 @@ export async function middleware(request: NextRequest) {
       .select('id, activo, conjunto_id')
       .eq('id', user.id)
       .maybeSingle()
+
+    console.log('[middleware] dbUser:', dbUser, 'error:', error?.message ?? null)
 
     if (error) {
       console.error('[auth] Error consultando usuarios:', {

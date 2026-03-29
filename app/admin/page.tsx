@@ -97,7 +97,14 @@ export default async function AdminDashboard() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const user = await requireAuth({ cookies: cookieStore } as any)
 
+  console.log('[admin/page] requireAuth result:', {
+    authorized: user.authorized,
+    conjuntoId: user.conjuntoId,
+    userId: user.user?.id ?? null,
+  })
+
   if (!user.authorized || !user.conjuntoId) {
+    console.log('[admin/page] redirigiendo a /login')
     redirect('/login')
   }
 

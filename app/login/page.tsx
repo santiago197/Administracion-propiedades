@@ -18,27 +18,32 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    console.log('[login] handleSubmit disparado')
     setError('')
     setLoading(true)
 
     try {
+      console.log('[login] llamando fetch /api/auth/login')
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
 
+      console.log('[login] respuesta status:', response.status, response.ok)
       const data = await response.json()
+      console.log('[login] respuesta data:', data)
 
       if (!response.ok) {
         setError(data.error || 'Error al iniciar sesión')
         return
       }
 
+      console.log('[login] redirigiendo a /admin')
       window.location.href = '/admin'
     } catch (err) {
+      console.error('[login] catch error:', err)
       setError('Error de conexión. Intenta de nuevo.')
-      console.error('[v0] Login error:', err)
     } finally {
       setLoading(false)
     }

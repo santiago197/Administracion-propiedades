@@ -1,26 +1,22 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
+    const response = NextResponse.json({ success: true }, { status: 200 })
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll()
+            return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => {
-                cookieStore.set(name, value, options)
-              })
-            } catch (error) {
-              console.error('[v0] Error setting cookies:', error)
-            }
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options)
+            })
           },
         },
       }
@@ -28,12 +24,9 @@ export async function POST(request: NextRequest) {
 
     await supabase.auth.signOut({ scope: 'global' })
 
-    return NextResponse.json(
-      { success: true },
-      { status: 200 }
-    )
+    return response
   } catch (error) {
-    console.error('[v0] Logout error:', error)
+    console.error('[auth] Logout error:', error)
     return NextResponse.json(
       { error: 'Error al cerrar sesión' },
       { status: 500 }
