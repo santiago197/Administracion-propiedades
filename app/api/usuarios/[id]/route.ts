@@ -34,7 +34,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const { id } = await params
 
-  let body: { nombre?: string; rol?: RolUsuario; activo?: boolean; conjunto_id?: string | null }
+  let body: {
+    nombre?: string
+    rol?: RolUsuario
+    activo?: boolean
+    conjunto_id?: string | null
+    permisos_ids?: string[]
+  }
   try {
     body = await request.json()
   } catch {
@@ -46,6 +52,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   if (body.rol && !validRoles.includes(body.rol)) {
     return NextResponse.json({ error: 'Rol no válido' }, { status: 400 })
   }
+  if (body.permisos_ids !== undefined && !Array.isArray(body.permisos_ids)) {
+    return NextResponse.json({ error: 'permisos_ids inválido' }, { status: 400 })
+  }
 
   try {
     const usuario = await updateUsuario(id, {
@@ -53,6 +62,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       rol: body.rol,
       activo: body.activo,
       conjunto_id: body.conjunto_id,
+      permisos_ids: body.permisos_ids,
     })
 
     return NextResponse.json(usuario)

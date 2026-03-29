@@ -988,7 +988,8 @@ export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioC
     .from('usuarios')
     .select(`
       *,
-      conjunto:conjuntos(id, nombre)
+      conjunto:conjuntos(id, nombre),
+      usuarios_permisos(permiso:permisos(id, codigo, nombre, categoria))
     `)
     .order('created_at', { ascending: false })
 
@@ -999,7 +1000,18 @@ export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioC
   const { data, error } = await query
 
   if (error) throw error
-  return (data ?? []) as UsuarioConConjunto[]
+  return (data ?? []).map((row) => {
+    const record = row as Record<string, unknown>
+    const permisosRaw = (record.usuarios_permisos ?? []) as Array<{ permiso?: unknown }>
+    const permisos = permisosRaw
+      .map((item) => item.permiso)
+      .filter(Boolean) as UsuarioConConjunto['permisos']
+    const { usuarios_permisos: _ignored, ...rest } = record
+    return {
+      ...(rest as UsuarioConConjunto),
+      permisos,
+    }
+  })
 }
 
 export async function getUsuario(id: string): Promise<UsuarioConConjunto | null> {
@@ -1009,13 +1021,23 @@ export async function getUsuario(id: string): Promise<UsuarioConConjunto | null>
     .from('usuarios')
     .select(`
       *,
-      conjunto:conjuntos(id, nombre)
+      conjunto:conjuntos(id, nombre),
+      usuarios_permisos(permiso:permisos(id, codigo, nombre, categoria))
     `)
     .eq('id', id)
     .single()
 
   if (error) return null
-  return data as UsuarioConConjunto
+  const record = data as Record<string, unknown>
+  const permisosRaw = (record.usuarios_permisos ?? []) as Array<{ permiso?: unknown }>
+  const permisos = permisosRaw
+    .map((item) => item.permiso)
+    .filter(Boolean) as UsuarioConConjunto['permisos']
+  const { usuarios_permisos: _ignored, ...rest } = record
+  return {
+    ...(rest as UsuarioConConjunto),
+    permisos,
+  }
 }
 
 export async function updateUsuario(
@@ -1025,6 +1047,7 @@ export async function updateUsuario(
     rol?: RolUsuario
     activo?: boolean
     conjunto_id?: string | null
+    permisos_ids?: string[]
   }
 ) {
   const supabase = await createServerClient()
@@ -1043,7 +1066,27 @@ export async function updateUsuario(
     .single()
 
   if (error) throw error
-  return updated as Usuario
+
+  if (data.permisos_ids !== undefined) {
+    const { error: deleteError } = await supabase
+      .from('usuarios_permisos')
+      .delete()
+      .eq('usuario_id', id)
+    if (deleteError) throw deleteError
+
+    if (data.permisos_ids.length > 0) {
+      const usuariosPermisos = data.permisos_ids.map((permiso_id) => ({
+        usuario_id: id,
+        permiso_id,
+      }))
+      const { error: insertError } = await supabase
+        .from('usuarios_permisos')
+        .insert(usuariosPermisos)
+      if (insertError) throw insertError
+    }
+  }
+
+  return (await getUsuario(id)) ?? (updated as Usuario)
 }
 
 export async function deleteUsuario(id: string) {

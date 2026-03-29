@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -39,7 +40,8 @@ import { Switch } from '@/components/ui/switch'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import { Pencil, Trash2, Users, Mail, Calendar, Shield } from 'lucide-react'
-import type { UsuarioConConjunto, RolUsuario } from '@/lib/types/index'
+import type { UsuarioConConjunto, RolUsuario, Permiso } from '@/lib/types/index'
+import { LABEL_CATEGORIA_PERMISO } from '@/lib/types/index'
 
 const LABEL_ROL: Record<RolUsuario, string> = {
   superadmin: 'Super Admin',
@@ -52,9 +54,10 @@ const ROLES_DISPONIBLES: RolUsuario[] = ['admin', 'evaluador', 'consejero']
 
 interface UsuariosClientProps {
   initialUsuarios: UsuarioConConjunto[]
+  permisos: Permiso[]
 }
 
-export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
+export function UsuariosClient({ initialUsuarios, permisos }: UsuariosClientProps) {
   const [usuarios, setUsuarios] = useState(initialUsuarios)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -66,7 +69,16 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
     nombre: '',
     rol: 'admin' as RolUsuario,
     activo: true,
+    permisos_ids: [] as string[],
   })
+
+  const permisosAgrupados = useMemo(() => {
+    return permisos.reduce((acc, p) => {
+      if (!acc[p.categoria]) acc[p.categoria] = []
+      acc[p.categoria].push(p)
+      return acc
+    }, {} as Record<string, Permiso[]>)
+  }, [permisos])
 
   const openEditDialog = (usuario: UsuarioConConjunto) => {
     setEditingUsuario(usuario)
@@ -74,6 +86,7 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
       nombre: usuario.nombre ?? '',
       rol: usuario.rol,
       activo: usuario.activo,
+      permisos_ids: (usuario.permisos ?? []).map((permiso) => permiso.id),
     })
     setIsEditDialogOpen(true)
   }
@@ -149,6 +162,27 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
     })
   }
 
+  const renderPermisos = (usuario: UsuarioConConjunto) => {
+    const permisosAsignados = usuario.permisos ?? []
+    if (permisosAsignados.length === 0) {
+      return <span className="text-xs text-muted-foreground">Sin permisos asignados</span>
+    }
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {permisosAsignados.slice(0, 3).map((permiso) => (
+          <Badge key={permiso.id} variant="outline" className="text-xs">
+            {permiso.nombre}
+          </Badge>
+        ))}
+        {permisosAsignados.length > 3 && (
+          <Badge variant="secondary" className="text-xs">
+            +{permisosAsignados.length - 3} más
+          </Badge>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -178,6 +212,7 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
                 <TableRow>
                   <TableHead>Usuario</TableHead>
                   <TableHead>Rol</TableHead>
+                  <TableHead>Permisos</TableHead>
                   <TableHead>Conjunto</TableHead>
                   <TableHead>Último acceso</TableHead>
                   <TableHead>Estado</TableHead>
@@ -205,6 +240,7 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
                         {LABEL_ROL[usuario.rol]}
                       </Badge>
                     </TableCell>
+                    <TableCell>{renderPermisos(usuario)}</TableCell>
                     <TableCell>
                       {usuario.conjunto?.nombre ?? (
                         <span className="text-muted-foreground text-sm">Sin asignar</span>
@@ -292,6 +328,50 @@ export function UsuariosClient({ initialUsuarios }: UsuariosClientProps) {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Permisos asignados</Label>
+                <div className="space-y-3 border rounded-lg p-3 max-h-[260px] overflow-y-auto">
+                  {Object.entries(permisosAgrupados).map(([categoria, permisosList]) => (
+                    <div key={categoria} className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase">
+                        {LABEL_CATEGORIA_PERMISO[categoria as keyof typeof LABEL_CATEGORIA_PERMISO] ?? categoria}
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {permisosList.map((permiso) => (
+                          <label
+                            key={permiso.id}
+                            className="flex items-start gap-2 rounded-md border p-2 text-sm hover:bg-muted/50 transition-colors cursor-pointer"
+                          >
+                            <Checkbox
+                              checked={formData.permisos_ids.includes(permiso.id)}
+                              onCheckedChange={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  permisos_ids: prev.permisos_ids.includes(permiso.id)
+                                    ? prev.permisos_ids.filter((id) => id !== permiso.id)
+                                    : [...prev.permisos_ids, permiso.id],
+                                }))
+                              }
+                            />
+                            <span className="flex-1">
+                              {permiso.nombre}
+                              {permiso.descripcion && (
+                                <span className="block text-xs text-muted-foreground">
+                                  {permiso.descripcion}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formData.permisos_ids.length} permiso(s) seleccionado(s)
+                </p>
               </div>
 
               <div className="flex items-center justify-between rounded-lg border p-4">
