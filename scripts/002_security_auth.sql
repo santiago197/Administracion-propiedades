@@ -514,3 +514,12 @@ BEGIN
   RETURN FOUND;
 END;
 $$;
+
+-- =====================================================
+-- 7. GRANTS: permisos de ejecución para roles de Supabase
+-- =====================================================
+GRANT EXECUTE ON FUNCTION public.auth_rol() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.auth_conjunto_id() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.get_current_user_profile() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.update_last_access() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_conjunto_to_user(UUID, UUID) TO authenticated;

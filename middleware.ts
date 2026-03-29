@@ -68,34 +68,31 @@ export async function middleware(request: NextRequest) {
     return redirectResponse
   }
 
-  // Si intenta acceder a ruta protegida sin estar autenticado
+  const isApiRoute = pathname.startsWith('/api/')
+
+  // Las API routes manejan su propia autenticación via requireAuth().
+  // El middleware solo renueva las cookies de Supabase y pasa la solicitud.
+  if (isApiRoute) {
+    return supabaseResponse
+  }
+
+  // A partir de aquí: solo rutas de página
+
+  // Sin sesión → redirigir a login
   if (!isPublicRoute && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
   if (user && !isPublicRoute) {
-    let dbUser: { id: string; activo: boolean; conjunto_id: string | null } | null = null
-    let queryError: unknown | null = null
+    const { data: dbUser, error } = await supabase
+      .from('usuarios')
+      .select('id, activo, conjunto_id')
+      .eq('id', user.id)
+      .maybeSingle()
 
-    const { data: profileData, error: profileError } = await supabase.rpc('get_current_user_profile')
-
-    if (profileError) {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('id, activo, conjunto_id')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      dbUser = data
-      queryError = error ?? profileError
-    } else {
-      const profile = Array.isArray(profileData) ? profileData[0] : profileData
-      dbUser = profile ?? null
-    }
-
-    if (queryError) {
+    if (error) {
       console.error('[auth] Error consultando usuarios:', {
-        error: queryError,
+        error,
         userId: user.id,
         path: pathname,
       })
@@ -117,7 +114,6 @@ export async function middleware(request: NextRequest) {
       return buildSignOutRedirect()
     }
 
-    // Si es una ruta de administración (/admin/*) pero no tiene conjunto_id
     if (pathname.startsWith('/admin') && !dbUser.conjunto_id) {
       console.warn('[auth] Usuario sin conjunto asignado', {
         userId: user.id,
@@ -128,7 +124,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Si está autenticado pero intenta acceder a login, redirigir a admin
+  // Autenticado intentando acceder a login → redirigir a admin
   if (pathname === '/login' && user) {
     return NextResponse.redirect(new URL('/admin', request.url))
   }

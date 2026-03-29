@@ -83,7 +83,7 @@ export async function requireAuth(
         .single()
 
       perfil = data
-      perfilError = error ?? perfilRpcError
+      perfilError = error   // solo falla si el fallback directo también falla
     } else {
       perfil = (Array.isArray(perfilData) ? perfilData[0] : perfilData) ?? null
     }
