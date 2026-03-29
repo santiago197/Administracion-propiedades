@@ -15,9 +15,77 @@ import {
   BarChart3,
   CheckSquare,
   ClipboardList,
+<<<<<<< HEAD
   AlertCircle
 } from 'lucide-react'
 import type { Proceso, Conjunto, ProcesoStats } from '@/lib/types/index'
+=======
+  AlertCircle,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react'
+import type { Proceso, ProcesoStats, EstadoProceso } from '@/lib/types/index'
+
+function ChecklistItem({
+  ok,
+  label,
+  href,
+  hrefLabel,
+}: {
+  ok: boolean
+  label: string
+  href: string
+  hrefLabel: string
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      {ok
+        ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+        : <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+      }
+      <div className="text-xs">
+        <span className={ok ? 'text-green-700 dark:text-green-300' : 'text-destructive'}>{label}</span>
+        {!ok && (
+          <Link href={href} className="ml-2 text-primary underline hover:no-underline">
+            {hrefLabel}
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const ESTADO_LABEL: Record<EstadoProceso, string> = {
+  configuracion: 'Configuración',
+  evaluacion: 'Evaluación',
+  votacion: 'Votación',
+  finalizado: 'Finalizado',
+  cancelado: 'Cancelado',
+}
+
+const ESTADO_COLOR: Record<EstadoProceso, string> = {
+  configuracion: 'bg-yellow-500/10 text-yellow-600',
+  evaluacion: 'bg-blue-500/10 text-blue-600',
+  votacion: 'bg-purple-500/10 text-purple-600',
+  finalizado: 'bg-green-500/10 text-green-600',
+  cancelado: 'bg-destructive/10 text-destructive',
+}
+
+const SIGUIENTE_ESTADO: Partial<Record<EstadoProceso, EstadoProceso>> = {
+  configuracion: 'evaluacion',
+  evaluacion: 'votacion',
+  votacion: 'finalizado',
+}
+
+const ACCION_LABEL: Partial<Record<EstadoProceso, string>> = {
+  configuracion: 'Iniciar Evaluación',
+  evaluacion: 'Pasar a Votación',
+  votacion: 'Finalizar Proceso',
+}
+
+type ProcesoConCuentas = Proceso & { total_propuestas: number; total_consejeros: number }
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
 
 export default function ProcesoDashboard() {
   const params = useParams()
@@ -126,8 +194,23 @@ export default function ProcesoDashboard() {
 
         <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
+<<<<<<< HEAD
             <h1 className="text-3xl font-bold text-foreground">{proceso.nombre}</h1>
             <p className="mt-1 text-muted-foreground">{conjunto?.nombre} • Estado: {proceso.estado.toUpperCase()}</p>
+=======
+            <h1 className="text-2xl sm:text-3xl text-foreground">{proceso.nombre}</h1>
+            <div className="mt-2 flex items-center gap-3">
+              <span
+                className={`text-xs px-2 py-1 rounded-full uppercase font-medium ${ESTADO_COLOR[estadoActual]}`}
+              >
+                {ESTADO_LABEL[estadoActual]}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {proceso.total_propuestas} propuesta{proceso.total_propuestas !== 1 ? 's' : ''} ·{' '}
+                {proceso.total_consejeros} consejero{proceso.total_consejeros !== 1 ? 's' : ''}
+              </span>
+            </div>
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="gap-2">
@@ -142,7 +225,56 @@ export default function ProcesoDashboard() {
           </div>
         </div>
 
+<<<<<<< HEAD
         <div className="grid gap-6 md:grid-cols-4 mb-8">
+=======
+        {errorEstado && (
+          <Card className="mb-6 border border-destructive/20 bg-destructive/10 p-4">
+            <div className="flex items-start gap-3 mb-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-destructive">No se puede avanzar el proceso</p>
+                <p className="text-sm text-destructive/80 mt-0.5">{errorEstado}</p>
+              </div>
+            </div>
+            {/* Checklist contextual según el estado actual */}
+            {estadoActual === 'configuracion' && (
+              <div className="ml-8 space-y-1.5">
+                <p className="text-xs font-medium text-destructive/70 uppercase tracking-wide mb-2">
+                  Requisitos para iniciar evaluación
+                </p>
+                <ChecklistItem
+                  ok={(stats?.propuestas_activas ?? 0) >= 1}
+                  label={`Mínimo 1 propuesta habilitada — tienes ${stats?.propuestas_activas ?? 0}`}
+                  href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/validacion-legal`}
+                  hrefLabel="Ir a validación legal"
+                />
+                <ChecklistItem
+                  ok={(stats?.total_propuestas ?? 0) >= 3}
+                  label={`Mínimo 3 candidatos registrados — tienes ${stats?.total_propuestas ?? 0}`}
+                  href={`/admin/conjuntos/${conjuntoId}/propuestas`}
+                  hrefLabel="Registrar candidatos"
+                />
+              </div>
+            )}
+            {estadoActual === 'evaluacion' && (
+              <div className="ml-8 space-y-1.5">
+                <p className="text-xs font-medium text-destructive/70 uppercase tracking-wide mb-2">
+                  Requisitos para pasar a votación
+                </p>
+                <ChecklistItem
+                  ok={(stats?.evaluaciones_completadas ?? 0) > 0}
+                  label={`Todas las propuestas evaluadas — ${stats?.evaluaciones_completadas ?? 0} de ${stats?.propuestas_activas ?? 0} evaluadas`}
+                  href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/evaluacion`}
+                  hrefLabel="Ir a evaluación técnica"
+                />
+              </div>
+            )}
+          </Card>
+        )}
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-8">
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
           <Card className="p-4 border border-border/50 bg-card/50 flex flex-col items-center text-center">
             <span className="text-2xl font-bold">{stats?.total_propuestas || 0}</span>
             <span className="text-xs text-muted-foreground uppercase mt-1">Candidatos</span>

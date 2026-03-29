@@ -155,12 +155,33 @@ export default function PaginaEvaluacion() {
         </div>
       </header>
 
+<<<<<<< HEAD
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
         <Card className="border border-border/50 bg-card/50 p-8 mb-8">
           <h2 className="text-2xl font-bold text-foreground mb-4">
             {currentPropuesta.razon_social}
           </h2>
           <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground mb-6">
+=======
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        <div>
+          <Link href="/consejero/perfil">
+            <Button variant="ghost" className="px-0 text-muted-foreground">
+              Ver mi perfil de consejero
+            </Button>
+          </Link>
+        </div>
+
+        {/* Ficha de la propuesta */}
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
+          <div className="flex items-start justify-between mb-4">
+            <p className="text-xl sm:text-2xl font-bold text-foreground">{propuesta.razon_social}</p>
+            {isPropuestaCompleta(propuesta.id, criterios, evaluaciones) && (
+              <CheckCircle2 className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm text-muted-foreground">
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
             <div>
               <p className="font-semibold text-foreground">Tipo</p>
               <p>{currentPropuesta.tipo_persona === 'juridica' ? 'Persona Jurídica' : 'Persona Natural'}</p>
@@ -180,8 +201,14 @@ export default function PaginaEvaluacion() {
           </div>
         </Card>
 
+<<<<<<< HEAD
         <Card className="border border-border/50 bg-card/50 p-8">
           <h3 className="text-lg font-semibold text-foreground mb-6">Evaluación por Criterios</h3>
+=======
+        {/* Criterios */}
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
+          <p className="text-lg font-semibold text-foreground mb-6">Evaluación por criterios</p>
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
 
           <div className="space-y-8">
             {criterios.map((criterio) => (
@@ -267,6 +294,42 @@ export default function PaginaEvaluacion() {
             </Button>
           </div>
         </Card>
+<<<<<<< HEAD
+=======
+
+        <Card className="border border-border/50 bg-card/50 p-4 sm:p-8">
+          <p className="text-lg font-semibold text-foreground mb-4">Documentos relacionados</p>
+          {documentosPropuesta.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Esta propuesta no tiene documentos registrados.</p>
+          ) : (
+            <div className="space-y-3">
+              {documentosPropuesta.map((documento) => (
+                <div
+                  key={documento.id}
+                  className="flex items-center justify-between rounded-md border border-border/50 bg-background p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-foreground">{documento.nombre}</p>
+                    <p className="text-xs text-muted-foreground">{documento.tipo} · {documento.estado}</p>
+                  </div>
+                  {documento.archivo_url ? (
+                    <a
+                      href={documento.archivo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Ver
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Sin archivo</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
       </main>
     </div>
   )

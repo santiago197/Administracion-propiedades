@@ -18,27 +18,32 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    console.log('[login] handleSubmit disparado')
     setError('')
     setLoading(true)
 
     try {
+      console.log('[login] llamando fetch /api/auth/login')
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
 
+      console.log('[login] respuesta status:', response.status, response.ok)
       const data = await response.json()
+      console.log('[login] respuesta data:', data)
 
       if (!response.ok) {
         setError(data.error || 'Error al iniciar sesión')
         return
       }
 
-      router.push('/admin')
+      console.log('[login] redirigiendo a /admin')
+      window.location.href = '/admin'
     } catch (err) {
+      console.error('[login] catch error:', err)
       setError('Error de conexión. Intenta de nuevo.')
-      console.error('[v0] Login error:', err)
     } finally {
       setLoading(false)
     }
@@ -46,9 +51,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md p-8 border-border/50">
+      <Card className="w-full max-w-md p-6 sm:p-8 border-border/50">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl font-bold text-foreground text-center">SelecionAdm</h1>
           <p className="text-sm text-muted-foreground text-center mt-2">
             Sistema de Selección de Administradores

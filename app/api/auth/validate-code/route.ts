@@ -1,7 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+<<<<<<< HEAD
+=======
+import { setConsejeroSessionCookie } from '@/lib/consejero-session'
+// import { rateLimit } from '@/lib/rate-limit'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1'
+  // if (!rateLimit(`validate-code:${ip}`, 10, 10 * 60 * 1000)) {
+  //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
+  // }
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
+
   try {
     const { codigo_acceso } = await request.json()
 
@@ -47,6 +57,18 @@ export async function POST(request: Request) {
       consejero_id: consejero.id,
       proceso_id: proceso.id,
     })
+<<<<<<< HEAD
+=======
+
+    setConsejeroSessionCookie(response, {
+      consejeroId: consejero.id,
+      conjuntoId: consejero.conjunto_id,
+      procesoId: proceso?.id ?? null,
+      issuedAt: Date.now(),
+    })
+
+    return response
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
   } catch (error) {
     console.error('[v0] Validation error:', error)
     return NextResponse.json({ error: 'Error en la validación' }, { status: 500 })

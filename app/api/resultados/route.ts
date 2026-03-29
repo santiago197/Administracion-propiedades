@@ -1,5 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+<<<<<<< HEAD
+=======
+import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin } from '@/lib/supabase/queries'
+import { requireAuth } from '@/lib/supabase/auth-utils'
+
+export async function GET(request: NextRequest) {
+  // Validar autenticación
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  if (!authorized && authError) return authError
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
 
 export async function GET(request: Request) {
   try {
@@ -20,6 +30,7 @@ export async function GET(request: Request) {
       return await getStats(supabase, procesoId)
     }
 
+<<<<<<< HEAD
     // Obtener propuestas del proceso
     const { data: propuestas, error: propError } = await supabase
       .from('propuestas')
@@ -124,6 +135,15 @@ export async function GET(request: Request) {
     }))
 
     return NextResponse.json(resultadosConPosicion)
+=======
+    if (type === 'matriz') {
+      const matriz = await getMatrizEvaluacionAdmin(procesoId)
+      return NextResponse.json(matriz)
+    }
+
+    const resultados = await getResultadosFinales(procesoId)
+    return NextResponse.json(resultados)
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
   } catch (error) {
     console.error('[v0] API error:', error)
     return NextResponse.json({ error: 'Error en el servidor' }, { status: 500 })

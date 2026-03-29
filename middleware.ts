@@ -3,10 +3,24 @@ import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
+
   // Rutas públicas (sin autenticación requerida)
+<<<<<<< HEAD
   const publicRoutes = ['/', '/login', '/api/auth/login', '/api/auth/logout', '/consejero']
   const isPublicRoute = publicRoutes.some(route => 
+=======
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/consejero',
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/validate-code',
+    '/api/evaluacion',
+    '/api/consejero',
+  ]
+  const isPublicRoute = publicRoutes.some(route =>
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
     pathname === route || pathname.startsWith(route + '/')
   )
 
@@ -23,7 +37,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
+          cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value)
           })
 
@@ -41,41 +55,104 @@ export async function middleware(request: NextRequest) {
 
   const {
     data: { user },
+    error: getUserError,
   } = await supabase.auth.getUser()
 
-  // Si intenta acceder a ruta protegida sin estar autenticado
+  console.log('[middleware]', pathname, '→ user:', user?.id ?? null, getUserError?.message ?? '')
+
+  // Construye un redirect a /login que también limpia las cookies de sesión.
+  // Debe llamarse DESPUÉS de supabase.auth.signOut() para que setAll haya actualizado supabaseResponse.
+  const buildSignOutRedirect = () => {
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+      redirectResponse.cookies.set(name, value, {
+        maxAge: 0,
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      })
+    })
+    return redirectResponse
+  }
+
+  const isApiRoute = pathname.startsWith('/api/')
+
+  // Las API routes manejan su propia autenticación via requireAuth().
+  // El middleware solo renueva las cookies de Supabase y pasa la solicitud.
+  if (isApiRoute) {
+    return supabaseResponse
+  }
+
+  // A partir de aquí: solo rutas de página
+
+  // Sin sesión → redirigir a login
   if (!isPublicRoute && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
   if (user && !isPublicRoute) {
+<<<<<<< HEAD
     // Verificar si el usuario está activo y tiene conjunto_id en la tabla 'usuarios'
     // Usamos el cliente admin o bypass RLS si fuera necesario, pero aquí el usuario
     // debería poder leer su propio registro si RLS está bien.
+=======
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
     const { data: dbUser, error } = await supabase
       .from('usuarios')
       .select('activo, conjunto_id')
       .eq('id', user.id)
       .single()
 
+<<<<<<< HEAD
     if (error || !dbUser || !dbUser.activo) {
       // Si el usuario no existe en la tabla de negocio o está inactivo
       // Cerrar sesión y redirigir
+=======
+    console.log('[middleware] dbUser:', dbUser, 'error:', error?.message ?? null)
+
+    if (error) {
+      console.error('[auth] Error consultando usuarios:', {
+        error,
+        userId: user.id,
+        path: pathname,
+      })
       await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'Usuario inactivo o no autorizado')
-      return NextResponse.redirect(loginUrl)
+      return buildSignOutRedirect()
     }
 
-    // Si es una ruta de administración (/admin/*) pero no tiene conjunto_id
+    if (!dbUser) {
+      console.warn('[auth] Registro de usuario no encontrado', {
+        userId: user.id,
+        path: pathname,
+      })
+      await supabase.auth.signOut()
+      return buildSignOutRedirect()
+    }
+
+    if (dbUser.activo === false) {
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
+      await supabase.auth.signOut()
+      return buildSignOutRedirect()
+    }
+
     if (pathname.startsWith('/admin') && !dbUser.conjunto_id) {
+<<<<<<< HEAD
       // A menos que sea la página de creación de conjunto (si existiera una específica)
       // Por ahora, redirigir si no tiene conjunto
       // Nota: El arquitecto dijo "No permitir usuario sin conjunto"
+=======
+      console.warn('[auth] Usuario sin conjunto asignado', {
+        userId: user.id,
+        path: pathname,
+      })
+      await supabase.auth.signOut()
+      return buildSignOutRedirect()
+>>>>>>> 585e5503f8a591ab7815de1ba15ad10d0456f449
     }
   }
 
-  // Si está autenticado pero intenta acceder a login, redirigir a admin
+  // Autenticado intentando acceder a login → redirigir a admin
   if (pathname === '/login' && user) {
     return NextResponse.redirect(new URL('/admin', request.url))
   }
@@ -85,6 +162,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Excluye archivos estáticos, imágenes, rutas de sistema del navegador y api/upload.
+    // .well-known es excluido para evitar que peticiones automáticas de Chrome/DevTools
+    // interfieran con la sesión activa del usuario.
+    '/((?!_next/static|_next/image|favicon.ico|api/upload|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

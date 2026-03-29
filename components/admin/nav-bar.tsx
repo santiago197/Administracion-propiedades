@@ -3,13 +3,15 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Settings, Home, LogOut } from 'lucide-react'
+import { Settings, Home, LogOut, ClipboardList, LayoutDashboard, Users } from 'lucide-react'
 import { useState } from 'react'
+import { useActiveProceso } from '@/hooks/use-active-proceso'
 
 export function NavBar() {
   const pathname = usePathname()
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
+  const { conjunto, proceso } = useActiveProceso()
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -22,14 +24,26 @@ export function NavBar() {
     }
   }
 
+  const procesoHref = conjunto && proceso
+    ? `/admin/conjuntos/${conjunto.id}/procesos/${proceso.id}`
+    : null
+
+  const evaluacionHref = conjunto && proceso && proceso.estado === 'evaluacion'
+    ? `/admin/conjuntos/${conjunto.id}/procesos/${proceso.id}/evaluacion`
+    : null
+
+  const consejerosHref = conjunto
+    ? `/admin/conjuntos/${conjunto.id}/consejeros`
+    : null
+
   return (
     <header className="border-b border-border bg-card sticky top-0 z-50">
-      <div className="flex items-center justify-between px-6 py-4">
-        <Link href="/admin" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
+      <div className="flex items-center justify-between px-3 py-3 sm:px-6 sm:py-4">
+        <Link href="/admin" className="flex items-center gap-2 sm:gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm shrink-0">
             SA
           </div>
-          <span className="font-semibold text-foreground">SelecionAdm</span>
+          <span className="hidden sm:block font-semibold text-foreground">SelecionAdm</span>
         </Link>
 
         <nav className="flex items-center gap-1">
@@ -37,20 +51,60 @@ export function NavBar() {
             <Button
               variant={pathname === '/admin' ? 'default' : 'ghost'}
               size="sm"
-              className="gap-2"
+              className="gap-1.5 sm:gap-2"
             >
               <Home className="h-4 w-4" />
-              Conjuntos
+              <span className="hidden sm:inline">Conjuntos</span>
             </Button>
           </Link>
+
+          {procesoHref && (
+            <Link href={procesoHref}>
+              <Button
+                variant={pathname.includes('/procesos/') && !pathname.includes('/evaluacion') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Proceso</span>
+              </Button>
+            </Link>
+          )}
+
+          {evaluacionHref && (
+            <Link href={evaluacionHref}>
+              <Button
+                variant={pathname.includes('/evaluacion') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span className="hidden sm:inline">Evaluación</span>
+              </Button>
+            </Link>
+          )}
+
+          {consejerosHref && (
+            <Link href={consejerosHref}>
+              <Button
+                variant={pathname.includes('/consejeros') ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-1.5 sm:gap-2"
+              >
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Consejeros</span>
+              </Button>
+            </Link>
+          )}
+
           <Link href="/admin/configuracion">
             <Button
               variant={pathname.startsWith('/admin/configuracion') ? 'default' : 'ghost'}
               size="sm"
-              className="gap-2"
+              className="gap-1.5 sm:gap-2"
             >
               <Settings className="h-4 w-4" />
-              Configuración
+              <span className="hidden sm:inline">Configuración</span>
             </Button>
           </Link>
         </nav>
@@ -60,10 +114,10 @@ export function NavBar() {
           size="sm"
           onClick={handleLogout}
           disabled={loggingOut}
-          className="gap-2 text-muted-foreground hover:text-foreground"
+          className="gap-1.5 sm:gap-2 text-muted-foreground hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
-          Salir
+          <span className="hidden sm:inline">Salir</span>
         </Button>
       </div>
     </header>
