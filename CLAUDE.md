@@ -16,7 +16,7 @@ pnpm start     # Servidor de producción
 ```
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=    # Usar el "publishable key" del dashboard de Supabase
-CONSEJERO_SESSION_SECRET=          # Opcional; si no se define, usa SUPABASE_SERVICE_ROLE_KEY o ANON_KEY como fallback
+CONSEJERO_SESSION_SECRET=          # Requerido. Secreto HMAC para las sesiones de consejeros (mínimo 32 caracteres aleatorios)
 ```
 
 ## Arquitectura general

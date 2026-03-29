@@ -88,6 +88,7 @@ END $$;
 
 DROP POLICY IF EXISTS "conjuntos_select_superadmin" ON conjuntos;
 DROP POLICY IF EXISTS "conjuntos_select_admin"      ON conjuntos;
+DROP POLICY IF EXISTS "conjuntos_select_evaluador"  ON conjuntos;
 DROP POLICY IF EXISTS "conjuntos_insert_superadmin" ON conjuntos;
 DROP POLICY IF EXISTS "conjuntos_insert_admin"      ON conjuntos;
 DROP POLICY IF EXISTS "conjuntos_update"            ON conjuntos;
@@ -104,6 +105,13 @@ CREATE POLICY "conjuntos_select_admin" ON conjuntos
       auth_user_conjunto() = conjuntos.id
       OR auth_user_conjunto() IS NULL
     )
+  );
+
+-- Evaluador ve solo su conjunto asignado
+CREATE POLICY "conjuntos_select_evaluador" ON conjuntos
+  FOR SELECT USING (
+    auth_user_role() = 'evaluador'
+    AND auth_user_conjunto() = conjuntos.id
   );
 
 -- Superadmin puede crear conjuntos

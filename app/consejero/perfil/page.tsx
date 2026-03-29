@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Eye, FileText } from 'lucide-react'
+import { Eye, FileText, AlertCircle } from 'lucide-react'
 import { LABEL_ESTADO } from '@/lib/types'
 
 interface PropuestaDetalle {
@@ -122,6 +122,8 @@ export default function PerfilConsejeroPage() {
 
   const [propuestas, setPropuestas] = useState<PropuestaDetalle[]>([])
   const [documentos, setDocumentos] = useState<DocumentoDetalle[]>([])
+  const [detalleLoading, setDetalleLoading] = useState(false)
+  const [detalleError, setDetalleError] = useState<string | null>(null)
   const [selectedPropuestaId, setSelectedPropuestaId] = useState<string | null>(null)
   const [tabValue, setTabValue] = useState<'general' | 'documentos' | 'legal'>('general')
   const [documentoEnVista, setDocumentoEnVista] = useState<DocumentoDetalle | null>(null)

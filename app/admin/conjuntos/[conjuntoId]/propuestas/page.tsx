@@ -16,12 +16,31 @@ import {
   Loader2,
   CheckCircle2,
   FileText,
+  BarChart3,
+  Trophy,
 } from 'lucide-react'
-import type { Propuesta, Proceso, Documento } from '@/lib/types/index'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import type { Propuesta, Proceso, Documento, ClasificacionPropuesta } from '@/lib/types/index'
 
 type DocResumen = { obligatorios: number; completos: number; faltantes: string[] }
+type EvalResumen = { puntaje_total: number; clasificacion: ClasificacionPropuesta }
 
 const MIN_PROPUESTAS = 3
+
+const CLAS_BADGE: Record<ClasificacionPropuesta, string> = {
+  destacado: 'bg-green-500/10 text-green-700 border-green-200',
+  apto: 'bg-yellow-500/10 text-yellow-700 border-yellow-200',
+  condicionado: 'bg-orange-500/10 text-orange-700 border-orange-200',
+  no_apto: 'bg-red-500/10 text-red-700 border-red-200',
+}
+
+const CLAS_LABEL: Record<ClasificacionPropuesta, string> = {
+  destacado: 'Destacado',
+  apto: 'Apto',
+  condicionado: 'Condicionado',
+  no_apto: 'No Apto',
+}
 
 export default function GestionPropuestas() {
   const params = useParams()
@@ -29,6 +48,7 @@ export default function GestionPropuestas() {
 
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [docsMap, setDocsMap] = useState<Map<string, DocResumen>>(new Map())
+  const [evalMap, setEvalMap] = useState<Map<string, EvalResumen>>(new Map())
   const [proceso, setProceso] = useState<Proceso | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -89,6 +109,28 @@ export default function GestionPropuestas() {
         })
       )
       setDocsMap(new Map(docsEntries))
+
+      // 4. Cargar evaluaciones de cada propuesta en paralelo
+      const evalEntries = await Promise.all(
+        (props ?? []).map(async (p) => {
+          try {
+            const r = await fetch(`/api/propuestas/${p.id}/evaluar`)
+            if (!r.ok) return [p.id, null] as const
+            const ev = await r.json()
+            if (ev?.puntaje_total != null && ev?.clasificacion) {
+              return [p.id, { puntaje_total: ev.puntaje_total, clasificacion: ev.clasificacion }] as const
+            }
+            return [p.id, null] as const
+          } catch {
+            return [p.id, null] as const
+          }
+        })
+      )
+      const evalMapData = new Map<string, EvalResumen>()
+      evalEntries.forEach(([id, data]) => {
+        if (data) evalMapData.set(id, data)
+      })
+      setEvalMap(evalMapData)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error desconocido'
       console.error('[GestionPropuestas] fetchData:', msg)
@@ -353,6 +395,35 @@ export default function GestionPropuestas() {
                             <div className="col-span-2">{propuesta.email}</div>
                           )}
                         </div>
+
+                        {/* Evaluación (puntaje, clasificación) */}
+                        {(() => {
+                          const ev = evalMap.get(propuesta.id)
+                          if (!ev) return null
+                          return (
+                            <div className="mt-3 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                  <BarChart3 className="h-4 w-4 text-primary shrink-0" />
+                                  <span className="text-xs font-medium text-primary">Evaluación</span>
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${CLAS_BADGE[ev.clasificacion]}`}
+                                >
+                                  {CLAS_LABEL[ev.clasificacion]}
+                                </Badge>
+                              </div>
+                              <div className="mt-2 space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-muted-foreground">Puntaje total</span>
+                                  <span className="font-bold text-primary tabular-nums">{ev.puntaje_total}/100</span>
+                                </div>
+                                <Progress value={ev.puntaje_total} className="h-1.5" />
+                              </div>
+                            </div>
+                          )
+                        })()}
 
                         {/* Estado documentos obligatorios */}
                         {(() => {

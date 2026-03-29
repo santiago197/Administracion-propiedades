@@ -88,6 +88,9 @@ export default function ConsejerosPage() {
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedConsejero, setSelectedConsejero] = useState<Consejero | null>(null)
   const [newCode, setNewCode] = useState<string>('')
+  const [userRole, setUserRole] = useState<string | null>(null)
+
+  const isEvaluador = userRole === 'evaluador'
 
   const accessUrl =
     typeof window !== 'undefined'
@@ -118,6 +121,14 @@ export default function ConsejerosPage() {
   async function fetchData() {
     try {
       setLoading(true)
+      
+      // Obtener rol del usuario
+      const meRes = await fetch('/api/me')
+      if (meRes.ok) {
+        const meData = await meRes.json()
+        setUserRole(meData.rol)
+      }
+
       // Obtener conjunto
       const conjuntoRes = await fetch('/api/conjuntos')
       if (!conjuntoRes.ok) throw new Error('Error al obtener conjunto')
@@ -333,10 +344,11 @@ export default function ConsejerosPage() {
           <p className="text-sm text-muted-foreground">Equipo de consejo</p>
           <h1 className="text-2xl font-semibold tracking-tight">Consejeros</h1>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>Agregar consejero</Button>
-          </DialogTrigger>
+        {!isEvaluador && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>Agregar consejero</Button>
+            </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleSubmit}>
               <DialogHeader>
@@ -416,6 +428,7 @@ export default function ConsejerosPage() {
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <Card>
@@ -479,7 +492,9 @@ export default function ConsejerosPage() {
                       {c.torre ? `Torre ${c.torre} - ` : ''}Apto {c.apartamento}
                     </TableCell>
                     <TableCell>
-                      {c.codigo_acceso ? (
+                      {isEvaluador ? (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      ) : c.codigo_acceso ? (
                         <div className="flex items-center gap-2">
                           <code className="text-xs bg-muted px-2 py-1 rounded">
                             {c.codigo_acceso}
@@ -513,35 +528,37 @@ export default function ConsejerosPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleEdit(c)}>
-                            <Pencil className="h-3 w-3 mr-2" />
-                            Editar
-                          </DropdownMenuItem>
-                          {c.codigo_acceso && (
-                            <DropdownMenuItem onClick={() => handleRegenerarCodigo(c)}>
-                              <RefreshCw className="h-3 w-3 mr-2" />
-                              Regenerar código
+                      {!isEvaluador && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleEdit(c)}>
+                              <Pencil className="h-3 w-3 mr-2" />
+                              Editar
                             </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteClick(c)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-3 w-3 mr-2" />
-                            Desactivar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {c.codigo_acceso && (
+                              <DropdownMenuItem onClick={() => handleRegenerarCodigo(c)}>
+                                <RefreshCw className="h-3 w-3 mr-2" />
+                                Regenerar código
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteClick(c)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Desactivar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import type { User } from '@supabase/supabase-js'
 
 /**
  * Obtiene el usuario actual y valida su sesión.
@@ -52,7 +53,7 @@ export async function getCurrentUser(request: NextRequest) {
  */
 export async function requireAuth(
   request: NextRequest
-): Promise<{ authorized: boolean; response: NextResponse | null; user: any; conjuntoId: string | null }> {
+): Promise<{ authorized: boolean; response: NextResponse | null; user: User | null; conjuntoId: string | null }> {
   const { user, error } = await getCurrentUser(request)
 
   if (!user) {
@@ -69,11 +70,23 @@ export async function requireAuth(
 
   try {
     const supabase = await getSupabaseClient()
-    const { data: perfil, error: perfilError } = await supabase
-      .from('usuarios')
-      .select('conjunto_id')
-      .eq('id', user.id)
-      .single()
+    let perfil: { conjunto_id: string | null } | null = null
+    let perfilError: unknown | null = null
+
+    const { data: perfilData, error: perfilRpcError } = await supabase.rpc('get_current_user_profile')
+
+    if (perfilRpcError) {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('conjunto_id, activo')
+        .eq('id', user.id)
+        .single()
+
+      perfil = data
+      perfilError = error   // solo falla si el fallback directo también falla
+    } else {
+      perfil = (Array.isArray(perfilData) ? perfilData[0] : perfilData) ?? null
+    }
 
     if (perfilError) {
       console.error('[v0] Error obteniendo perfil de usuario:', perfilError)
@@ -88,7 +101,19 @@ export async function requireAuth(
       }
     }
 
-    if (!perfil?.conjunto_id) {
+    if (!perfil?.activo) {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { error: 'No autorizado' },
+          { status: 401 }
+        ),
+        user: null,
+        conjuntoId: null,
+      }
+    }
+
+    if (!perfil.conjunto_id) {
       return {
         authorized: false,
         response: NextResponse.json(
