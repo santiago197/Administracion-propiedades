@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'global' })
 
     return NextResponse.json(
       { success: true },

@@ -35,7 +35,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/admin')
+      window.location.href = '/admin'
     } catch (err) {
       setError('Error de conexión. Intenta de nuevo.')
       console.error('[v0] Login error:', err)

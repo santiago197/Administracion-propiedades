@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
+
   // Rutas públicas (sin autenticación requerida)
   const publicRoutes = [
     '/',
@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
     '/api/evaluacion',
     '/api/consejero',
   ]
-  const isPublicRoute = publicRoutes.some(route => 
+  const isPublicRoute = publicRoutes.some(route =>
     pathname === route || pathname.startsWith(route + '/')
   )
 
@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
+          cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value)
           })
 
@@ -52,13 +52,28 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Construye un redirect a /login que también limpia las cookies de sesión.
+  // Debe llamarse DESPUÉS de supabase.auth.signOut() para que setAll haya actualizado supabaseResponse.
+  const buildSignOutRedirect = () => {
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    supabaseResponse.cookies.getAll().forEach(({ name, value }) => {
+      redirectResponse.cookies.set(name, value, {
+        maxAge: 0,
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      })
+    })
+    return redirectResponse
+  }
+
   // Si intenta acceder a ruta protegida sin estar autenticado
   if (!isPublicRoute && !user) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
   if (user && !isPublicRoute) {
-    // Buscar el registro en usuarios por el id de auth (PK esperada en la tabla)
     const { data: dbUser, error } = await supabase
       .from('usuarios')
       .select('id, activo, conjunto_id')
@@ -72,9 +87,7 @@ export async function middleware(request: NextRequest) {
         path: pathname,
       })
       await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'Error consultando usuario en el sistema')
-      return NextResponse.redirect(loginUrl)
+      return buildSignOutRedirect()
     }
 
     if (!dbUser) {
@@ -83,16 +96,12 @@ export async function middleware(request: NextRequest) {
         path: pathname,
       })
       await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'Usuario no registrado en el sistema (tabla usuarios)')
-      return NextResponse.redirect(loginUrl)
+      return buildSignOutRedirect()
     }
 
-    if (dbUser && dbUser.activo === false) {
+    if (dbUser.activo === false) {
       await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'Usuario inactivo o no autorizado')
-      return NextResponse.redirect(loginUrl)
+      return buildSignOutRedirect()
     }
 
     // Si es una ruta de administración (/admin/*) pero no tiene conjunto_id
@@ -102,9 +111,7 @@ export async function middleware(request: NextRequest) {
         path: pathname,
       })
       await supabase.auth.signOut()
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('error', 'Usuario sin conjunto asignado')
-      return NextResponse.redirect(loginUrl)
+      return buildSignOutRedirect()
     }
   }
 
@@ -118,9 +125,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Excluye archivos estáticos, imágenes y la ruta de upload (multipart/form-data
-    // se corrompe cuando el middleware clona el request al renovar cookies de Supabase).
-    // La auth en /api/upload ya la maneja requireAuth() directamente en el route.
-    '/((?!_next/static|_next/image|favicon.ico|api/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Excluye archivos estáticos, imágenes, rutas de sistema del navegador y api/upload.
+    // .well-known es excluido para evitar que peticiones automáticas de Chrome/DevTools
+    // interfieran con la sesión activa del usuario.
+    '/((?!_next/static|_next/image|favicon.ico|api/upload|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

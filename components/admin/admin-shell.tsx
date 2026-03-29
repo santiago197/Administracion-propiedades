@@ -12,6 +12,7 @@ import {
   FileText,
   Flag,
   LayoutDashboard,
+  LogOut,
   Menu,
   ScrollText,
   Settings,
@@ -25,6 +26,13 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Toaster } from '@/components/ui/toaster'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from './theme-toggle'
@@ -70,25 +78,40 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userData, setUserData] = useState<UserData>({ email: '', conjuntoNombre: '' })
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     async function fetchUserData() {
       try {
-        const response = await fetch('/api/conjuntos')
-        if (response.ok) {
-          const conjunto = await response.json()
-          setUserData({
-            email: 'admin',
-            conjuntoNombre: conjunto.nombre || 'SelecionAdm',
-            logoUrl: conjunto.logo_url
-          })
-        }
+        const [conjuntoRes, meRes] = await Promise.all([
+          fetch('/api/conjuntos'),
+          fetch('/api/me'),
+        ])
+        const [conjunto, me] = await Promise.all([
+          conjuntoRes.ok ? conjuntoRes.json() : Promise.resolve({}),
+          meRes.ok ? meRes.json() : Promise.resolve({}),
+        ])
+        setUserData({
+          email: (me.email as string) ?? '',
+          conjuntoNombre: (conjunto.nombre as string) ?? 'SelecionAdm',
+          logoUrl: conjunto.logo_url as string | undefined,
+        })
       } catch (error) {
         console.error('Error fetching user data:', error)
       }
     }
     fetchUserData()
   }, [])
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      window.location.href = '/login'
+    } catch {
+      setLoggingOut(false)
+    }
+  }
 
   const activePath = useMemo(
     () => (href: string) => pathname === href || pathname.startsWith(`${href}/`),
@@ -191,15 +214,36 @@ export function AdminShell({ children }: { children: ReactNode }) {
               <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
             </Button>
             <ThemeToggle />
-            <div className="flex items-center gap-3 rounded-full border px-3 py-2 bg-card/70">
-              <div className="text-left text-xs leading-tight">
-                <p className="text-muted-foreground">Admin</p>
-                <p className="font-semibold">{userData.email || 'Usuario'}</p>
-              </div>
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-full border px-3 py-2 bg-card/70 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="text-left text-xs leading-tight">
+                    <p className="text-muted-foreground">Admin</p>
+                    <p className="font-semibold max-w-[120px] truncate">{userData.email || 'Usuario'}</p>
+                  </div>
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <div className="px-2 py-1.5">
+                  <p className="text-xs text-muted-foreground truncate">{userData.email}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  {loggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>

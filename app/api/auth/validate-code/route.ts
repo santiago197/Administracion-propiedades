@@ -1,8 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { setConsejeroSessionCookie } from '@/lib/consejero-session'
+// import { rateLimit } from '@/lib/rate-limit'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1'
+  // if (!rateLimit(`validate-code:${ip}`, 10, 10 * 60 * 1000)) {
+  //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
+  // }
+
   try {
     const { codigo_acceso } = await request.json()
 
@@ -49,7 +55,6 @@ export async function POST(request: Request) {
       consejeroId: consejero.id,
       conjuntoId: consejero.conjunto_id,
       procesoId: proceso?.id ?? null,
-      codigoAcceso: codigo_acceso.toUpperCase(),
       issuedAt: Date.now(),
     })
 

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import type { User } from '@supabase/supabase-js'
 
 /**
  * Obtiene el usuario actual y valida su sesión.
@@ -52,7 +53,7 @@ export async function getCurrentUser(request: NextRequest) {
  */
 export async function requireAuth(
   request: NextRequest
-): Promise<{ authorized: boolean; response: NextResponse | null; user: any; conjuntoId: string | null }> {
+): Promise<{ authorized: boolean; response: NextResponse | null; user: User | null; conjuntoId: string | null }> {
   const { user, error } = await getCurrentUser(request)
 
   if (!user) {
@@ -71,7 +72,7 @@ export async function requireAuth(
     const supabase = await getSupabaseClient()
     const { data: perfil, error: perfilError } = await supabase
       .from('usuarios')
-      .select('conjunto_id')
+      .select('conjunto_id, activo')
       .eq('id', user.id)
       .single()
 
@@ -88,7 +89,19 @@ export async function requireAuth(
       }
     }
 
-    if (!perfil?.conjunto_id) {
+    if (!perfil?.activo) {
+      return {
+        authorized: false,
+        response: NextResponse.json(
+          { error: 'No autorizado' },
+          { status: 401 }
+        ),
+        user: null,
+        conjuntoId: null,
+      }
+    }
+
+    if (!perfil.conjunto_id) {
       return {
         authorized: false,
         response: NextResponse.json(

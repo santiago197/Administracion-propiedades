@@ -1,8 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
+// import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1'
+  // if (!rateLimit(`login:${ip}`, 10, 15 * 60 * 1000)) {
+  //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
+  // }
+
   const { email, password } = await request.json()
 
   if (!email || !password) {
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: true, user: data.user },
+      { success: true },
       { status: 200 }
     )
   } catch (error) {
