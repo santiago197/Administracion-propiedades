@@ -63,6 +63,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Actualizar ultimo_acceso del usuario
+    const { error: updateError } = await supabase
+      .from('usuarios')
+      .update({ ultimo_acceso: new Date().toISOString() })
+      .eq('id', data.user.id)
+
+    if (updateError) {
+      console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
+    }
+
     const setCookieHeaders = response.cookies.getAll().map(c => c.name)
     console.log('[login] cookies en respuesta:', setCookieHeaders)
 
