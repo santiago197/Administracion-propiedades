@@ -138,6 +138,29 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Registrar auditoría de creación de propuesta
+  try {
+    const { ip, userAgent } = getRequestMeta(request)
+    const supabase = await createClient()
+    await supabase.from('audit_log').insert({
+      accion: 'CREACION_PROPUESTA',
+      entidad: 'propuestas',
+      entidad_id: (data as { id?: string } | null)?.id ?? null,
+      conjunto_id: conjuntoId,
+      datos_nuevos: {
+        usuario_id: user!.id,
+        razon_social: payload.razon_social,
+        nit_cedula: payload.nit_cedula,
+        tipo_persona: payload.tipo_persona,
+        proceso_id: payload.proceso_id,
+      },
+      ip_address: ip,
+      user_agent: userAgent,
+    })
+  } catch (auditError) {
+    console.warn('[propuestas] Error registrando auditoría:', auditError)
+  }
+
   // Validación de mínimo 3 propuestas (Ley 675): informar pero no bloquear la creación
   const total = await contarPropuestasTotales(payload.proceso_id)
   const warning = total < 3 ? 'El proceso requiere mínimo 3 propuestas para avanzar' : null
