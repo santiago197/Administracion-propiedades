@@ -290,6 +290,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           archivo_url,
           archivo_pathname,
           estado: archivo_url ? 'completo' : 'pendiente',
+          tipo_documento_id: docForm.tipo_documento_id || null,
         }),
       })
       if (!res.ok) {
@@ -823,7 +824,11 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                     <SelectTrigger><SelectValue placeholder="Selecciona un tipo (opcional)" /></SelectTrigger>
                     <SelectContent>
                       {tiposDocumento
-                        .filter((t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona))
+                        .filter((t) =>
+                          t.activo &&
+                          (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona) &&
+                          !tiposCubiertos.has(t.id)
+                        )
                         .map((t) => (
                           <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
                         ))}

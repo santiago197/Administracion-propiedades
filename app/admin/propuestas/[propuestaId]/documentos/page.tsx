@@ -49,6 +49,7 @@ export default function DocumentosPropuestaPage() {
   const [status, setStatus] = useState<DocumentosStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedTipo, setSelectedTipo] = useState<string>('')
+  const [otroNombre, setOtroNombre] = useState<string>('')
   const [isUploading, setIsUploading] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
@@ -83,11 +84,15 @@ export default function DocumentosPropuestaPage() {
 
     try {
       // Encontrar el tipo de documento seleccionado
-      const tipoDoc = [...(status?.tipos_faltantes ?? []), ...(status?.tipos_cubiertos ?? [])]
-        .find(t => t.id === selectedTipo)
+      const tipoDoc = (status?.tipos_faltantes ?? []).find(t => t.id === selectedTipo)
+      const esOtro = selectedTipo === 'otros'
 
-      if (!tipoDoc) {
+      if (!tipoDoc && !esOtro) {
         toast.error('Tipo de documento no encontrado')
+        return
+      }
+      if (esOtro && !otroNombre.trim()) {
+        toast.error('Ingresa un nombre para el documento')
         return
       }
 
@@ -116,14 +121,14 @@ export default function DocumentosPropuestaPage() {
         body: JSON.stringify({
           propuesta_id: propuestaId,
           tipo_documento_id: tipoDoc.id,
-          tipo: tipoDoc.codigo,
-          nombre: tipoDoc.nombre,
+          tipo: esOtro ? 'otro' : tipoDoc.codigo,
+          nombre: esOtro ? otroNombre.trim() : tipoDoc.nombre,
           archivo_url: uploadData.url,
           archivo_pathname: uploadData.pathname,
-          es_obligatorio: tipoDoc.es_obligatorio,
+          es_obligatorio: esOtro ? false : tipoDoc.es_obligatorio,
           estado: 'cargado',
-          // Calcular fecha de vencimiento si aplica
-          fecha_vencimiento: tipoDoc.dias_vigencia > 0
+          tipo_documento_id: esOtro ? null : tipoDoc.id,
+          fecha_vencimiento: !esOtro && tipoDoc.dias_vigencia > 0
             ? new Date(Date.now() + tipoDoc.dias_vigencia * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
             : null,
         }),
@@ -136,6 +141,7 @@ export default function DocumentosPropuestaPage() {
 
       toast.success('Documento subido correctamente')
       setSelectedTipo('')
+      setOtroNombre('')
       cargarStatus()
     } catch (error) {
       console.error('Error:', error)
@@ -415,7 +421,7 @@ export default function DocumentosPropuestaPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4">
-            <Select value={selectedTipo} onValueChange={setSelectedTipo}>
+             <Select value={selectedTipo} onValueChange={(val) => { setSelectedTipo(val); setOtroNombre('') }}>
               <SelectTrigger className="w-full sm:w-[300px]">
                 <SelectValue placeholder="Seleccione tipo de documento" />
               </SelectTrigger>
@@ -434,6 +440,17 @@ export default function DocumentosPropuestaPage() {
             </Select>
 
             <div className="flex-1">
+              {selectedTipo === 'otros' && (
+                <div className="mb-2">
+                  <Label className="text-xs">Nombre del documento</Label>
+                  <Input
+                    placeholder="Ej: Certificado adicional"
+                    value={otroNombre}
+                    onChange={(e) => setOtroNombre(e.target.value)}
+                    disabled={isUploading}
+                  />
+                </div>
+              )}
               <label className="relative">
                 <input
                   type="file"
@@ -445,7 +462,7 @@ export default function DocumentosPropuestaPage() {
                 <Button
                   variant="default"
                   className="w-full sm:w-auto cursor-pointer"
-                  disabled={!selectedTipo || isUploading}
+                  disabled={!selectedTipo || isUploading || (selectedTipo === 'otros' && !otroNombre.trim())}
                   onClick={() => {
                     const input = document.querySelector('input[type="file"]') as HTMLInputElement
                     input?.click()

@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       estado: (body.estado as string) ?? 'pendiente',
       fecha_vencimiento: body.fecha_vencimiento ?? null,
       observaciones: body.observaciones ?? null,
+      tipo_documento_id: body.tipo_documento_id ?? null,
     }
 
     const { data, error } = await createDocumento(payload)
@@ -125,6 +126,7 @@ export async function PATCH(request: NextRequest) {
       'observaciones',
       'es_obligatorio',
       'tipo',
+      'tipo_documento_id',
     ] as const
 
     allowed.forEach((field) => {

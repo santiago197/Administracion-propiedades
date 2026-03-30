@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createPropuesta, getPropuestas, getProcesoConjunto, contarPropuestasTotales, existePropuestaPorDocumento } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
+import { createClient } from '@/lib/supabase/server'
+import { getRequestMeta } from '@/lib/supabase/audit'
 
 // ---------------------------------------------------------------------------
 // GET /api/propuestas?proceso_id=<uuid>
@@ -134,6 +136,29 @@ export async function POST(request: NextRequest) {
       { error: 'Error al crear propuesta', detail },
       { status: 500 }
     )
+  }
+
+  // Registrar auditoría de creación de propuesta
+  try {
+    const { ip, userAgent } = getRequestMeta(request)
+    const supabase = await createClient()
+    await supabase.from('audit_log').insert({
+      accion: 'CREACION_PROPUESTA',
+      entidad: 'propuestas',
+      entidad_id: (data as { id?: string } | null)?.id ?? null,
+      conjunto_id: conjuntoId,
+      datos_nuevos: {
+        usuario_id: user!.id,
+        razon_social: payload.razon_social,
+        nit_cedula: payload.nit_cedula,
+        tipo_persona: payload.tipo_persona,
+        proceso_id: payload.proceso_id,
+      },
+      ip_address: ip,
+      user_agent: userAgent,
+    })
+  } catch (auditError) {
+    console.warn('[propuestas] Error registrando auditoría:', auditError)
   }
 
   // Validación de mínimo 3 propuestas (Ley 675): informar pero no bloquear la creación

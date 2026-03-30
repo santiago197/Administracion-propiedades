@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,6 @@ import type { Conjunto, Proceso } from '@/lib/types/index'
 
 export default function ConjuntoDetail() {
   const params = useParams()
-  const router = useRouter()
   const conjuntoId = params.conjuntoId as string
 
   const [conjunto, setConjunto] = useState<Conjunto | null>(null)
@@ -27,9 +26,8 @@ export default function ConjuntoDetail() {
         ])
 
         if (conjRes.ok) {
-          const conjuntos = await conjRes.json()
-          const found = conjuntos.find((c: Conjunto) => c.id === conjuntoId)
-          setConjunto(found || null)
+          const conjuntoData = await conjRes.json()
+          setConjunto(conjuntoData?.id === conjuntoId ? conjuntoData : null)
         }
 
         if (procRes.ok) {
