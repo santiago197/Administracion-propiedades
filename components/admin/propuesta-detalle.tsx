@@ -290,6 +290,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           archivo_url,
           archivo_pathname,
           estado: archivo_url ? 'completo' : 'pendiente',
+          tipo_documento_id: docForm.tipo_documento_id || null,
         }),
       })
       if (!res.ok) {
