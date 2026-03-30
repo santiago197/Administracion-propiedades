@@ -813,7 +813,11 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                     <SelectTrigger><SelectValue placeholder="Selecciona un tipo (opcional)" /></SelectTrigger>
                     <SelectContent>
                       {tiposDocumento
-                        .filter((t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona))
+                        .filter((t) =>
+                          t.activo &&
+                          (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona) &&
+                          !tiposCubiertos.has(t.id)
+                        )
                         .map((t) => (
                           <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
                         ))}

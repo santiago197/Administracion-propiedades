@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createPropuesta, getPropuestas, getProcesoConjunto, contarPropuestasTotales, existePropuestaPorDocumento } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
+import { createClient } from '@/lib/supabase/server'
+import { getRequestMeta } from '@/lib/supabase/audit'
 
 // ---------------------------------------------------------------------------
 // GET /api/propuestas?proceso_id=<uuid>
