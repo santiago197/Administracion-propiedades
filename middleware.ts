@@ -89,7 +89,7 @@ export async function middleware(request: NextRequest) {
   if (user && !isPublicRoute) {
     const { data: dbUser, error } = await supabase
       .from('usuarios')
-      .select('id, activo, conjunto_id')
+      .select('id, activo, conjunto_id, rol')
       .eq('id', user.id)
       .maybeSingle()
 
@@ -119,7 +119,8 @@ export async function middleware(request: NextRequest) {
       return buildSignOutRedirect()
     }
 
-    if (pathname.startsWith('/admin') && !dbUser.conjunto_id) {
+    // Solo bloquear usuarios sin conjunto_id que NO sean superadmin
+    if (pathname.startsWith('/admin') && !dbUser.conjunto_id && dbUser.rol !== 'superadmin') {
       console.warn('[auth] Usuario sin conjunto asignado', {
         userId: user.id,
         path: pathname,
@@ -129,8 +130,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Autenticado intentando acceder a login → redirigir a admin
+  // Autenticado intentando acceder a login → redirigir al panel correcto según rol
   if (pathname === '/login' && user) {
+    const { data: dbUser } = await supabase
+      .from('usuarios')
+      .select('rol')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (dbUser?.rol === 'superadmin') {
+      return NextResponse.redirect(new URL('/admin/conjuntos', request.url))
+    }
     return NextResponse.redirect(new URL('/admin', request.url))
   }
 

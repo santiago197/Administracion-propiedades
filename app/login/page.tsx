@@ -39,8 +39,9 @@ export default function LoginPage() {
         return
       }
 
-      console.log('[login] redirigiendo a /admin')
-      window.location.href = '/admin'
+      const destino = data.rol === 'superadmin' ? '/admin/conjuntos' : '/admin'
+      console.log('[login] redirigiendo a', destino)
+      window.location.href = destino
     } catch (err) {
       console.error('[login] catch error:', err)
       setError('Error de conexión. Intenta de nuevo.')

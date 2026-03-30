@@ -72,15 +72,17 @@ export async function POST(request: NextRequest) {
     }
 
     let conjuntoId: string | null = null
+    let rol: string | null = null
     const { data: usuarioRow, error: usuarioError } = await supabase
       .from('usuarios')
-      .select('conjunto_id')
+      .select('conjunto_id, rol')
       .eq('id', data.user.id)
       .maybeSingle()
     if (usuarioError) {
       console.warn('[login] No se pudo obtener conjunto_id:', usuarioError.message)
     }
     conjuntoId = usuarioRow?.conjunto_id ?? null
+    rol = usuarioRow?.rol ?? null
 
     // Actualizar ultimo_acceso del usuario
     const { error: updateError } = await supabase
@@ -103,7 +105,12 @@ export async function POST(request: NextRequest) {
     const setCookieHeaders = response.cookies.getAll().map(c => c.name)
     console.log('[login] cookies en respuesta:', setCookieHeaders)
 
-    return response
+    // Crear respuesta final con el rol incluido, preservando las cookies de sesión
+    const finalResponse = NextResponse.json({ success: true, rol }, { status: 200 })
+    response.cookies.getAll().forEach(({ name, value, ...options }) => {
+      finalResponse.cookies.set(name, value, options)
+    })
+    return finalResponse
   } catch (error) {
     console.error('[auth] Login error:', error)
     await logAuthEvent({
