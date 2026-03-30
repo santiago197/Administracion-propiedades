@@ -455,7 +455,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // ---------------------------------------------------------------------------
 
   const canEdit   = propuesta.estado === 'registro'
-  const canEvaluar = propuesta.estado === 'en_evaluacion'
+  const canEvaluar = propuesta.estado === 'en_evaluacion' || propuesta.estado === 'habilitada'
 
   // ----- INFO -----
   function renderInfo() {
@@ -953,7 +953,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
   // ----- EVALUACION -----
   function renderEvaluacion() {
-    const bloqueado = !docsOk && propuesta.estado !== 'en_evaluacion'
+    const bloqueado = !docsOk && !canEvaluar
 
     return (
       <div className="space-y-4">
@@ -1004,7 +1004,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           </Button>
         ) : propuesta.puntaje_evaluacion === 0 ? (
           <p className="text-sm text-muted-foreground">
-            La evaluación estará disponible cuando la propuesta esté en estado <strong>En Evaluación</strong>.
+            La evaluación estará disponible cuando la propuesta esté en estado <strong>Habilitada</strong> o <strong>En Evaluación</strong>.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">

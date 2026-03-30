@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getConsejeroSessionFromRequest } from '@/lib/consejero-session'
 
 /**
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // 1. Validar consejero activo
     const { data: consejero, error: cError } = await supabase

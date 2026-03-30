@@ -26,7 +26,7 @@ BEGIN
     UPDATE propuestas
     SET estado = 'incompleto'
     WHERE id = NEW.propuesta_id
-      AND estado IN ('en_revision', 'incompleto', 'habilitada');
+      AND estado IN ('en_revision', 'incompleto', 'habilitada', 'en_evaluacion');
   END IF;
 
   -- ELIMINADO: la transición automática a 'habilitada' cuando todos los

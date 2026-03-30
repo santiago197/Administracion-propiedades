@@ -140,11 +140,16 @@ INSERT INTO transiciones_estado
 VALUES
   -- ── Flujo principal ──────────────────────────────────────────────
   ('registro',       'en_revision',    false, 'Admin inicia revisión documental del candidato'),
+  ('registro',       'en_evaluacion',  false, 'Documentación completa, pasa a evaluación'),
   ('en_revision',    'incompleto',     true,  'Se detecta documentación incompleta o inválida'),
   ('en_revision',    'en_validacion',  false, 'Documentación completa, pasa a validación legal'),
+  ('en_revision',    'en_evaluacion',  false, 'Documentación completa, pasa a evaluación'),
   ('incompleto',     'en_subsanacion', false, 'Se notifica al candidato el plazo de subsanación'),
+  ('incompleto',     'en_evaluacion',  false, 'Documentación completa, pasa a evaluación'),
   ('en_subsanacion', 'en_validacion',  false, 'Candidato subsanó documentación correctamente'),
+  ('en_subsanacion', 'en_evaluacion',  false, 'Documentación completa, pasa a evaluación'),
   ('en_subsanacion', 'descalificada',  true,  'Candidato no subsanó en el plazo establecido'),
+  ('en_validacion',  'en_evaluacion',  false, 'Documentación completa, pasa a evaluación'),
   ('en_validacion',  'no_apto_legal',  true,  'No supera validación legal (SARLAFT, antecedentes, paz y salvo)'),
   ('en_validacion',  'habilitada',     false, 'Cumple todos los requisitos legales, habilitado para evaluación'),
   ('habilitada',     'en_evaluacion',  false, 'Proceso de evaluación activado'),

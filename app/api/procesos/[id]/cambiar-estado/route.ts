@@ -93,20 +93,23 @@ export async function POST(
     }
 
     if (estadoNuevo === 'votacion') {
+      const estadosEvaluacion = ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']
       const { data: enEvaluacion, count } = await supabase
         .from('propuestas')
-        .select('id, clasificacion', { count: 'exact' })
+        .select('id, clasificacion, estado', { count: 'exact' })
         .eq('proceso_id', id)
-        .eq('estado', 'en_evaluacion')
+        .in('estado', estadosEvaluacion)
 
       if (!count || count === 0) {
         return NextResponse.json(
-          { error: 'No hay propuestas en evaluación para pasar a votación' },
+          { error: 'No hay propuestas evaluadas para pasar a votación' },
           { status: 400 }
         )
       }
 
-      const sinEvaluar = (enEvaluacion ?? []).filter((p) => !p.clasificacion)
+      const sinEvaluar = (enEvaluacion ?? []).filter(
+        (p) => p.estado === 'en_evaluacion' && !p.clasificacion
+      )
       if (sinEvaluar.length > 0) {
         return NextResponse.json(
           { error: `Hay ${sinEvaluar.length} propuesta(s) sin evaluar. Evalúa todas antes de continuar.` },
@@ -114,8 +117,9 @@ export async function POST(
         )
       }
 
-      // Mover cada propuesta de en_evaluacion → su clasificacion (estado final)
+      // Mover propuestas aún en evaluación a su clasificación final
       for (const propuesta of enEvaluacion ?? []) {
+        if (propuesta.estado !== 'en_evaluacion') continue
         const estadoPropuesta = propuesta.clasificacion as string
         await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta.id,

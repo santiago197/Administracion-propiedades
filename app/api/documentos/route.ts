@@ -4,12 +4,48 @@ import {
   deleteDocumento,
   getDocumentoConjunto,
   getDocumentos,
+  getDocumentosFaltantes,
   getPropuestaConjunto,
   updateDocumento,
   validarDocumentacionObligatoria,
 } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
+import { createClient } from '@/lib/supabase/server'
 import type { Documento } from '@/lib/types'
+
+const ESTADOS_AUTO_EVALUACION = [
+  'registro',
+  'en_revision',
+  'incompleto',
+  'en_subsanacion',
+  'en_validacion',
+  'habilitada',
+] as const
+
+async function intentarPasarAEvaluacion(
+  propuesta_id: string,
+  estadoActual: string,
+  userId?: string | null
+) {
+  const { faltantes, cubiertos } = await getDocumentosFaltantes(propuesta_id)
+  const totalTipos = faltantes.length + cubiertos.length
+  if (totalTipos === 0 || faltantes.length > 0) return
+
+  if (!ESTADOS_AUTO_EVALUACION.includes(estadoActual as (typeof ESTADOS_AUTO_EVALUACION)[number])) return
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('cambiar_estado_propuesta', {
+    p_propuesta_id: propuesta_id,
+    p_estado_nuevo: 'en_evaluacion',
+    p_usuario_id: userId ?? null,
+    p_observacion: 'Documentación completa',
+    p_metadata: { origen: 'documentos' },
+  })
+
+  if (error && !String(error.message ?? '').includes('INVALID_TRANSITION')) {
+    console.warn('[documentos] Error transitioning propuesta to en_evaluacion:', error)
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { authorized, response: authError, conjuntoId } = await requireAuth(request)
@@ -41,7 +77,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -74,13 +110,13 @@ export async function POST(request: NextRequest) {
       estado: (body.estado as string) ?? 'pendiente',
       fecha_vencimiento: body.fecha_vencimiento ?? null,
       observaciones: body.observaciones ?? null,
-      tipo_documento_id: body.tipo_documento_id ?? null,
     }
 
     const { data, error } = await createDocumento(payload)
     if (error) throw error
 
     const docCheck = await validarDocumentacionObligatoria(payload.propuesta_id).catch(() => null)
+    await intentarPasarAEvaluacion(payload.propuesta_id, propuesta.estado, user?.id)
 
     return NextResponse.json(
       docCheck ? { ...data, documentos_completos: docCheck.completa } : data,
@@ -101,7 +137,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -141,6 +177,11 @@ export async function PATCH(request: NextRequest) {
 
     const { data, error } = await updateDocumento(documentoId, updates as any)
     if (error) throw error
+
+    const { data: propuesta } = await getPropuestaConjunto(String(documento.propuesta_id), conjuntoId!)
+    if (propuesta) {
+      await intentarPasarAEvaluacion(propuesta.id, propuesta.estado, user?.id)
+    }
 
     return NextResponse.json(data)
   } catch (error) {

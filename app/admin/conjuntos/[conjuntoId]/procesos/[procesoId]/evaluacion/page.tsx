@@ -147,8 +147,11 @@ export default function EvaluacionPage() {
     return pb - pa
   })
 
-  const evaluables = propuestas.filter((p) => p.estado === 'en_evaluacion')
-  const evaluadas = evaluables.filter((p) => evalMap.has(p.id)).length
+  const estadosEvaluables = ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']
+  const evaluables = propuestas.filter((p) => estadosEvaluables.includes(p.estado))
+  const evaluadas = evaluables.filter(
+    (p) => evalMap.has(p.id) || p.clasificacion != null || p.puntaje_evaluacion > 0
+  ).length
   const pendientes = evaluables.length - evaluadas
   const todasEvaluadas = evaluables.length > 0 && pendientes === 0
 
@@ -304,11 +307,29 @@ export default function EvaluacionPage() {
               <tbody className="divide-y divide-border/50">
                 {sorted.map((p, i) => {
                   const ev = evalMap.get(p.id)
-                  const puntaje = ev?.puntaje_total ?? 0
-                  const clasificacion = ev?.clasificacion ?? null
+                  const puntaje = ev?.puntaje_total ?? p.puntaje_evaluacion ?? 0
+                  const clasificacion = ev?.clasificacion ?? p.clasificacion ?? null
                   const esLider = i === 0 && puntaje > 0
-                  const evaluado = ev != null
-                  const evaluable = p.estado === 'en_evaluacion'
+                  const evaluado = ev != null || p.clasificacion != null || p.puntaje_evaluacion > 0
+                  const evaluable = estadoProceso === 'evaluacion' && p.estado === 'en_evaluacion'
+                  const motivoDisabled = (() => {
+                    if (estadoProceso && estadoProceso !== 'evaluacion') {
+                      return 'El proceso no está en evaluación. Avanza el proceso para habilitar la calificación.'
+                    }
+                    if (p.estado === 'habilitada') {
+                      return 'Candidato habilitado. Debes pasar el proceso a Evaluación para poder calificar.'
+                    }
+                    if (p.estado === 'no_apto_legal') {
+                      return 'Rechazado en validación legal.'
+                    }
+                    if (p.estado === 'incompleto' || p.estado === 'en_revision' || p.estado === 'en_subsanacion') {
+                      return 'Documentación pendiente. Completa la revisión documental.'
+                    }
+                    if (p.estado !== 'en_evaluacion') {
+                      return 'Debe estar en estado "En Evaluación" para calificar.'
+                    }
+                    return ''
+                  })()
                   const estadoColor = ESTADO_COLOR[p.estado] ?? 'bg-muted/50 text-muted-foreground'
 
                   return (
@@ -379,16 +400,23 @@ export default function EvaluacionPage() {
 
                       {/* Acción */}
                       <td className="px-4 py-4 text-right">
-                        <Button
-                          size="sm"
-                          variant={evaluado ? 'outline' : 'default'}
-                          onClick={() => handleEvaluar(p)}
-                          disabled={!evaluable}
-                          className="gap-1.5"
-                        >
-                          {evaluado ? 'Re-evaluar' : 'Evaluar'}
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="inline-flex flex-col items-end">
+                          <Button
+                            size="sm"
+                            variant={evaluado ? 'outline' : 'default'}
+                            onClick={() => handleEvaluar(p)}
+                            disabled={!evaluable}
+                            className="gap-1.5"
+                          >
+                            {evaluado ? 'Re-evaluar' : 'Evaluar'}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </Button>
+                          {!evaluable && motivoDisabled && (
+                            <span className="mt-1 text-[10px] text-muted-foreground max-w-[180px] text-right">
+                              {motivoDisabled}
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
