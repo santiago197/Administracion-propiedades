@@ -90,6 +90,12 @@ const TIPOS_DOC: TipoDocumento[] = [
   'estados_financieros', 'referencia', 'otro',
 ]
 
+function normalizeTipoPersona(value?: string | null): TipoPersona | 'ambos' {
+  const raw = (value ?? '').toString().trim().toLowerCase()
+  if (raw === 'juridica' || raw === 'natural' || raw === 'ambos') return raw
+  return 'ambos'
+}
+
 // ---------------------------------------------------------------------------
 // Tipos internos
 // ---------------------------------------------------------------------------
@@ -173,6 +179,8 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
   // Tipos de documento configurados
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
+  const [tiposLoading, setTiposLoading] = useState(false)
+  const [tiposError, setTiposError] = useState<string | null>(null)
 
   // Direct upload
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -185,11 +193,20 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   const loadDocs = useCallback(() => {
     setDocsLoading(true)
     setDocsError(null)
-    // Cargar tipos de documento configurados (para el checklist)
-    fetch('/api/tipos-documento')
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+    setTiposLoading(true)
+    setTiposError(null)
+    // Cargar tipos de documento configurados (Parámetros documentales)
+    fetch('/api/tipos-documento', { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error(body?.error ?? 'Error al cargar tipos de documento')
+        }
+        return r.json()
+      })
       .then((data: TipoDocumentoConfig[]) => setTiposDocumento(data))
-      .catch(() => { /* no bloquear si falla */ })
+      .catch((err) => setTiposError(err instanceof Error ? err.message : 'Error al cargar tipos de documento'))
+      .finally(() => setTiposLoading(false))
     fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar documentos'))))
       .then((data: Documento[]) => setDocs(data))
@@ -257,6 +274,19 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       setDocError('El nombre del documento es requerido')
       return
     }
+    const personaActual = propuesta.tipo_persona ?? 'ambos'
+    const tiposAplicables = tiposDocumento.filter((t) => {
+      const activo = t.activo !== false
+      const tipoPersona =
+        t.tipo_persona === 'juridica' || t.tipo_persona === 'natural' || t.tipo_persona === 'ambos'
+          ? t.tipo_persona
+          : 'ambos'
+      return activo && (personaActual === 'ambos' || tipoPersona === 'ambos' || tipoPersona === personaActual)
+    })
+    if (tiposAplicables.length > 0 && !docForm.tipo_documento_id) {
+      setDocError('Selecciona el tipo configurado del documento')
+      return
+    }
     setDocSaving(true)
     setDocError(null)
     try {
@@ -277,12 +307,13 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         archivo_pathname = uploadData.pathname
       }
 
+      const tipoFinal = docForm.tipo_documento_id ? 'otro' : docForm.tipo
       const res = await fetch('/api/documentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propuesta_id:      propuesta.id,
-          tipo:              docForm.tipo,
+          tipo:              tipoFinal,
           tipo_documento_id: docForm.tipo_documento_id || null,
           nombre:            docForm.nombre.trim(),
           es_obligatorio:    docForm.es_obligatorio,
@@ -290,7 +321,6 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           archivo_url,
           archivo_pathname,
           estado: archivo_url ? 'completo' : 'pendiente',
-          tipo_documento_id: docForm.tipo_documento_id || null,
         }),
       })
       if (!res.ok) {
@@ -579,9 +609,15 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   function renderDocumentos() {
     // Checklist por tipos configurados
     const codigoToId = new Map(tiposDocumento.map((t) => [t.codigo, t.id]))
-    const tiposAplicables = tiposDocumento.filter(
-      (t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona)
-    )
+    const personaActual = propuesta.tipo_persona ?? 'ambos'
+    const tiposAplicables = tiposDocumento.filter((t) => {
+      const activo = t.activo !== false
+      const tipoPersona =
+        t.tipo_persona === 'juridica' || t.tipo_persona === 'natural' || t.tipo_persona === 'ambos'
+          ? t.tipo_persona
+          : 'ambos'
+      return activo && (personaActual === 'ambos' || tipoPersona === 'ambos' || tipoPersona === personaActual)
+    })
     const tiposCubiertos = new Set<string>()
     docs.forEach((doc) => {
       if (doc.tipo_documento_id) {
@@ -594,6 +630,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     })
     const tiposRequeridos = tiposAplicables.filter((t) => t.es_obligatorio)
     const faltanRequeridos = tiposRequeridos.filter((t) => !tiposCubiertos.has(t.id))
+    const tiposConfigurados = tiposAplicables
 
     return (
       <div className="space-y-4">
@@ -601,7 +638,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         {tiposAplicables.length > 0 && (
           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Checklist de documentos requeridos
+              Checklist de documentos requeridos (Parámetros documentales)
             </p>
             <div className="space-y-1">
               {tiposAplicables.map((t) => {
@@ -661,6 +698,16 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                 Faltan {faltanRequeridos.length} tipo{faltanRequeridos.length !== 1 ? 's' : ''} de documento obligatorio{faltanRequeridos.length !== 1 ? 's' : ''} por cargar.
               </p>
             )}
+          </div>
+        )}
+        {tiposAplicables.length === 0 && !tiposLoading && (
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+            No hay tipos de documento configurados en Parámetros documentales para este tipo de persona.
+          </div>
+        )}
+        {tiposError && (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">
+            {tiposError}
           </div>
         )}
 
@@ -723,13 +770,16 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                 <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{doc.nombre}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <span className="text-xs text-muted-foreground">{TIPO_DOC_LABEL[doc.tipo as TipoDocumento] ?? doc.tipo}</span>
-                    {doc.es_obligatorio && <span className="text-xs text-primary font-medium">Obligatorio</span>}
-                    {doc.fecha_vencimiento && (
-                      <span className="text-xs text-muted-foreground">
-                        Vence: {new Date(doc.fecha_vencimiento).toLocaleDateString('es-CO')}
-                      </span>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    {tiposDocumento.find((t) => t.id === doc.tipo_documento_id)?.nombre ??
+                      TIPO_DOC_LABEL[doc.tipo as TipoDocumento] ?? doc.tipo}
+                  </span>
+                  {doc.es_obligatorio && <span className="text-xs text-primary font-medium">Obligatorio</span>}
+                  {doc.fecha_vencimiento && (
+                    <span className="text-xs text-muted-foreground">
+                      Vence: {new Date(doc.fecha_vencimiento).toLocaleDateString('es-CO')}
+                    </span>
                     )}
                   </div>
                 </div>
@@ -806,48 +856,53 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                   placeholder="Ej: Cámara de Comercio 2025"
                 />
               </div>
-              {tiposDocumento.length > 0 && (
+              {tiposAplicables.length > 0 && (
                 <div className="space-y-1.5">
                   <Label>Tipo de documento requerido</Label>
                   <Select
                     value={docForm.tipo_documento_id}
                     onValueChange={(v) => {
                       const found = tiposDocumento.find((t) => t.id === v)
+                      const fechaVencimiento =
+                        !docForm.fecha_vencimiento && found?.dias_vigencia
+                          ? new Date(Date.now() + found.dias_vigencia * 24 * 60 * 60 * 1000)
+                              .toISOString()
+                              .split('T')[0]
+                          : docForm.fecha_vencimiento
                       setDocForm({
                         ...docForm,
                         tipo_documento_id: v,
                         nombre: docForm.nombre || (found?.nombre ?? ''),
                         es_obligatorio: found?.es_obligatorio ?? docForm.es_obligatorio,
+                        fecha_vencimiento: fechaVencimiento,
                       })
                     }}
                   >
-                    <SelectTrigger><SelectValue placeholder="Selecciona un tipo (opcional)" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger>
                     <SelectContent>
-                      {tiposDocumento
-                        .filter((t) =>
-                          t.activo &&
-                          (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona) &&
-                          !tiposCubiertos.has(t.id)
-                        )
-                        .map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
-                        ))}
+                      {tiposConfigurados.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.nombre}{tiposCubiertos.has(t.id) ? ' (Ya cargado)' : ''}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">Asociar al tipo ayuda al seguimiento del checklist.</p>
+                  <p className="text-xs text-muted-foreground">Selecciona el tipo configurado en Parámetros documentales.</p>
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Label>Tipo (legado)</Label>
-                <Select value={docForm.tipo} onValueChange={(v) => setDocForm({ ...docForm, tipo: v as TipoDocumento })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TIPOS_DOC.map((t) => (
-                      <SelectItem key={t} value={t}>{TIPO_DOC_LABEL[t]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {tiposAplicables.length === 0 && (
+                <div className="space-y-1.5">
+                  <Label>Tipo (legado)</Label>
+                  <Select value={docForm.tipo} onValueChange={(v) => setDocForm({ ...docForm, tipo: v as TipoDocumento })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TIPOS_DOC.map((t) => (
+                        <SelectItem key={t} value={t}>{TIPO_DOC_LABEL[t]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -855,6 +910,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
                   checked={docForm.es_obligatorio}
                   onChange={(e) => setDocForm({ ...docForm, es_obligatorio: e.target.checked })}
                   className="rounded"
+                  disabled={Boolean(docForm.tipo_documento_id)}
                 />
                 <Label htmlFor="es_obligatorio">Obligatorio</Label>
               </div>
