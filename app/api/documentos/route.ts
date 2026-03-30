@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     const payload: Omit<Documento, 'id' | 'created_at' | 'updated_at'> = {
       propuesta_id: String(body.propuesta_id),
+      tipo_documento_id: body.tipo_documento_id ? String(body.tipo_documento_id) : null,
       tipo: String(body.tipo),
       nombre: String(body.nombre),
       archivo_url: body.archivo_url ?? null,
@@ -86,7 +87,15 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('[v0] Error creating documento:', error)
-    return NextResponse.json({ error: 'Error al crear documento' }, { status: 500 })
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : error && typeof error === 'object' && 'message' in error
+            ? String((error as { message?: unknown }).message)
+            : 'Error desconocido'
+    return NextResponse.json({ error: 'Error al crear documento', details: message }, { status: 500 })
   }
 }
 

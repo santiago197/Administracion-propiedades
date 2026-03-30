@@ -577,10 +577,20 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // ----- DOCUMENTOS -----
   function renderDocumentos() {
     // Checklist por tipos configurados
+    const codigoToId = new Map(tiposDocumento.map((t) => [t.codigo, t.id]))
     const tiposAplicables = tiposDocumento.filter(
       (t) => t.activo && (t.tipo_persona === 'ambos' || t.tipo_persona === propuesta.tipo_persona)
     )
-    const tiposCubiertos = new Set(docs.map((d) => d.tipo_documento_id).filter(Boolean))
+    const tiposCubiertos = new Set<string>()
+    docs.forEach((doc) => {
+      if (doc.tipo_documento_id) {
+        tiposCubiertos.add(doc.tipo_documento_id)
+        return
+      }
+      if (doc.tipo && codigoToId.has(doc.tipo)) {
+        tiposCubiertos.add(codigoToId.get(doc.tipo)!)
+      }
+    })
     const tiposRequeridos = tiposAplicables.filter((t) => t.es_obligatorio)
     const faltanRequeridos = tiposRequeridos.filter((t) => !tiposCubiertos.has(t.id))
 

@@ -115,6 +115,7 @@ export default function DocumentosPropuestaPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propuesta_id: propuestaId,
+          tipo_documento_id: tipoDoc.id,
           tipo: tipoDoc.codigo,
           nombre: tipoDoc.nombre,
           archivo_url: uploadData.url,
@@ -425,7 +426,7 @@ export default function DocumentosPropuestaPage() {
                   </SelectItem>
                 ))}
                 {status.tipos_cubiertos.map((tipo) => (
-                  <SelectItem key={tipo.id} value={tipo.id}>
+                  <SelectItem key={tipo.id} value={tipo.id} disabled>
                     {tipo.nombre} (Ya cargado - reemplazar)
                   </SelectItem>
                 ))}

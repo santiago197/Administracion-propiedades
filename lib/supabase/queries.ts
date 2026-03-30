@@ -22,6 +22,7 @@ import type {
   TipoPersona,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
+import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
 
 // CONJUNTOS
 export async function createConjunto(data: Omit<Conjunto, 'id' | 'created_at' | 'updated_at'>) {
@@ -302,17 +303,36 @@ export async function createDocumento(
   data: Omit<Documento, 'id' | 'created_at' | 'updated_at'>
 ) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').insert([data]).select().single()
+  const payload = {
+    ...data,
+    estado: normalizeEstadoDocumentoDb(data.estado),
+  }
+  return supabase.from('documentos').insert([payload]).select().single()
 }
 
 export async function getDocumentos(propuesta_id: string) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').select('*').eq('propuesta_id', propuesta_id)
+  const { data, error } = await supabase
+    .from('documentos')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+
+  return {
+    data: (data ?? []).map((doc) => ({
+      ...doc,
+      estado: normalizeEstadoDocumentoApp(doc.estado),
+    })),
+    error,
+  }
 }
 
 export async function updateDocumento(id: string, data: Partial<Documento>) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').update(data).eq('id', id).select().single()
+  const payload = {
+    ...data,
+    ...(data.estado ? { estado: normalizeEstadoDocumentoDb(data.estado) } : {}),
+  }
+  return supabase.from('documentos').update(payload).eq('id', id).select().single()
 }
 
 export async function deleteDocumento(id: string) {
@@ -330,7 +350,9 @@ export async function validarDocumentacionObligatoria(propuesta_id: string) {
   if (error) throw error
 
   const incompletos =
-    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo') ?? []
+    documentos?.filter(
+      (d) => d.es_obligatorio && normalizeEstadoDocumentoApp(d.estado) !== 'completo'
+    ) ?? []
 
   return {
     completa: incompletos.length === 0,
@@ -413,7 +435,7 @@ export async function validarDocumentacionPropuesta(
   if (docsError) throw docsError
 
   const hayObligatoriosFaltantes = documentos?.some(
-    (d) => d.es_obligatorio && d.estado !== 'completo'
+    (d) => d.es_obligatorio && normalizeEstadoDocumentoApp(d.estado) !== 'completo'
   )
 
   if (hayObligatoriosFaltantes) {
@@ -481,11 +503,12 @@ export async function procesarValidacionLegal(
 
 export async function validarDocumento(id: string, estado: string, observaciones: string, userId: string) {
   const supabase = await createServerClient()
+  const estadoNormalizado = normalizeEstadoDocumentoDb(estado)
 
   const { data, error } = await supabase
     .from('documentos')
     .update({
-      estado,
+      estado: estadoNormalizado,
       observaciones,
       validado_por: userId,
       fecha_validacion: new Date().toISOString()
@@ -498,10 +521,10 @@ export async function validarDocumento(id: string, estado: string, observaciones
 
   // Registrar auditoría
   await supabase.from('audit_log').insert({
-    accion: estado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
+    accion: estadoNormalizado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
     entidad: 'documentos',
     entidad_id: id,
-    datos_nuevos: { estado, observaciones },
+    datos_nuevos: { estado: estadoNormalizado, observaciones },
     consejero_id: userId // Usar como responsable genérico si aplica
   })
 
@@ -806,11 +829,22 @@ export async function getDocumentosFaltantes(propuesta_id: string): Promise<{
 
   const { data: documentos } = await supabase
     .from('documentos')
-    .select('tipo_documento_id')
+    .select('tipo_documento_id, tipo')
     .eq('propuesta_id', propuesta_id)
-    .not('tipo_documento_id', 'is', null)
-
-  const tiposCubiertos = new Set((documentos ?? []).map((d) => d.tipo_documento_id as string))
+ 
+  const tiposCubiertos = new Set<string>()
+  const codigoToId = new Map(
+    (tipos as TipoDocumentoConfig[]).map((t) => [t.codigo, t.id])
+  )
+  ;(documentos ?? []).forEach((doc) => {
+    if (doc.tipo_documento_id) {
+      tiposCubiertos.add(doc.tipo_documento_id as string)
+      return
+    }
+    if (doc.tipo && codigoToId.has(doc.tipo as string)) {
+      tiposCubiertos.add(codigoToId.get(doc.tipo as string)!)
+    }
+  })
 
   const faltantes = (tipos as TipoDocumentoConfig[]).filter(
     (t) => t.es_obligatorio && !tiposCubiertos.has(t.id)
