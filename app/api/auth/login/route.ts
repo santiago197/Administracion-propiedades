@@ -67,22 +67,35 @@ export async function POST(request: NextRequest) {
     if (!data.session) {
       return NextResponse.json(
         { error: 'No se pudo crear sesión' },
-        { status: 500 }
+        { status: 500 },
       )
     }
 
-    let conjuntoId: string | null = null
-    let rol: string | null = null
     const { data: usuarioRow, error: usuarioError } = await supabase
       .from('usuarios')
-      .select('conjunto_id, rol')
+      .select('conjunto_id, rol, activo')
       .eq('id', data.user.id)
       .maybeSingle()
+
     if (usuarioError) {
-      console.warn('[login] No se pudo obtener conjunto_id:', usuarioError.message)
+      console.warn('[login] No se pudo obtener usuario:', usuarioError.message)
+      await supabase.auth.signOut({ scope: 'global' })
+      return NextResponse.json(
+        { error: 'No se pudo validar el usuario' },
+        { status: 500 },
+      )
     }
-    conjuntoId = usuarioRow?.conjunto_id ?? null
-    rol = usuarioRow?.rol ?? null
+
+    if (!usuarioRow || usuarioRow.activo === false || !usuarioRow.rol) {
+      await supabase.auth.signOut({ scope: 'global' })
+      return NextResponse.json(
+        { error: 'Usuario no habilitado' },
+        { status: 403 },
+      )
+    }
+
+    let conjuntoId: string | null = usuarioRow.conjunto_id ?? null
+    const rol = usuarioRow.rol
 
     // Actualizar ultimo_acceso del usuario
     const { error: updateError } = await supabase
