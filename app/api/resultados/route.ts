@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin } from '@/lib/supabase/queries'
+import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin, getDatosActa } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -31,6 +31,11 @@ export async function GET(request: NextRequest) {
     if (type === 'matriz') {
       const matriz = await getMatrizEvaluacionAdmin(procesoId)
       return NextResponse.json(matriz)
+    }
+
+    if (type === 'acta') {
+      const datos = await getDatosActa(procesoId)
+      return NextResponse.json(datos)
     }
 
     const resultados = await getResultadosFinales(procesoId)

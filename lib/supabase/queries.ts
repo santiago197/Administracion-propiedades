@@ -756,6 +756,89 @@ export async function getMatrizEvaluacionAdmin(proceso_id: string): Promise<Fila
   })
 }
 
+// DATOS COMPLETOS PARA ACTA PDF
+export interface VotoDetallado {
+  consejero_nombre: string
+  consejero_cargo: string
+  consejero_apartamento: string
+  propuesta_votada: string
+  puntaje_final_propuesta: number
+}
+
+export interface DatosActa {
+  proceso: { nombre: string; fecha_inicio: string; fecha_fin?: string; peso_evaluacion: number; peso_votacion: number }
+  conjunto: { nombre: string; direccion: string; ciudad: string }
+  candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null }>
+  matriz: FilaMatrizEvaluacion[]
+  ranking: ResultadoFinal[]
+  votos: VotoDetallado[]
+  fecha_generacion: string
+}
+
+export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
+  const supabase = await createServerClient()
+
+  // Proceso + conjunto
+  const { data: proceso } = await supabase
+    .from('procesos')
+    .select('nombre, fecha_inicio, fecha_fin, peso_evaluacion, peso_votacion, conjunto_id, conjuntos(nombre, direccion, ciudad)')
+    .eq('id', proceso_id)
+    .single()
+
+  // Candidatos del proceso
+  const { data: propuestas } = await supabase
+    .from('propuestas')
+    .select('razon_social, tipo_persona, estado, clasificacion')
+    .eq('proceso_id', proceso_id)
+    .order('razon_social', { ascending: true })
+
+  // Votos con detalle de consejero y propuesta votada
+  const { data: votosRaw } = await supabase
+    .from('votos')
+    .select('consejeros(nombre_completo, cargo, apartamento), propuestas(razon_social, puntaje_final)')
+    .eq('proceso_id', proceso_id)
+
+  const votos: VotoDetallado[] = (votosRaw ?? []).map((v: any) => ({
+    consejero_nombre: v.consejeros?.nombre_completo ?? '—',
+    consejero_cargo: v.consejeros?.cargo ?? '—',
+    consejero_apartamento: v.consejeros?.apartamento ?? '—',
+    propuesta_votada: v.propuestas?.razon_social ?? '—',
+    puntaje_final_propuesta: Number(v.propuestas?.puntaje_final ?? 0),
+  })).sort((a, b) => b.puntaje_final_propuesta - a.puntaje_final_propuesta)
+
+  const [matriz, ranking] = await Promise.all([
+    getMatrizEvaluacionAdmin(proceso_id),
+    getResultadosFinales(proceso_id),
+  ])
+
+  const conjunto = (proceso as any)?.conjuntos
+
+  return {
+    proceso: {
+      nombre: proceso?.nombre ?? '',
+      fecha_inicio: proceso?.fecha_inicio ?? '',
+      fecha_fin: proceso?.fecha_fin ?? undefined,
+      peso_evaluacion: proceso?.peso_evaluacion ?? 0,
+      peso_votacion: proceso?.peso_votacion ?? 0,
+    },
+    conjunto: {
+      nombre: conjunto?.nombre ?? '',
+      direccion: conjunto?.direccion ?? '',
+      ciudad: conjunto?.ciudad ?? '',
+    },
+    candidatos: (propuestas ?? []).map((p: any) => ({
+      razon_social: p.razon_social,
+      tipo_persona: p.tipo_persona,
+      estado: p.estado,
+      clasificacion: p.clasificacion ?? null,
+    })),
+    matriz,
+    ranking,
+    votos,
+    fecha_generacion: new Date().toISOString(),
+  }
+}
+
 // PROPUESTA RUT DATOS
 export async function upsertPropuestaRutDatos(
   data: Omit<PropuestaRutDatos, 'id' | 'created_at' | 'updated_at'>

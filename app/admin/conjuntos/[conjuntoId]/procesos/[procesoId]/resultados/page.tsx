@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle, RefreshCw, FileDown } from 'lucide-react'
 import type { ResultadoFinal, ProcesoStats, FilaMatrizEvaluacion } from '@/lib/types/index'
 import { LABEL_CLASIFICACION } from '@/lib/types/index'
 
@@ -22,6 +22,7 @@ export default function PaginaResultados() {
   const [matriz, setMatriz] = useState<FilaMatrizEvaluacion[]>([])
   const [loading, setLoading] = useState(true)
   const [recalculando, setRecalculando] = useState(false)
+  const [generandoPDF, setGenerandoPDF] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -41,6 +42,21 @@ export default function PaginaResultados() {
   }
 
   useEffect(() => { fetchData() }, [procesoId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGenerarActa = async () => {
+    setGenerandoPDF(true)
+    try {
+      const res = await fetch(`/api/resultados?proceso_id=${procesoId}&type=acta`)
+      if (!res.ok) throw new Error('Error al obtener datos del acta')
+      const datos = await res.json()
+      const { generarActaPDF } = await import('@/lib/pdf/generar-acta')
+      generarActaPDF(datos)
+    } catch (error) {
+      console.error('[acta] Error generando PDF:', error)
+    } finally {
+      setGenerandoPDF(false)
+    }
+  }
 
   const handleRecalcular = async () => {
     setRecalculando(true)
@@ -88,15 +104,25 @@ export default function PaginaResultados() {
               Ranking de propuestas basado en evaluación y votación
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleRecalcular}
-            disabled={recalculando}
-            className="gap-2 shrink-0"
-          >
-            <RefreshCw className={`h-4 w-4 ${recalculando ? 'animate-spin' : ''}`} />
-            {recalculando ? 'Recalculando...' : 'Recalcular puntajes'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleRecalcular}
+              disabled={recalculando}
+              className="gap-2 shrink-0"
+            >
+              <RefreshCw className={`h-4 w-4 ${recalculando ? 'animate-spin' : ''}`} />
+              {recalculando ? 'Recalculando...' : 'Recalcular puntajes'}
+            </Button>
+            <Button
+              onClick={handleGenerarActa}
+              disabled={generandoPDF || resultados.length === 0}
+              className="gap-2 shrink-0"
+            >
+              <FileDown className={`h-4 w-4 ${generandoPDF ? 'animate-pulse' : ''}`} />
+              {generandoPDF ? 'Generando...' : 'Generar Acta PDF'}
+            </Button>
+          </div>
         </div>
 
         {stats && (
