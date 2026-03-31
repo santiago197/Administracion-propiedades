@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -395,7 +396,7 @@ export default function EvaluacionesPage() {
               className="shrink-0"
               variant="default"
             >
-              <a href="/consejero/votacion">Ir a votar</a>
+              <Link href="/consejero/panel/votacion">Ir a votar</Link>
             </Button>
           </CardContent>
         </Card>

@@ -59,11 +59,6 @@ export default function ConsejeroLogin() {
       }
 
       const data = await response.json()
-      if (data.proceso_id) {
-        router.push(`/consejero/evaluacion/${data.proceso_id}`)
-        return
-      }
-
       router.push('/consejero/panel')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'

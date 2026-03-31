@@ -524,3 +524,65 @@ MADUREZ GLOBAL                  ████████░░░░  ~65%
 ---
 
 *Fin del diagnóstico. Verificar cada ítem contra el estado actual del repositorio antes de planificar sprints.*
+
+Quiero que diseñes el panel /consejero como una interfaz UX/UI moderna.
+
+⚠️ IMPORTANTE:
+
+SOLO diseño visual (UI/UX)
+NO lógica de negocio
+NO conexión a backend
+NO llamadas a APIs
+NO estados complejos
+Usar datos mock simples (hardcoded)
+Código limpio y ligero (evitar sobreingeniería)
+🔷 Objetivo
+
+Crear un dashboard claro y fácil de usar para un miembro del consejo que debe evaluar candidatos y votar.
+
+🔷 Estructura de la interfaz
+1. Dashboard principal
+Tarjetas con:
+Procesos activos
+Evaluaciones pendientes
+Alertas simples
+2. Lista de candidatos
+Tabla o cards con:
+Nombre
+Estado (pendiente / evaluado)
+Botón “Ver detalle”
+3. Vista detalle del candidato
+
+Diseño tipo ficha con secciones:
+
+Información básica
+Experiencia laboral
+Estudios
+Sección de documentos (simular visor de PDF)
+4. Evaluación por criterios (solo UI)
+Lista de criterios (mock)
+Inputs visuales (select o rating)
+Campo de observaciones
+5. Votación (solo UI)
+Botones:
+Aprobar
+Rechazar
+Abstenerse
+Diseño de confirmación visual (sin lógica)
+6. Historial (solo visual)
+Tabla simple con:
+Acción
+Fecha
+Usuario
+7. Perfil del consejero
+Información básica
+Botón de cerrar sesión (sin funcionalidad)
+🔷 Requisitos de diseño
+Estilo moderno (tipo dashboard admin)
+Usar componentes reutilizables
+Buen espaciado y jerarquía visual
+Responsive básico
+Estados visuales simples (empty / loading simulado)
+🔷 Stack sugerido
+React
+Tailwind o shadcn/ui

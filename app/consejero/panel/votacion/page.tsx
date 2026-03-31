@@ -190,7 +190,7 @@ export default function VotacionPage() {
               </div>
             </div>
             <Button asChild className="shrink-0">
-              <Link href="/consejero/evaluaciones">
+              <Link href="/consejero/panel/evaluaciones">
                 Ir a evaluar
               </Link>
             </Button>
