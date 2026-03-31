@@ -22,7 +22,7 @@ export default function ConsejeroLogin() {
       try {
         const res = await fetch('/api/consejero/perfil')
         if (res.ok) {
-          router.replace('/consejero/perfil')
+          router.replace('/consejero/panel')
           return
         }
       } catch (err) {
@@ -64,7 +64,7 @@ export default function ConsejeroLogin() {
         return
       }
 
-      router.push('/consejero/perfil')
+      router.push('/consejero/panel')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
       setError(message)

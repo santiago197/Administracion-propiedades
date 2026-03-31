@@ -50,12 +50,12 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
-  { title: 'Dashboard', href: '/consejero/dashboard', icon: LayoutDashboard },
-  { title: 'Candidatos', href: '/consejero/candidatos', icon: Users },
-  { title: 'Evaluaciones', href: '/consejero/evaluaciones', icon: ClipboardList },
-  { title: 'Votación', href: '/consejero/votacion', icon: Vote },
-  { title: 'Historial', href: '/consejero/historial', icon: History },
-  { title: 'Perfil', href: '/consejero/perfil', icon: User },
+  { title: 'Dashboard', href: '/consejero/panel', icon: LayoutDashboard },
+  { title: 'Candidatos', href: '/consejero/panel/candidatos', icon: Users },
+  { title: 'Evaluaciones', href: '/consejero/panel/evaluaciones', icon: ClipboardList },
+  { title: 'Votación', href: '/consejero/panel/votacion', icon: Vote },
+  { title: 'Historial', href: '/consejero/panel/historial', icon: History },
+  { title: 'Perfil', href: '/consejero/panel/perfil', icon: User },
 ]
 
 export function ConsejeroShell({ children }: { children: ReactNode }) {
@@ -289,7 +289,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/consejero/perfil" className="cursor-pointer">
+                  <Link href="/consejero/panel/perfil" className="cursor-pointer">
                     <User className="mr-2 h-4 w-4" />
                     Mi Perfil
                   </Link>
