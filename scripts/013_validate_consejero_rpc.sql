@@ -30,7 +30,7 @@ BEGIN
     FROM consejeros c
     LEFT JOIN procesos p
       ON p.conjunto_id = c.conjunto_id
-     AND p.estado = 'evaluacion'
+     AND p.estado IN ('evaluacion', 'votacion')
     WHERE c.codigo_acceso = upper(trim(p_codigo))
       AND c.activo = true
     LIMIT 1;

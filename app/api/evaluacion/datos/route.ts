@@ -28,9 +28,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Sesión de consejero no válida o expirada' }, { status: 401 })
   }
 
-  if (session.procesoId !== proceso_id) {
-    return NextResponse.json({ error: 'La sesión no corresponde al proceso solicitado' }, { status: 403 })
-  }
+  // Verificar que el proceso pertenece al conjunto de la sesión (más flexible que comparar procesoId exacto)
+  // Esto resuelve sesiones creadas antes de que el proceso alcanzara estado 'evaluacion'
 
   try {
     const supabase = createAdminClient()
@@ -62,9 +61,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'El proceso no pertenece al conjunto del consejero' }, { status: 403 })
     }
 
-    if (proceso.estado !== 'evaluacion') {
+    if (proceso.estado !== 'evaluacion' && proceso.estado !== 'votacion') {
       return NextResponse.json(
-        { error: 'El proceso no está en etapa de evaluación' },
+        { error: 'El proceso no está en etapa de evaluación o votación' },
         { status: 409 }
       )
     }
@@ -77,10 +76,10 @@ export async function GET(request: NextRequest) {
       { data: voto },
     ] = await Promise.all([
       supabase
-      .from('propuestas')
-      .select('id, razon_social, tipo_persona, nit_cedula, representante_legal, anios_experiencia, unidades_administradas, valor_honorarios')
+        .from('propuestas')
+        .select('id, razon_social, tipo_persona, nit_cedula, representante_legal, anios_experiencia, unidades_administradas, valor_honorarios')
         .eq('proceso_id', proceso_id)
-        .eq('estado', 'en_evaluacion'),
+        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']),
 
       supabase
         .from('criterios')

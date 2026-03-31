@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Proceso no pertenece al conjunto del consejero' }, { status: 403 })
     }
 
-    if (proceso.estado !== 'evaluacion') {
+    if (proceso.estado !== 'evaluacion' && proceso.estado !== 'votacion') {
       return NextResponse.json({ error: 'El proceso no está en etapa de evaluación' }, { status: 409 })
     }
 

@@ -11,21 +11,12 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient()
 
-    const [{ data: consejero, error: consejeroError }, { data: proceso, error: procesoError }] = await Promise.all([
-      supabase
-        .from('consejeros')
-        .select('id, conjunto_id, nombre_completo, cargo, torre, apartamento, email, telefono, activo')
-        .eq('id', session.consejeroId)
-        .eq('activo', true)
-        .single(),
-      session.procesoId
-        ? supabase
-            .from('procesos')
-            .select('id, conjunto_id, nombre, estado')
-            .eq('id', session.procesoId)
-            .single()
-        : Promise.resolve({ data: null, error: null }),
-    ])
+    const { data: consejero, error: consejeroError } = await supabase
+      .from('consejeros')
+      .select('id, conjunto_id, nombre_completo, cargo, torre, apartamento, email, telefono, activo')
+      .eq('id', session.consejeroId)
+      .eq('activo', true)
+      .single()
 
     if (consejeroError || !consejero) {
       const response = NextResponse.json({ error: 'Consejero no encontrado o inactivo' }, { status: 403 })
@@ -33,10 +24,31 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    if (procesoError || (proceso && (proceso.conjunto_id !== consejero.conjunto_id || proceso.conjunto_id !== session.conjuntoId))) {
-      const response = NextResponse.json({ error: 'Proceso no disponible para el consejero' }, { status: 403 })
-      clearConsejeroSessionCookie(response)
-      return response
+    // Buscar proceso activo del conjunto: primero por session.procesoId si existe,
+    // si no, buscar dinámicamente por conjunto (resuelve sesiones creadas antes de activar el proceso)
+    let proceso: { id: string; conjunto_id: string; nombre: string; estado: string } | null = null
+
+    if (session.procesoId) {
+      const { data } = await supabase
+        .from('procesos')
+        .select('id, conjunto_id, nombre, estado')
+        .eq('id', session.procesoId)
+        .eq('conjunto_id', consejero.conjunto_id)
+        .single()
+      proceso = data ?? null
+    }
+
+    if (!proceso) {
+      // Buscar el proceso activo del conjunto (evaluacion o votacion)
+      const { data } = await supabase
+        .from('procesos')
+        .select('id, conjunto_id, nombre, estado')
+        .eq('conjunto_id', consejero.conjunto_id)
+        .in('estado', ['evaluacion', 'votacion'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      proceso = data ?? null
     }
 
     if (!proceso) {
@@ -44,11 +56,9 @@ export async function GET(request: NextRequest) {
         consejero,
         proceso: null,
         progreso: {
-          propuestas_requeridas: 0,
-          propuestas_evaluadas: 0,
-          evaluacion_completa: false,
-          ya_voto: false,
-          fecha_voto: null,
+          total_propuestas: 0,
+          evaluadas: 0,
+          voto_registrado: false,
         },
         mensaje: 'No hay un proceso de evaluación activo para este conjunto en este momento.',
       })
@@ -59,7 +69,7 @@ export async function GET(request: NextRequest) {
         .from('propuestas')
         .select('*', { count: 'exact', head: true })
         .eq('proceso_id', proceso.id)
-        .eq('estado', 'en_evaluacion'),
+        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']),
       supabase
         .from('evaluaciones')
         .select('propuesta_id')
@@ -108,11 +118,9 @@ export async function GET(request: NextRequest) {
       consejero,
       proceso,
       progreso: {
-        propuestas_requeridas: propuestasPendientes ?? 0,
-        propuestas_evaluadas: propuestasEvaluadas,
-        evaluacion_completa: propuestasEvaluadas >= (propuestasPendientes ?? 0),
-        ya_voto: Boolean(voto),
-        fecha_voto: voto?.created_at ?? null,
+        total_propuestas: propuestasPendientes ?? 0,
+        evaluadas: propuestasEvaluadas,
+        voto_registrado: Boolean(voto),
       },
       propuestas: propuestas ?? [],
       documentos,
