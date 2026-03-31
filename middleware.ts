@@ -9,6 +9,8 @@ export async function middleware(request: NextRequest) {
     '/',
     '/login',
     '/consejero',
+    '/consulta',
+    '/api/procesos',
     '/api/auth/login',
     '/api/auth/logout',
     '/api/auth/validate-code',

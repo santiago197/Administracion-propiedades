@@ -80,7 +80,7 @@ export default function ConsultaPublicaPage() {
       try {
         setLoading(true)
         setError(null)
-        const res = await fetch(`/procesos/${procesoId}/publico`)
+        const res = await fetch(`/api/procesos/${procesoId}/publico`)
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
           throw new Error(body.error ?? 'No se pudo cargar el proceso')

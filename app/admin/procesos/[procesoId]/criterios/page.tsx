@@ -274,7 +274,7 @@ export default function ConfigurarCriteriosProceso() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link href={`/admin/procesos/${procesoId}`}>
+          <Link href={`/admin/procesos/`}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -285,7 +285,7 @@ export default function ConfigurarCriteriosProceso() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/admin/procesos/${procesoId}`}>
+          <Link href={`/admin/procesos`}>
             <Button variant="outline">Cancelar</Button>
           </Link>
           <Button className="gap-2" onClick={handleSave} disabled={!pesoValido || saving}>
