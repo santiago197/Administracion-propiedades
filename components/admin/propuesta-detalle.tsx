@@ -176,6 +176,8 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
   // Evaluation panel
   const [evalPanelOpen, setEvalPanelOpen] = useState(false)
+  const [reabrirLoading, setReabrirLoading] = useState(false)
+  const [reabrirError, setReabrirError] = useState<string | null>(null)
 
   // Tipos de documento configurados
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
@@ -262,6 +264,30 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       setEditError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  async function handleReabrirEvaluacion() {
+    setReabrirLoading(true)
+    setReabrirError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${propuesta.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          estado: 'en_evaluacion',
+          observacion: 'Reapertura de evaluación',
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Error al reabrir evaluación')
+      }
+      onChanged()
+    } catch (e) {
+      setReabrirError(e instanceof Error ? e.message : 'Error al reabrir evaluación')
+    } finally {
+      setReabrirLoading(false)
     }
   }
 
@@ -994,6 +1020,28 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
             <AlertCircle className="h-4 w-4 shrink-0" />
             Esta propuesta fue rechazada en validación legal. No puede ser evaluada.
+          </div>
+        )}
+
+        {propuesta.estado === 'no_apto' && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              La propuesta fue marcada como <strong>No Apto</strong>. Puedes reabrirla para una nueva evaluación.
+            </div>
+            {reabrirError && (
+              <div className="text-sm text-destructive">{reabrirError}</div>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReabrirEvaluacion}
+              disabled={reabrirLoading}
+              className="gap-1.5"
+            >
+              {reabrirLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Reabrir evaluación
+            </Button>
           </div>
         )}
 

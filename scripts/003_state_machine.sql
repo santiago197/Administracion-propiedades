@@ -158,6 +158,7 @@ VALUES
   ('en_evaluacion',  'condicionado',   false, 'Puntaje final entre 55 y 69'),
   ('en_evaluacion',  'apto',           false, 'Puntaje final entre 70 y 84'),
   ('en_evaluacion',  'destacado',      false, 'Puntaje final ≥ 85'),
+  ('no_apto',        'en_evaluacion',  true,  'Reapertura de evaluación para nueva calificación'),
   -- ── Adjudicación por el consejo ──────────────────────────────────
   -- Solo candidatos APTO, CONDICIONADO o DESTACADO pueden adjudicarse
   ('condicionado',   'adjudicado',     true,  'Adjudicado con condiciones por aprobación del consejo'),
