@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -21,58 +21,7 @@ import {
   Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-// Datos mock del catálogo de criterios
-const CATALOGO_CRITERIOS = [
-  {
-    id: 'exp-admin',
-    nombre: 'Experiencia en administración',
-    descripcion: 'Años de experiencia administrando propiedades horizontales similares',
-  },
-  {
-    id: 'cap-operativa',
-    nombre: 'Capacidad operativa',
-    descripcion: 'Infraestructura, personal y recursos disponibles para la gestión',
-  },
-  {
-    id: 'propuesta-eco',
-    nombre: 'Propuesta económica',
-    descripcion: 'Honorarios mensuales y costos adicionales propuestos',
-  },
-  {
-    id: 'cumplimiento-legal',
-    nombre: 'Cumplimiento legal',
-    descripcion: 'Documentación legal al día (RUT, Cámara de Comercio, pólizas)',
-  },
-  {
-    id: 'referencias',
-    nombre: 'Referencias y reputación',
-    descripcion: 'Calidad de referencias de otros conjuntos administrados',
-  },
-  {
-    id: 'tecnologia',
-    nombre: 'Uso de tecnología',
-    descripcion: 'Plataformas digitales, app móvil, reportes en línea',
-  },
-  {
-    id: 'atencion-cliente',
-    nombre: 'Atención al cliente',
-    descripcion: 'Canales de comunicación y tiempos de respuesta',
-  },
-  {
-    id: 'plan-trabajo',
-    nombre: 'Plan de trabajo',
-    descripcion: 'Claridad y viabilidad del plan de gestión propuesto',
-  },
-]
-
-// Datos mock de criterios ya configurados
-const CRITERIOS_CONFIGURADOS_MOCK = [
-  { id: 'exp-admin', peso: 25, valorMin: 1, valorMax: 5, orden: 1, activo: true },
-  { id: 'propuesta-eco', peso: 30, valorMin: 1, valorMax: 5, orden: 2, activo: true },
-  { id: 'cumplimiento-legal', peso: 20, valorMin: 0, valorMax: 1, orden: 3, activo: true },
-  { id: 'referencias', peso: 15, valorMin: 1, valorMax: 5, orden: 4, activo: true },
-]
+import type { CriterioEvaluacion } from '@/lib/types'
 
 type CriterioConfig = {
   id: string
@@ -86,19 +35,40 @@ type CriterioConfig = {
 export default function ConfigurarCriteriosProceso() {
   const params = useParams()
   const procesoId = params.procesoId as string
+  const [catalogo, setCatalogo] = useState<CriterioEvaluacion[]>([])
+  const [catalogoLoading, setCatalogoLoading] = useState(true)
+  const [catalogoError, setCatalogoError] = useState<string | null>(null)
 
   // Estado de criterios seleccionados (checkbox del catálogo)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
-    new Set(CRITERIOS_CONFIGURADOS_MOCK.map((c) => c.id))
+    new Set()
   )
 
   // Estado de configuración de cada criterio
-  const [configuracion, setConfiguracion] = useState<Record<string, CriterioConfig>>(
-    CRITERIOS_CONFIGURADOS_MOCK.reduce(
-      (acc, c) => ({ ...acc, [c.id]: c }),
-      {} as Record<string, CriterioConfig>
-    )
-  )
+  const [configuracion, setConfiguracion] = useState<Record<string, CriterioConfig>>({})
+
+  useEffect(() => {
+    const fetchCatalogo = async () => {
+      try {
+        setCatalogoLoading(true)
+        setCatalogoError(null)
+        const res = await fetch('/api/criterios?activos=true')
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error ?? 'No se pudo cargar el catálogo de criterios')
+        }
+        const body = await res.json()
+        setCatalogo(body.criterios ?? [])
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Error al cargar el catálogo'
+        setCatalogoError(message)
+      } finally {
+        setCatalogoLoading(false)
+      }
+    }
+
+    fetchCatalogo()
+  }, [])
 
   // Toggle selección de criterio del catálogo
   const toggleSeleccion = (id: string) => {
@@ -182,7 +152,17 @@ export default function ConfigurarCriteriosProceso() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {CATALOGO_CRITERIOS.map((criterio) => (
+            {catalogoLoading ? (
+              <div className="py-6 text-sm text-muted-foreground">Cargando catálogo...</div>
+            ) : catalogoError ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {catalogoError}
+              </div>
+            ) : catalogo.length === 0 ? (
+              <div className="py-6 text-sm text-muted-foreground">
+                No hay criterios activos en el catálogo.
+              </div>
+            ) : catalogo.map((criterio) => (
               <div
                 key={criterio.id}
                 className={cn(
@@ -278,7 +258,7 @@ export default function ConfigurarCriteriosProceso() {
               ) : (
                 <div className="space-y-4">
                   {criteriosOrdenados.map((config) => {
-                    const criterio = CATALOGO_CRITERIOS.find((c) => c.id === config.id)
+                    const criterio = catalogo.find((c) => c.id === config.id)
                     if (!criterio) return null
 
                     return (
