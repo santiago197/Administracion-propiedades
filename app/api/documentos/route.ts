@@ -123,16 +123,25 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
-    console.error('[v0] Error creating documento:', error)
+    console.error('[v0] Error creating documento (raw):', JSON.stringify(error, null, 2))
+    const pgError = error as Record<string, unknown> | null
     const message =
       error instanceof Error
         ? error.message
         : typeof error === 'string'
           ? error
-          : error && typeof error === 'object' && 'message' in error
-            ? String((error as { message?: unknown }).message)
+          : pgError && typeof pgError === 'object' && 'message' in pgError
+            ? String(pgError.message)
             : 'Error desconocido'
-    return NextResponse.json({ error: 'Error al crear documento', details: message }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: 'Error al crear documento',
+        details: message,
+        code: pgError?.code ?? null,
+        hint: pgError?.hint ?? null,
+      },
+      { status: 500 }
+    )
   }
 }
 
