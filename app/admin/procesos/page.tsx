@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -40,6 +41,7 @@ function estadoToDateLabel(proceso: Proceso) {
 }
 
 export default function ProcesosPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [procesos, setProcesos] = useState<Proceso[]>([])
   const [conjuntoId, setConjuntoId] = useState<string | null>(null)
@@ -112,7 +114,19 @@ export default function ProcesosPage() {
               </TableHeader>
               <TableBody>
                 {procesos.map((proceso) => (
-                  <TableRow key={proceso.id}>
+                  <TableRow
+                    key={proceso.id}
+                    role="link"
+                    tabIndex={0}
+                    className="cursor-pointer"
+                    onClick={() => router.push(`/admin/procesos/${proceso.id}/criterios`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        router.push(`/admin/procesos/${proceso.id}/criterios`)
+                      }
+                    }}
+                  >
                     <TableCell className="font-medium">{proceso.nombre}</TableCell>
                     <TableCell>
                       <Badge className={estadoClase[proceso.estado] ?? ''} variant="outline">

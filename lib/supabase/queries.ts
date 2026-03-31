@@ -1224,7 +1224,7 @@ export async function deleteUsuario(id: string) {
 }
 
 // CRITERIOS DE EVALUACIÓN — CRUD
-import type { CriterioEvaluacion } from '../types/index'
+import type { Criterio, CriterioEvaluacion } from '../types/index'
 
 export async function getCriterios(soloActivos = false): Promise<CriterioEvaluacion[]> {
   const supabase = await createServerClient()
@@ -1242,6 +1242,37 @@ export async function getCriterios(soloActivos = false): Promise<CriterioEvaluac
 
   if (error) throw error
   return (data ?? []) as CriterioEvaluacion[]
+}
+
+export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]> {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('criterios')
+    .select(
+      'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, nombre, descripcion, tipo, orden, activo)'
+    )
+    .eq('proceso_id', procesoId)
+    .order('orden', { ascending: true })
+
+  if (error) throw error
+
+  return (data ?? []).map((row) => {
+    const catalogo = row.criterios_evaluacion
+    return {
+      id: row.id,
+      proceso_id: row.proceso_id,
+      criterio_evaluacion_id: row.criterio_evaluacion_id,
+      nombre: catalogo?.nombre ?? 'Criterio',
+      descripcion: catalogo?.descripcion ?? null,
+      tipo: catalogo?.tipo ?? 'escala',
+      peso: row.peso,
+      valor_minimo: row.valor_minimo,
+      valor_maximo: row.valor_maximo,
+      orden: row.orden ?? 0,
+      activo: row.activo ?? true,
+    }
+  })
 }
 
 export async function getCriterio(id: string): Promise<CriterioEvaluacion | null> {
@@ -1299,16 +1330,4 @@ export async function deleteCriterio(id: string): Promise<{ success: boolean }> 
 
   if (error) throw error
   return { success: true }
-}
-
-export async function getPesoTotalCriterios(): Promise<number> {
-  const supabase = await createServerClient()
-
-  const { data, error } = await supabase
-    .from('criterios_evaluacion')
-    .select('peso')
-    .eq('activo', true)
-
-  if (error) throw error
-  return (data ?? []).reduce((sum, c) => sum + (c.peso ?? 0), 0)
 }

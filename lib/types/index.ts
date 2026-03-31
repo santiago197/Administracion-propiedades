@@ -197,6 +197,7 @@ export const LABEL_TIPO_PERSONA_DOCUMENTO: Record<TipoPersonaDocumento, string> 
 export interface Criterio {
   id: string
   proceso_id: string
+  criterio_evaluacion_id: string
   nombre: string
   descripcion?: string
   peso: number
@@ -530,10 +531,9 @@ export const LABEL_ROL_USUARIO: Record<RolUsuario, string> = {
 
 export interface CriterioEvaluacion {
   id: string
-  codigo: string
   nombre: string
   descripcion: string | null
-  peso: number
+  tipo: TipoCriterio
   activo: boolean
   orden: number
   created_at: string

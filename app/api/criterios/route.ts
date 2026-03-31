@@ -30,26 +30,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Validar campos requeridos
-    if (!body.codigo || !body.nombre || body.peso === undefined) {
+    if (!body.nombre) {
       return NextResponse.json(
-        { error: 'codigo, nombre y peso son requeridos' },
-        { status: 400 }
-      )
-    }
-
-    // Validar peso
-    if (body.peso < 0 || body.peso > 100) {
-      return NextResponse.json(
-        { error: 'El peso debe estar entre 0 y 100' },
+        { error: 'nombre es requerido' },
         { status: 400 }
       )
     }
 
     const criterio = await createCriterio({
-      codigo: body.codigo,
       nombre: body.nombre,
       descripcion: body.descripcion ?? null,
-      peso: body.peso,
+      tipo: body.tipo ?? 'escala',
       activo: body.activo ?? true,
       orden: body.orden ?? 0,
     })

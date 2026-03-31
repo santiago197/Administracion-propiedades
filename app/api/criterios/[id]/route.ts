@@ -33,18 +33,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    if (body.peso !== undefined && (body.peso < 0 || body.peso > 100)) {
-      return NextResponse.json(
-        { error: 'El peso debe estar entre 0 y 100' },
-        { status: 400 }
-      )
-    }
-
     const criterio = await updateCriterio(id, {
-      ...(body.codigo !== undefined && { codigo: body.codigo }),
       ...(body.nombre !== undefined && { nombre: body.nombre }),
       ...(body.descripcion !== undefined && { descripcion: body.descripcion }),
-      ...(body.peso !== undefined && { peso: body.peso }),
+      ...(body.tipo !== undefined && { tipo: body.tipo }),
       ...(body.activo !== undefined && { activo: body.activo }),
       ...(body.orden !== undefined && { orden: body.orden }),
     })
