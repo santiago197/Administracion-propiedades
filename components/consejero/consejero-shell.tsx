@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   Users,
@@ -27,12 +27,20 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-// Datos mock del usuario consejero
-const mockUser = {
-  nombre: 'Carlos Rodríguez',
-  cargo: 'Presidente del Consejo',
-  apartamento: 'Torre 2 - Apto 501',
-  conjunto: 'Conjunto Residencial Los Pinos',
+interface Consejero {
+  id: string
+  nombre_completo: string
+  cargo: string
+  torre?: string
+  apartamento: string
+  email?: string
+  telefono?: string
+}
+
+interface Proceso {
+  id: string
+  nombre: string
+  estado: string
 }
 
 type NavItem = {
@@ -52,17 +60,57 @@ const navItems: NavItem[] = [
 
 export function ConsejeroShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [consejero, setConsejero] = useState<Consejero | null>(null)
+  const [proceso, setProceso] = useState<Proceso | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/consejero/perfil')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.consejero) setConsejero(data.consejero)
+        if (data?.proceso) setProceso(data.proceso)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
-  const initials = mockUser.nombre
-    .split(' ')
-    .map((word) => word[0])
-    .join('')
-    .toUpperCase()
-    .substring(0, 2)
+  const initials = consejero
+    ? consejero.nombre_completo
+        .split(' ')
+        .map((word: string) => word[0])
+        .join('')
+        .toUpperCase()
+        .substring(0, 2)
+    : '?'
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/consejero/logout', { method: 'POST' })
+    } catch {
+      // ignore
+    }
+    router.push('/consejero')
+  }
+
+  const conjuntoName = proceso?.nombre ?? consejero?.cargo ?? 'Panel Consejero'
+
+  const UserSkeleton = (
+    <div className="p-4">
+      <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+        <div className="h-9 w-9 rounded-full bg-muted animate-pulse shrink-0" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+          <div className="h-2.5 w-16 rounded bg-muted animate-pulse" />
+        </div>
+      </div>
+    </div>
+  )
 
   const SidebarContent = (
     <div className="flex h-full flex-col bg-card">
@@ -84,8 +132,14 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
       {/* Info del conjunto */}
       {!collapsed && (
         <div className="px-4 py-3 bg-muted/30">
-          <p className="text-xs text-muted-foreground">Conjunto</p>
-          <p className="text-sm font-medium truncate">{mockUser.conjunto}</p>
+          <p className="text-xs text-muted-foreground">Proceso</p>
+          <p className="text-sm font-medium truncate">
+            {loading ? (
+              <span className="inline-block h-3 w-32 rounded bg-muted animate-pulse" />
+            ) : (
+              conjuntoName
+            )}
+          </p>
         </div>
       )}
 
@@ -115,19 +169,21 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
 
       {/* Usuario en sidebar (solo desktop) */}
       {!collapsed && (
-        <div className="p-4">
-          <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-            <Avatar className="h-9 w-9 shrink-0">
-              <AvatarFallback className="bg-primary/10 text-primary text-sm">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium truncate">{mockUser.nombre}</p>
-              <p className="text-xs text-muted-foreground truncate">{mockUser.cargo}</p>
+        loading ? UserSkeleton : (
+          <div className="p-4">
+            <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+              <Avatar className="h-9 w-9 shrink-0">
+                <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="overflow-hidden">
+                <p className="text-sm font-medium truncate">{consejero?.nombre_completo ?? '—'}</p>
+                <p className="text-xs text-muted-foreground truncate">{consejero?.cargo ?? '—'}</p>
+              </div>
             </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Botón colapsar (solo desktop) */}
@@ -146,6 +202,16 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
       </div>
     </div>
   )
+
+  const displayName = consejero?.nombre_completo ?? '...'
+  const displayFirstName = displayName.split(' ')[0]
+  const displayCargo = consejero?.cargo ?? '...'
+  const displayApartamento =
+    consejero
+      ? [consejero.torre ? `Torre ${consejero.torre}` : null, `Apto ${consejero.apartamento}`]
+          .filter(Boolean)
+          .join(' - ')
+      : '...'
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
@@ -174,15 +240,28 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
           {/* Breadcrumb / título de página (desktop) */}
           <div className="hidden md:block">
             <p className="text-sm text-muted-foreground">Bienvenido,</p>
-            <p className="font-semibold">{mockUser.nombre}</p>
+            {loading ? (
+              <div className="h-4 w-32 rounded bg-muted animate-pulse mt-0.5" />
+            ) : (
+              <p className="font-semibold">{displayName}</p>
+            )}
           </div>
 
           {/* Acciones derecha */}
           <div className="ml-auto flex items-center gap-3">
             {/* Info del apartamento */}
             <div className="hidden lg:block text-right">
-              <p className="text-xs text-muted-foreground">{mockUser.cargo}</p>
-              <p className="text-sm font-medium">{mockUser.apartamento}</p>
+              {loading ? (
+                <div className="space-y-1">
+                  <div className="h-2.5 w-24 rounded bg-muted animate-pulse ml-auto" />
+                  <div className="h-3 w-16 rounded bg-muted animate-pulse ml-auto" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">{displayCargo}</p>
+                  <p className="text-sm font-medium">{displayApartamento}</p>
+                </>
+              )}
             </div>
 
             {/* Dropdown usuario */}
@@ -198,15 +277,15 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden sm:block text-sm font-medium max-w-[100px] truncate">
-                    {mockUser.nombre.split(' ')[0]}
+                    {loading ? '...' : displayFirstName}
                   </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-3 py-2">
-                  <p className="font-medium">{mockUser.nombre}</p>
-                  <p className="text-xs text-muted-foreground">{mockUser.cargo}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{mockUser.apartamento}</p>
+                  <p className="font-medium">{displayName}</p>
+                  <p className="text-xs text-muted-foreground">{displayCargo}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{displayApartamento}</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
@@ -216,7 +295,10 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive cursor-pointer">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                  onClick={handleLogout}
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Cerrar sesión
                 </DropdownMenuItem>
