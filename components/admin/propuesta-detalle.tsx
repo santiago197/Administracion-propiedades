@@ -44,6 +44,7 @@ import {
 import { PanelEvaluacion } from '@/components/admin/panel-evaluacion'
 import { TabRut } from '@/components/admin/tab-rut'
 import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
+import { normalizeEstadoDocumentoApp } from '@/lib/supabase/documentos'
 import type {
   Propuesta,
   Documento,
@@ -211,7 +212,9 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       .finally(() => setTiposLoading(false))
     fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar documentos'))))
-      .then((data: Documento[]) => setDocs(data))
+      .then((data: Documento[]) => setDocs(
+        (data ?? []).map((doc) => ({ ...doc, estado: normalizeEstadoDocumentoApp(doc.estado) }))
+      ))
       .catch((e) => setDocsError(e.message ?? 'Error'))
       .finally(() => setDocsLoading(false))
   }, [propuesta.id])

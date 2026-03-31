@@ -97,14 +97,16 @@ export async function POST(request: NextRequest) {
     let conjuntoId: string | null = usuarioRow.conjunto_id ?? null
     const rol = usuarioRow.rol
 
-    // Actualizar ultimo_acceso del usuario
-    const { error: updateError } = await supabase
-      .from('usuarios')
-      .update({ ultimo_acceso: new Date().toISOString() })
-      .eq('id', data.user.id)
-
-    if (updateError) {
-      console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
+    // Actualizar ultimo_acceso del usuario (RPC con SECURITY DEFINER y fallback)
+    const { error: rpcError } = await supabase.rpc('update_last_access')
+    if (rpcError) {
+      const { error: updateError } = await supabase
+        .from('usuarios')
+        .update({ ultimo_acceso: new Date().toISOString() })
+        .eq('id', data.user.id)
+      if (updateError) {
+        console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
+      }
     }
 
     await logAuthEvent({
