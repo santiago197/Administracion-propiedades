@@ -8,9 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle, RefreshCw, FileDown } from 'lucide-react'
+import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle, RefreshCw, FileDown, Eye, ChevronDown } from 'lucide-react'
 import type { ResultadoFinal, ProcesoStats, FilaMatrizEvaluacion } from '@/lib/types/index'
 import { LABEL_CLASIFICACION } from '@/lib/types/index'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 export default function PaginaResultados() {
   const params = useParams()
@@ -23,6 +25,8 @@ export default function PaginaResultados() {
   const [loading, setLoading] = useState(true)
   const [recalculando, setRecalculando] = useState(false)
   const [generandoPDF, setGenerandoPDF] = useState(false)
+  const [previsualizando, setPrevisualizando] = useState(false)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
   const fetchData = async () => {
     try {
@@ -43,12 +47,16 @@ export default function PaginaResultados() {
 
   useEffect(() => { fetchData() }, [procesoId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fetchDatosActa = async () => {
+    const res = await fetch(`/api/resultados?proceso_id=${procesoId}&type=acta`)
+    if (!res.ok) throw new Error('Error al obtener datos del acta')
+    return res.json()
+  }
+
   const handleGenerarActa = async () => {
     setGenerandoPDF(true)
     try {
-      const res = await fetch(`/api/resultados?proceso_id=${procesoId}&type=acta`)
-      if (!res.ok) throw new Error('Error al obtener datos del acta')
-      const datos = await res.json()
+      const datos = await fetchDatosActa()
       const { generarActaPDF } = await import('@/lib/pdf/generar-acta')
       generarActaPDF(datos)
     } catch (error) {
@@ -56,6 +64,24 @@ export default function PaginaResultados() {
     } finally {
       setGenerandoPDF(false)
     }
+  }
+
+  const handlePrevisualizar = async () => {
+    setPrevisualizando(true)
+    try {
+      const datos = await fetchDatosActa()
+      const { previsualizarActaPDF } = await import('@/lib/pdf/generar-acta')
+      const url = previsualizarActaPDF(datos)
+      setBlobUrl(url)
+    } catch (error) {
+      console.error('[acta] Error previsualizando PDF:', error)
+    } finally {
+      setPrevisualizando(false)
+    }
+  }
+
+  const handleCerrarPreview = () => {
+    setBlobUrl(null)
   }
 
   const handleRecalcular = async () => {
@@ -114,14 +140,28 @@ export default function PaginaResultados() {
               <RefreshCw className={`h-4 w-4 ${recalculando ? 'animate-spin' : ''}`} />
               {recalculando ? 'Recalculando...' : 'Recalcular puntajes'}
             </Button>
-            <Button
-              onClick={handleGenerarActa}
-              disabled={generandoPDF || resultados.length === 0}
-              className="gap-2 shrink-0"
-            >
-              <FileDown className={`h-4 w-4 ${generandoPDF ? 'animate-pulse' : ''}`} />
-              {generandoPDF ? 'Generando...' : 'Generar Acta PDF'}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  disabled={(generandoPDF || previsualizando) || resultados.length === 0}
+                  className="gap-2 shrink-0"
+                >
+                  <FileDown className={`h-4 w-4 ${(generandoPDF || previsualizando) ? 'animate-pulse' : ''}`} />
+                  {generandoPDF ? 'Descargando...' : previsualizando ? 'Cargando...' : 'Acta PDF'}
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handlePrevisualizar} className="gap-2 cursor-pointer">
+                  <Eye className="h-4 w-4" />
+                  Previsualizar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleGenerarActa} className="gap-2 cursor-pointer">
+                  <FileDown className="h-4 w-4" />
+                  Descargar PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -378,6 +418,28 @@ export default function PaginaResultados() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* ── Dialog de previsualización del acta ── */}
+      <Dialog open={!!blobUrl} onOpenChange={(open) => { if (!open) handleCerrarPreview() }}>
+        <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
+            <div className="flex items-center justify-between">
+              <DialogTitle>Previsualización del Acta</DialogTitle>
+              <Button onClick={handleGenerarActa} disabled={generandoPDF} variant="outline" size="sm" className="gap-2 mr-8">
+                <FileDown className="h-4 w-4" />
+                {generandoPDF ? 'Descargando...' : 'Descargar PDF'}
+              </Button>
+            </div>
+          </DialogHeader>
+          {blobUrl && (
+            <iframe
+              src={blobUrl}
+              className="flex-1 w-full border-0"
+              title="Previsualización del Acta de Selección"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
