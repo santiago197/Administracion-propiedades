@@ -51,6 +51,7 @@ export default function DocumentosPropuestaPage() {
   const [selectedTipo, setSelectedTipo] = useState<string>('')
   const [otroNombre, setOtroNombre] = useState<string>('')
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadingTipoId, setUploadingTipoId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
   const cargarStatus = async () => {
@@ -149,6 +150,56 @@ export default function DocumentosPropuestaPage() {
     } finally {
       setIsUploading(false)
       e.target.value = ''
+    }
+  }
+
+  const handleUploadPorTipo = async (tipoId: string, file: File) => {
+    const tipoDoc = status?.tipos_faltantes.find(t => t.id === tipoId)
+    if (!tipoDoc) return
+
+    setUploadingTipoId(tipoId)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', 'documentos')
+      formData.append('type', 'documento')
+
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json()
+        throw new Error(err.error || 'Error al subir archivo')
+      }
+      const uploadData = await uploadRes.json()
+
+      const docRes = await fetch('/api/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propuesta_id: propuestaId,
+          tipo_documento_id: tipoDoc.id,
+          tipo: tipoDoc.codigo,
+          nombre: tipoDoc.nombre,
+          archivo_url: uploadData.url,
+          archivo_pathname: uploadData.pathname,
+          es_obligatorio: tipoDoc.es_obligatorio,
+          estado: 'cargado',
+          fecha_vencimiento: tipoDoc.dias_vigencia > 0
+            ? new Date(Date.now() + tipoDoc.dias_vigencia * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            : null,
+        }),
+      })
+
+      if (!docRes.ok) {
+        const err = await docRes.json()
+        throw new Error(err.error || 'Error al registrar documento')
+      }
+
+      toast.success(`${tipoDoc.nombre} cargado correctamente`)
+      cargarStatus()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al subir el documento')
+    } finally {
+      setUploadingTipoId(null)
     }
   }
 
@@ -400,6 +451,35 @@ export default function DocumentosPropuestaPage() {
                         </div>
                       </div>
                     </div>
+                    <label className="shrink-0 ml-3">
+                      <input
+                        type="file"
+                        className="sr-only"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        disabled={uploadingTipoId === tipo.id}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleUploadPorTipo(tipo.id, file)
+                          e.target.value = ''
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
+                        disabled={uploadingTipoId === tipo.id}
+                        asChild
+                      >
+                        <span>
+                          {uploadingTipoId === tipo.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                          {uploadingTipoId === tipo.id ? 'Subiendo…' : 'Adjuntar'}
+                        </span>
+                      </Button>
+                    </label>
                   </div>
                 ))}
               </div>

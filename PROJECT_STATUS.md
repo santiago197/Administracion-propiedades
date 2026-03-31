@@ -561,3 +561,292 @@ MADUREZ GLOBAL                  █████████░░░  ~74%  ↑ 
 ---
 
 *Fin del diagnóstico. Verificar cada ítem contra el estado actual del repositorio antes de planificar sprints.*
+
+
+Diseño: Selección de conjunto para Superadmin (multi-tenant, aislado por rol)
+
+Fecha: 2026-03-31
+
+1. Resumen de la solución
+
+ - Objetivo: cuando un usuario con rol superadmin inicia sesión, debe elegir un conjunto antes de entrar al sistema;
+ esa elección será la fuente de verdad para todas las consultas y el UI hasta que cambie o cierre sesión.
+ - Enfoque recomendado (resumen): usar sesión server-side (cookie httpOnly, cifrada/HMAC) como fuente de verdad del 
+id_conjunto + propagarlo como claim corto en tokens para APIs cuando sea necesario + validar siempre server-side. 
+Añadir middleware que imponga el contexto en cada petición, aplicar filtros de tenant en todas las consultas y 
+reforzar aislamiento con Row-Level Security (RLS) o scopes de ORM.
+ - Ventaja clave: control centralizado y no confiable en cliente; evita fugas por cabeceras manipuladas y facilita 
+auditoría.
+
+-------------------------------------------------------------------------------------------------------------------
+
+2. Análisis de estrategias de multi-tenancy (Pros / Contras / Riesgos)
+
+A) Por sesión server-side (cookie httpOnly)
+
+ - Pros:
+  - Fuente de verdad no manipulable desde JS (httpOnly).
+  - Fácil integración con SSR y middlewares.
+  - Se puede invalidar fácilmente al logout.
+ - Contras:
+  - Requiere mantener estado server-side (o cookie firmada).
+  - Si la app es 100% API-first, hay que propagar el contexto en cada llamada API.
+ - Riesgos:
+  - Cookies mal configuradas (No Secure/SameSite) pueden exponer CSRF; mitigar con SameSite/CSRF tokens.
+
+B) Por JWT (claim tenant in token)
+
+ - Pros:
+  - Stateless: cada petición lleva el tenant.
+  - Funciona bien en microservicios sin sesión central.
+ - Contras:
+  - Actualizar el tenant requiere renovar/emitir token (o usar token corto y refresh).
+  - Si el JWT es persistente y cliente lo cambia, es complejo invalidar.
+ - Riesgos:
+  - Token leak → acceso a multiples tenants; mitigar tokens cortos + revocación.
+
+C) Por header (X-Tenant-ID)
+
+ - Pros:
+  - Simple para APIs internas y pruebas.
+  - Bueno para llamadas inter-servicio cuando el caller ya está autenticado.
+ - Contras:
+  - Falsificable por cliente si backend no valida; no segura por sí sola.
+  - Requiere validación adicional (autorización del actor sobre tenant).
+ - Riesgos:
+  - Header spoofing → fuga de datos si no se valida.
+
+D) Contexto global frontend
+
+ - Pros:
+  - Fácil UX (React Context/Zustand).
+  - Mejora rendimiento local (cache por tenant).
+ - Contras:
+  - No es fuente de verdad; vulnerable si no se sincroniza con server.
+ - Riesgos:
+  - Datos en cache que no se invalidan al cambiar tenant → fugas visibles.
+
+-------------------------------------------------------------------------------------------------------------------
+
+3. Evaluación técnica e impacto
+
+Backend
+
+ - Requiere middleware que determine tenant (de cookie o JWT/headers) y lo anexe al request context.
+ - Todas las queries deben filtrar por id_conjunto (tenant_id). Idealmente aplicar scope/ORM middleware o usar RLS 
+en BD.
+ - Migraciones: añadir conjunto_id (not null) a tablas pertinentes o usar esquema por tenant (si se opta por 
+separación física).
+ - Seguridad: añadir validaciones de autorización (ej: superadmin tiene permiso para ese conjunto).
+
+Frontend
+
+ - Ruta intermedia después de login: superadmin/select-conjunto.
+ - Mantener estado global (React Context / Zustand) con el tenant seleccionado para minimizar refetches, pero no 
+confiar en él como fuente de verdad.
+ - On-change: purgar caches (React Query/SWR), forzar refetch, actualizar UI y notificar al backend para 
+persistencia.
+
+Performance
+
+ - Overhead mínimo si se usa un índice compuesto en DB (conjunto_id, id).
+ - RLS puede incurrir en coste menor por plan de ejecución, pero ofrece seguridad. Para alta escala considerar 
+particionado o bases por tenant.
+
+-------------------------------------------------------------------------------------------------------------------
+
+4. Recomendación de arquitectura (mejor opción)
+
+ - Fuente de verdad: cookie httpOnly, firmada/HMAC (server-side session) que contiene user_session + 
+selected_conjunto_id (o solo conjunto_id firmado). Para APIs públicas/third-party: emitir JWT corto con claim 
+tenant_id (solo si la petición lo requiere).
+ - Middleware server-side obligatorio:
+  - Extrae tenant preferente: 1) session cookie (preferida), 2) fallback JWT claim solo si el servidor lo generó, 3)
+ header solo para inter-servicio validado.
+  - Valida que el usuario (role superadmin) tiene permiso para ese conjunto.
+  - Rechaza petición si no hay tenant en rutas que lo requieren.
+ - Persistencia: cookie httpOnly SameSite=Strict Secure, expiración razonable (ej: 8h). Además, almacenar en 
+servidor (session store) o usar cookie firmada evitando stateful store si se prefiere stateless.
+ - DB: tenant column (conjunto_id) en todas las tablas de datos aplicables + índice y FK a conjuntos. Implementar 
+Row-Level Security (RLS) con policies que comparen conjunto_id = current_setting('app.current_conjunto') o usar 
+session parameter en PG.
+ - Frontend: pantalla de selección obligatoria post-login para superadmin. Mantener React Context que sincroniza con
+ server. Todas las llamadas API no deben permitir que el cliente marque un conjunto_id arbitrario sin autenticación.
+
+-------------------------------------------------------------------------------------------------------------------
+
+5. Flujo de autenticación y selección de conjunto
+
+ 1. Usuario hace login (Supabase/Auth):
+  - Autenticación normal (email/password).
+  - Backend detecta rol superadmin.
+ 2. Si rol superadmin:
+  - Redirigir a /select-conjunto en vez de dashboard.
+  - Endpoint backend: GET /api/superadmin/conjuntos -> lista de conjuntos permitidos (pag., búsqueda)
+ 3. Superadmin selecciona un conjunto:
+  - POST /api/superadmin/select-conjunto { conjunto_id }.
+  - Backend valida acceso y establece cookie httpOnly selected_conjunto (o actualiza session store). Devuelve OK.
+  - Frontend actualiza Context, purga caches y redirige a dashboard scoped.
+ 4. Durante la sesión:
+  - Middleware extrae selected_conjunto desde cookie y anexa a req.context.
+  - Todas las queries usan req.context.conjunto_id.
+ 5. Cambiar conjunto:
+  - Mismo endpoint select-conjunto permite cambiar; backend actualiza cookie/session; frontend purga caches y 
+refetch.
+ 6. Logout:
+  - Backend endpoint /api/auth/logout borra cookie selected_conjunto y tokens.
+
+-------------------------------------------------------------------------------------------------------------------
+
+6. Manejo del contexto (dónde y cómo guardar el id_conjunto)
+
+ - Guardar en cookie httpOnly en el dominio principal: selected_conjunto=<id>; HttpOnly; Secure; SameSite=Strict; 
+Path=/; Max-Age=...
+ - Cookie firmada o cifrada (HMAC) para evitar manipulación. Server valida firma.
+ - Alternativa/Complemento: session store (Redis) con key session_id → { user_id, selected_conjunto }. La cookie 
+solo guarda session_id.
+ - Opcional: emitir JWT corto (por ejemplo 5–15 min) para microservicios, con claim tenant_id. JWT debe ser firmado 
+por el backend y rotarse en refresh flow.
+
+¿Por qué cookie httpOnly?
+
+ - Evita que código malicioso en cliente cambie el contexto.
+ - Fácil con SSR y middlewares (Next.js) y compatible con Supabase server libraries.
+
+-------------------------------------------------------------------------------------------------------------------
+
+7. Cambios requeridos en Backend
+
+ 1. Middleware global (server/request pipeline):
+  - Extrae selected_conjunto desde cookie/session o JWT claim.
+  - Valida que el usuario tiene acceso (ej: superadmin -> verificar listado; admin -> verificar que conjunto == su 
+conjunto).
+  - Inserta conjunto_id en request context para uso por handlers / ORM.
+  - Bloquea peticiones a rutas que requieren tenant si contexto ausente.
+ 2. ORM / Query layer:
+  - Añadir global scope / middleware que inyecta WHERE conjunto_id = :current automáticamente.
+  - En Prisma: use middleware to add conjunto_id filter; en SQL/knex: centralizar helpers; en raw SQL: siempre 
+parametrizar.
+  - Asegurar que las migraciones añaden conjunto_id como NOT NULL o migración con backfill.
+ 3. DB-level:
+  - Implementar RLS policies (Postgres) que dependan de session variable o user claim:
+   - Ejemplo: SET local app.current_conjunto = '...' en la sesión de DB, o usar auth.uid() en combinación con tenant
+ check.
+  - Crear índices compuestos: (conjunto_id, id).
+  - FK desde tablas al catálogo conjuntos.
+ 4. Seguridad:
+  - Validar server-side cualquier conjunto_id que venga del cliente (no confiar).
+  - Añadir logs/auditoría (quién seleccionó/ cambió/ cerró sesión) con tenant tag.
+  - Tests unitarios e integración que verifiquen aislamiento.
+
+-------------------------------------------------------------------------------------------------------------------
+
+8. Cambios requeridos en Frontend
+
+ 1. Pantalla de selección de conjunto:
+  - Listado paginado/buscable de conjuntos (nombre, id, info).
+  - Acción clara: "Seleccionar" + confirmación.
+  - Mostrar toast/confirmación y banner con conjunto activo (persistente en UI).
+ 2. Manejo de estado:
+  - React Context o Zustand: tenantContext { id, meta, setTenant, clearTenant }.
+  - On setTenant: call POST /api/superadmin/select-conjunto, await success → set context → purge caches.
+  - On clearTenant/logout: call /api/auth/logout → clear context.
+ 3. Cache & Data fetching:
+  - Usar keys dependientes del tenant (['proposals', tenantId]) en React Query/SWR.
+  - Al cambiar tenant: invalidateQueries / mutate to empty and refetch.
+ 4. UX:
+  - Bloquear acceso a rutas admin hasta que tenant seleccionado (guard).
+  - Mostrar indicador del tenant actual en navbar y permitir cambio desde allí.
+  - Confirm dialog on change (possible data loss).
+
+-------------------------------------------------------------------------------------------------------------------
+
+9. Persistencia de sesión y tokens
+
+ - Cookie httpOnly como persistencia primaria del tenant.
+ - Access token (JWT) de corta vida emitido para APIs si necesario; si se emite, incluir claim tenant_id solo cuando
+ la selección provenga del server y token sea short-lived.
+ - Refresh token seguro (rotativo) si se requiere autenticación stateless.
+ - No guardar selected_conjunto como texto plano en localStorage/sessionStorage como única fuente.
+
+-------------------------------------------------------------------------------------------------------------------
+
+10. Manejo de logout
+
+ - Endpoint /api/auth/logout que:
+  - Borra cookie selected_conjunto.
+  - Borra session cookie / invalida session server-side (si existe).
+  - Revoca tokens (si se usa refresh token store).
+  - Frontend: clear tenant context, clear caches, redirect a login.
+
+-------------------------------------------------------------------------------------------------------------------
+
+11. Riesgos y mitigaciones
+
+ 1. Fuga por header spoofing:
+  - Mitigación: no confiar en header enviado desde cliente; validar siempre que el actor tenga permiso.
+ 2. Token/cookie leak:
+  - Mitigación: cookies httpOnly + Secure + SameSite=Strict, tokens cortos y rotativos, monitoreo.
+ 3. Caching compartido (reverse proxies, CDNs):
+  - Mitigación: no cachear respuestas sensibles por tenant; usar Vary headers o cache keys que incluyan tenant.
+ 4. Trabajos en background / CRON:
+  - Mitigación: jobs deben ejecutar con tenant explícito y no depender de client context; parametrizar tenant_id.
+ 5. Fallo en migración para añadir conjunto_id:
+  - Mitigación: migración en fases: añadir column nullable + backfill + make not null + add FK + update app.
+ 6. Privilegios excesivos:
+  - Mitigación: aplicar principio de menor privilegio, separar roles, auditoría, pruebas de penetración.
+
+-------------------------------------------------------------------------------------------------------------------
+
+12. Buenas prácticas recomendadas
+
+ - DB: usar RLS en Postgres + policies que usen session variables para tenant.
+ - Aplicación: centralizar lógica de tenant en middleware y en capa de datos; evitar replicar checks en cada 
+handler.
+ - Tests: cobertura de aislamiento (pruebas que intenten leer datos de otro tenant).
+ - Observabilidad: incluir tenant_id en logs, traces y métricas.
+ - Auditar cambios de tenant y accesos (quién, cuándo).
+ - CI: añadir tests de integración para flujo select-conjunto → acceso a datos.
+ - UI: UX claro para selección, banner visible, confirm on change.
+
+-------------------------------------------------------------------------------------------------------------------
+
+13. Posibles mejoras futuras
+
+ - Separación física de datos (DB por tenant o schemas) para clientes de alta sensibilidad.
+ - Provisionamiento automático de tenant (API + webhooks).
+ - Feature flags por tenant.
+ - Per-tenant rate limiting y SLA.
+ - Exportes y backups por tenant.
+ - Panel de auditoría multi-tenant con filtros y export CSV/PDF.
+
+-------------------------------------------------------------------------------------------------------------------
+
+14. Plan de implementación (alto nivel, pasos prácticos)
+
+ 1. Diseño de DB: decidir conjunto_id en tablas + migración plan en 3 fases (add nullable, backfill, make not null).
+ 2. Implementar endpoint GET /api/superadmin/conjuntos y UI selección.
+ 3. Implementar endpoint POST /api/superadmin/select-conjunto que firme cookie/session.
+ 4. Middleware server-side que lee cookie y agrega contexto.
+ 5. Cambiar capa de datos (ORM) para aplicar scope por tenant.
+ 6. RLS: aplicar políticas y probar.
+ 7. Frontend: Context, guards, cache invalidation logic, navbar indicator.
+ 8. Tests e2e (login superadmin → select → read/write → change tenant → isolation).
+ 9. Despliegue gradual (feature flag para superadmin flow) y monitorización.
+
+-------------------------------------------------------------------------------------------------------------------
+
+Conclusión
+
+ - Recomendación prioritaria: cookie httpOnly (server-side session) como fuente de verdad combinada con middleware y
+ DB-level policies (RLS). Esto ofrece el mejor equilibrio entre seguridad, simplicidad operativa y compatibilidad 
+con SSR y APIs internas.
+ - Si se espera alta densidad de tenants con requisitos regulatorios, considerar separación física (DB por tenant) a
+ futuro.
+
+Si quieres, preparo:
+
+ - Un checklist de migraciones SQL + ejemplo de políticas RLS para Postgres.
+ - Un diseño de middleware y contractos API (endpoints, request/response).
+ - Mockups simples de la pantalla de selección y flujos de frontend (React hooks/Context). ¿Cuál prefieres que 
+priorice ahora?

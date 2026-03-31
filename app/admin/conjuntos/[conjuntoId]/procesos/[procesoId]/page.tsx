@@ -18,7 +18,9 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
+  Info,
 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Proceso, ProcesoStats, EstadoProceso } from '@/lib/types/index'
 
 function ChecklistItem({
@@ -174,13 +176,25 @@ export default function ProcesoDashboard() {
   const estadoActual = proceso.estado
   const siguienteEstado = SIGUIENTE_ESTADO[estadoActual]
 
+  const requisitosEvaluacion = estadoActual === 'configuracion' ? [
+    {
+      ok: (stats?.total_propuestas ?? 0) >= 3,
+      label: `Mínimo 3 candidatos registrados (tienes ${stats?.total_propuestas ?? 0})`,
+    },
+    {
+      ok: (stats?.propuestas_activas ?? 0) >= 1,
+      label: `Mínimo 1 propuesta habilitada (tienes ${stats?.propuestas_activas ?? 0})`,
+    },
+  ] : []
+  const puedeIniciarEvaluacion = estadoActual !== 'configuracion' || requisitosEvaluacion.every(r => r.ok)
+
   const steps = [
     {
       title: 'Registro de Candidatos',
       description: 'Gestión de propuestas y documentos básicos.',
       icon: <Users className="h-6 w-6" />,
       href: `/admin/conjuntos/${conjuntoId}/propuestas`,
-      status: 'completado',
+      status: estadoActual !== 'configuracion' || (stats?.total_propuestas ?? 0) >= 3 ? 'completado' : 'en_progreso',
     },
     {
       title: 'Validación Legal',
@@ -239,18 +253,39 @@ export default function ProcesoDashboard() {
           </div>
 
           {siguienteEstado && (
-            <Button
-              onClick={handleCambiarEstado}
-              disabled={cambiandoEstado}
-              className="gap-2"
-            >
-              {cambiandoEstado ? (
-                <Loader className="h-4 w-4 animate-spin" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              {!puedeIniciarEvaluacion && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-xs space-y-1 p-3">
+                    <p className="font-medium text-xs mb-1.5">Para iniciar la evaluación:</p>
+                    {requisitosEvaluacion.map((r, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        {r.ok
+                          ? <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0 mt-0.5" />
+                          : <XCircle className="h-3 w-3 text-red-400 shrink-0 mt-0.5" />
+                        }
+                        <span className={r.ok ? 'text-green-300' : 'text-red-300'}>{r.label}</span>
+                      </div>
+                    ))}
+                  </TooltipContent>
+                </Tooltip>
               )}
-              {ACCION_LABEL[estadoActual]}
-            </Button>
+              <Button
+                onClick={handleCambiarEstado}
+                disabled={cambiandoEstado || !puedeIniciarEvaluacion}
+                className="gap-2"
+              >
+                {cambiandoEstado ? (
+                  <Loader className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                {ACCION_LABEL[estadoActual]}
+              </Button>
+            </div>
           )}
         </div>
 

@@ -218,26 +218,38 @@ function BadgeCriticidad({ def }: { def: DefinicionItemChecklist }) {
   return <span className="text-[10px] text-muted-foreground border border-border/30 rounded px-1.5 py-0.5 uppercase tracking-wide">Informativo</span>
 }
 
+const DESCRIPCION_PASO: Record<string, string> = {
+  registro: 'Candidato registrado. Haz clic en "Iniciar revisión" para comenzar a verificar su documentación.',
+  en_revision: 'Abre los documentos del candidato (botón "Ver docs"), verifica que estén completos y sean válidos, luego confirma la revisión para avanzar.',
+  en_validacion: 'Completa el checklist legal a continuación (SARLAFT, antecedentes, etc.) y haz clic en "Confirmar validación".',
+  incompleto: 'Se detectó documentación incompleta. Notifica al candidato indicando qué debe corregir.',
+  en_subsanacion: 'El candidato está corrigiendo su documentación. Cuando esté lista, avanza a validación legal.',
+}
+
 /** Indicador visual del flujo de estados y botón de avance */
 function IndicadorFlujo({
   propuesta,
   onAvanzarEstado,
   processing,
+  docsStatus,
 }: {
   propuesta: Propuesta
   onAvanzarEstado: (nuevoEstado: string, observacion?: string) => Promise<void>
   processing: boolean
+  docsStatus?: { faltantes: number; nombres_faltantes: string[] } | null
 }) {
+  const [docsRevisados, setDocsRevisados] = useState(false)
+
   const pasoActual = getPasoActual(propuesta.estado)
   const siguiente = SIGUIENTE_ESTADO[propuesta.estado]
   const estadoLegal = getEstadoLegal(propuesta)
-  
-  // Si ya está aprobado o rechazado, no mostrar flujo
+
   if (estadoLegal === 'aprobado' || estadoLegal === 'rechazado') {
     return null
   }
 
-  // Estados especiales que requieren observación
+  const puedeAvanzar = propuesta.estado !== 'en_revision' || docsRevisados
+
   const estadosEspeciales: Record<string, string> = {
     incompleto: 'Documentación incompleta — requiere subsanación',
     en_subsanacion: 'Candidato está corrigiendo documentos',
@@ -250,8 +262,6 @@ function IndicadorFlujo({
         {FLUJO_ESTADOS.map((paso, idx) => {
           const esActual = pasoActual?.numero === paso.numero
           const esCompletado = (pasoActual?.numero ?? 0) > paso.numero
-          const esFuturo = (pasoActual?.numero ?? 0) < paso.numero
-          
           return (
             <div key={paso.estado} className="flex items-center flex-1">
               <div className="flex flex-col items-center flex-1">
@@ -278,40 +288,108 @@ function IndicadorFlujo({
         })}
       </div>
 
-      {/* Estado actual e información */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-blue-900">
-            Paso actual: {pasoActual?.nombre ?? propuesta.estado}
-          </p>
-          {estadosEspeciales[propuesta.estado] && (
-            <p className="text-xs text-amber-700 mt-0.5 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              {estadosEspeciales[propuesta.estado]}
-            </p>
-          )}
-          {siguiente && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Siguiente: {siguiente.accion}
-            </p>
+      {/* Guía contextual del paso actual */}
+      {propuesta.estado === 'en_revision' ? (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2 text-xs text-blue-800 bg-blue-50 border border-blue-200/60 rounded px-2.5 py-2">
+            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" />
+            <span>Abre los documentos del candidato (botón <strong>Ver docs</strong>), verifica que estén completos y sean válidos, luego confirma la revisión para avanzar.</span>
+          </div>
+          {/* Estado de documentos */}
+          {docsStatus && (
+            docsStatus.faltantes === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200/60 rounded px-2.5 py-2">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                Todos los documentos obligatorios están cargados
+              </div>
+            ) : (
+              <div className="text-xs bg-amber-50 border border-amber-200/60 rounded px-2.5 py-2 space-y-1.5">
+                <div className="flex items-center gap-2 text-amber-700 font-medium">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                  {docsStatus.faltantes} documento{docsStatus.faltantes !== 1 ? 's' : ''} obligatorio{docsStatus.faltantes !== 1 ? 's' : ''} faltante{docsStatus.faltantes !== 1 ? 's' : ''}
+                </div>
+                {docsStatus.nombres_faltantes.length > 0 && (
+                  <ul className="ml-5 space-y-0.5 text-amber-800">
+                    {docsStatus.nombres_faltantes.map((nombre) => (
+                      <li key={nombre} className="flex items-center gap-1.5">
+                        <XCircle className="h-3 w-3 shrink-0 text-amber-500" />
+                        {nombre}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
           )}
         </div>
+      ) : (
+        <div className="flex items-start gap-2 text-xs text-blue-800 bg-blue-50 border border-blue-200/60 rounded px-2.5 py-2">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" />
+          <span>{DESCRIPCION_PASO[propuesta.estado] ?? `Paso actual: ${propuesta.estado}`}</span>
+        </div>
+      )}
 
-        {/* Botón de avance */}
-        {siguiente && (
+      {estadosEspeciales[propuesta.estado] && (
+        <p className="text-xs text-amber-700 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          {estadosEspeciales[propuesta.estado]}
+        </p>
+      )}
+
+      {/* Confirmación requerida antes de avanzar desde en_revision */}
+      {propuesta.estado === 'en_revision' && (
+        <label className="flex items-center gap-2 text-xs text-blue-900 cursor-pointer select-none bg-white/60 border border-blue-200/50 rounded px-2.5 py-2 hover:bg-white/80 transition-colors">
+          <input
+            type="checkbox"
+            checked={docsRevisados}
+            onChange={(e) => setDocsRevisados(e.target.checked)}
+            className="h-3.5 w-3.5 accent-blue-600"
+          />
+          He revisado los documentos del candidato y están completos
+        </label>
+      )}
+
+      {/* Acciones */}
+      <div className="flex items-center justify-between gap-3 pt-1">
+        {/* Botón regresar — solo desde en_validacion */}
+        {propuesta.estado === 'en_validacion' ? (
           <Button
+            variant="ghost"
             size="sm"
-            className="gap-2 shrink-0"
+            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             disabled={processing}
-            onClick={() => onAvanzarEstado(siguiente.estado)}
+            onClick={() => onAvanzarEstado('en_revision', 'Regresó a revisión documental para subsanación')}
           >
-            {processing ? (
-              <Loader className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowRight className="h-4 w-4" />
-            )}
-            {siguiente.label}
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Regresar a revisión
           </Button>
+        ) : (
+          <span />
+        )}
+
+        {/* Botón avanzar */}
+        {siguiente && (
+          <div className="flex items-center gap-2">
+            {!puedeAvanzar && (
+              <span className="text-[11px] text-amber-700 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Confirma la revisión primero
+              </span>
+            )}
+            <Button
+              size="sm"
+              className="gap-2 shrink-0"
+              disabled={processing || !puedeAvanzar}
+              onClick={() => onAvanzarEstado(siguiente.estado)}
+            >
+              {processing ? (
+                <Loader className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
+              {siguiente.label}
+            </Button>
+          </div>
         )}
       </div>
     </div>
@@ -424,6 +502,7 @@ function ValidacionLegalContent() {
   const [panelAbierto, setPanelAbierto] = useState<Record<string, boolean>>({})
   const [checklists, setChecklists] = useState<Record<string, ChecklistLegal>>({})
   const [docsRut, setDocsRut] = useState<Record<string, { nombre: string; archivo_url?: string | null }[]>>({})
+  const [docsStatus, setDocsStatus] = useState<Record<string, { faltantes: number; nombres_faltantes: string[] }>>({})
   const [panelInicialAbierto, setPanelInicialAbierto] = useState(false)
 
   // Función para abrir panel (extraída para reutilizar)
@@ -466,6 +545,21 @@ function ValidacionLegalContent() {
             })
           )
           setDocsRut(Object.fromEntries(rutEntries))
+
+          // Cargar estado de documentos para propuestas en revisión
+          const enRevision = ordenadas.filter((p) => p.estado === 'en_revision')
+          const statusEntries = await Promise.all(
+            enRevision.map(async (p) => {
+              const res = await fetch(`/api/propuestas/${p.id}/documentos-status`)
+              if (!res.ok) return [p.id, { faltantes: 0, nombres_faltantes: [] }] as const
+              const data = await res.json()
+              return [p.id, {
+                faltantes: data.estadisticas?.faltantes ?? 0,
+                nombres_faltantes: (data.tipos_faltantes ?? []).map((t: { nombre: string }) => t.nombre),
+              }] as const
+            })
+          )
+          setDocsStatus(Object.fromEntries(statusEntries))
 
           // Si viene propuestaId en la URL, abrir automáticamente ese panel
           if (propuestaIdParam && !panelInicialAbierto) {
@@ -871,6 +965,7 @@ function ValidacionLegalContent() {
                           await avanzarEstado(p, nuevoEstado, observacion)
                         }}
                         processing={processingId === p.id}
+                        docsStatus={docsStatus[p.id] ?? null}
                       />
                       {/* Mostrar error si existe */}
                       {errorLocal && (

@@ -32,11 +32,13 @@
       "Bash(grep -r \"validar-legal\\\\|validacion-legal\\\\|ValidacionLegal\" /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app --include=*.tsx --include=*.ts)",
       "Bash(grep -n \"validacion-legal\\\\|en_validacion\\\\|no_apto_legal\" /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin/conjuntos/[conjuntoId]/procesos/[procesoId]/page.tsx)",
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -type f \\\\\\(-name *propuesta* -o -name *rut* \\\\\\))",
-      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin -type f -name *.tsx -o -name *.ts)"
+      "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin -type f -name *.tsx -o -name *.ts)",
+      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedades -name *.sql -type f)",
+      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -name *cambiar* -o -name *estado*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "supabase"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
