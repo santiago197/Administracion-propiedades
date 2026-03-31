@@ -5,10 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Loader2, AlertCircle, ExternalLink } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import { LABEL_ESTADO } from '@/lib/types/index'
-import type { Propuesta } from '@/lib/types/index'
+import type { Propuesta, Proceso } from '@/lib/types/index'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   habilitada:    { label: 'Apto legal',        cls: 'bg-emerald-500/10 text-emerald-700' },
@@ -24,11 +25,12 @@ function badgeForPropuesta(p: Propuesta) {
 }
 
 export default function ValidacionLegalAdmin() {
-  const { procesos, loading: loadingProceso, error: errorProceso } = useActiveProceso()
+  const { procesos, loading: loadingProceso, error: errorProceso, conjunto } = useActiveProceso()
   const [selectedProcesoId, setSelectedProcesoId] = useState<string>('')
   const [propuestas, setPropuestas] = useState<Propuesta[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedProceso, setSelectedProceso] = useState<Proceso | null>(null)
 
   useEffect(() => {
     if (procesos.length > 0 && !selectedProcesoId) {
@@ -36,8 +38,15 @@ export default function ValidacionLegalAdmin() {
         procesos.find((p) => ['configuracion', 'evaluacion', 'votacion'].includes(p.estado)) ??
         procesos[0]
       setSelectedProcesoId(active.id)
+      setSelectedProceso(active)
     }
   }, [procesos, selectedProcesoId])
+
+  const handleProcesosChange = (procesoId: string) => {
+    setSelectedProcesoId(procesoId)
+    const proceso = procesos.find((p) => p.id === procesoId)
+    setSelectedProceso(proceso ?? null)
+  }
 
   useEffect(() => {
     if (!selectedProcesoId) return
@@ -88,7 +97,7 @@ export default function ValidacionLegalAdmin() {
           </p>
         </div>
         {procesos.length > 1 && (
-          <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
+          <Select value={selectedProcesoId} onValueChange={handleProcesosChange}>
             <SelectTrigger className="w-56">
               <SelectValue placeholder="Selecciona proceso" />
             </SelectTrigger>
@@ -130,11 +139,13 @@ export default function ValidacionLegalAdmin() {
                   <TableHead>Cumple requisitos</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Observaciones</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {propuestas.map((p) => {
                   const badge = badgeForPropuesta(p)
+                  const isValidable = !['adjudicado', 'descalificada', 'retirada'].includes(p.estado)
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-semibold">{p.razon_social}</TableCell>
@@ -159,6 +170,22 @@ export default function ValidacionLegalAdmin() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
                         {p.observaciones_legales ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isValidable && selectedProceso && conjunto ? (
+                          <a
+                            href={`/admin/conjuntos/${conjunto.id}/procesos/${selectedProceso.id}/validacion-legal?propuestaId=${p.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Button variant="ghost" size="sm" className="gap-1.5">
+                              <ExternalLink className="h-4 w-4" />
+                              Editar
+                            </Button>
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
