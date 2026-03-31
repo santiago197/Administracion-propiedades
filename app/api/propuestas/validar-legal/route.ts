@@ -12,6 +12,7 @@ const ESTADOS_REVALIDABLES: EstadoPropuesta[] = ['habilitada', 'no_apto_legal']
 const ESTADOS_SOLO_ACTUALIZAR: EstadoPropuesta[] = [
   'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado',
 ]
+const ESTADOS_PREVALIDACION: EstadoPropuesta[] = ['en_revision', 'en_subsanacion']
 
 /**
  * Dado un checklist completo, calcula si la propuesta cumple o no.
@@ -129,7 +130,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, estado: estadoObjetivo }, { status: 200 })
     }
 
-    // Caso 3: Flujo normal (en_validacion, en_revision, etc.) — transición por máquina de estados
+    if (estadoActual === 'registro' || estadoActual === 'incompleto') {
+      return NextResponse.json(
+        { error: 'La propuesta aún no está lista para validación legal' },
+        { status: 409 }
+      )
+    }
+
+    if (ESTADOS_PREVALIDACION.includes(estadoActual)) {
+      const { error: toValidacionErr } = await supabase.rpc('cambiar_estado_propuesta', {
+        p_propuesta_id: propuesta_id,
+        p_estado_nuevo: 'en_validacion',
+        p_usuario_id: null,
+        p_observacion: null,
+        p_metadata: { origen: 'validar_legal_pretransicion' },
+      })
+      if (toValidacionErr) throw toValidacionErr
+    }
+
+    // Caso 3: Flujo normal (en_validacion) — transición por máquina de estados
     await ejecutarUpdate()
     const { success, estado } = await procesarValidacionLegal(propuesta_id, cumple, observaciones)
     return NextResponse.json({ success, estado }, { status: 200 })

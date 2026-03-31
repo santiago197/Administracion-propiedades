@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getConsejeroSessionFromRequest } from '@/lib/consejero-session'
 
 interface VotarBody {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // 1. Validar consejero activo
     const { data: consejero } = await supabase
@@ -136,6 +136,14 @@ export async function POST(request: NextRequest) {
       console.error('[evaluacion/votar] insert error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    // 7. Recalcular resultados completos (puntaje_evaluacion + votos + puntaje_final)
+    // Se ejecuta en segundo plano para no bloquear la respuesta al consejero
+    supabase
+      .rpc('recalcular_resultados', { p_proceso_id: proceso_id })
+      .then(({ error: rpcError }) => {
+        if (rpcError) console.warn('[evaluacion/votar] recalcular_resultados:', rpcError.message)
+      })
 
     return NextResponse.json({ success: true, voto_id: data.id })
   } catch (err) {

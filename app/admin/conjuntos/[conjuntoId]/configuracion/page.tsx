@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { NavBar } from '@/components/admin/nav-bar'
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,6 @@ interface ConfigStep {
 
 export default function ConfiguracionConjunto() {
   const params = useParams()
-  const router = useRouter()
   const conjuntoId = params.conjuntoId as string
 
   const [conjunto, setConjunto] = useState<Conjunto | null>(null)
@@ -30,9 +29,8 @@ export default function ConfiguracionConjunto() {
     const fetchConjunto = async () => {
       try {
         const response = await fetch('/api/conjuntos')
-        const conjuntos = await response.json()
-        const found = conjuntos.find((c: Conjunto) => c.id === conjuntoId)
-        setConjunto(found || null)
+        const conjuntoData = await response.json()
+        setConjunto(conjuntoData?.id === conjuntoId ? conjuntoData : null)
       } catch (error) {
         console.error('[v0] Error fetching conjunto:', error)
       } finally {

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
+import { ArrowLeft, TrendingUp, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react'
 import type { ResultadoFinal, ProcesoStats, FilaMatrizEvaluacion } from '@/lib/types/index'
 import { LABEL_CLASIFICACION } from '@/lib/types/index'
 
@@ -21,26 +21,38 @@ export default function PaginaResultados() {
   const [stats, setStats] = useState<ProcesoStats | null>(null)
   const [matriz, setMatriz] = useState<FilaMatrizEvaluacion[]>([])
   const [loading, setLoading] = useState(true)
+  const [recalculando, setRecalculando] = useState(false)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [resRes, statsRes, matrizRes] = await Promise.all([
-          fetch(`/api/resultados?proceso_id=${procesoId}`),
-          fetch(`/api/resultados?proceso_id=${procesoId}&type=stats`),
-          fetch(`/api/resultados?proceso_id=${procesoId}&type=matriz`),
-        ])
-        if (resRes.ok) setResultados((await resRes.json()) || [])
-        if (statsRes.ok) setStats(await statsRes.json())
-        if (matrizRes.ok) setMatriz((await matrizRes.json()) || [])
-      } catch (error) {
-        console.error('[resultados] Error fetching data:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchData = async () => {
+    try {
+      const [resRes, statsRes, matrizRes] = await Promise.all([
+        fetch(`/api/resultados?proceso_id=${procesoId}`),
+        fetch(`/api/resultados?proceso_id=${procesoId}&type=stats`),
+        fetch(`/api/resultados?proceso_id=${procesoId}&type=matriz`),
+      ])
+      if (resRes.ok) setResultados((await resRes.json()) || [])
+      if (statsRes.ok) setStats(await statsRes.json())
+      if (matrizRes.ok) setMatriz((await matrizRes.json()) || [])
+    } catch (error) {
+      console.error('[resultados] Error fetching data:', error)
+    } finally {
+      setLoading(false)
     }
-    fetchData()
-  }, [procesoId])
+  }
+
+  useEffect(() => { fetchData() }, [procesoId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRecalcular = async () => {
+    setRecalculando(true)
+    try {
+      await fetch(`/api/resultados?proceso_id=${procesoId}`, { method: 'POST' })
+      await fetchData()
+    } catch (error) {
+      console.error('[resultados] Error recalculando:', error)
+    } finally {
+      setRecalculando(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -69,11 +81,22 @@ export default function PaginaResultados() {
           </Button>
         </Link>
 
-        <div className="mb-8">
-          <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-2">Resultados Finales</h1>
-          <p className="text-muted-foreground">
-            Ranking de propuestas basado en evaluación y votación
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-2">Resultados Finales</h1>
+            <p className="text-muted-foreground">
+              Ranking de propuestas basado en evaluación y votación
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleRecalcular}
+            disabled={recalculando}
+            className="gap-2 shrink-0"
+          >
+            <RefreshCw className={`h-4 w-4 ${recalculando ? 'animate-spin' : ''}`} />
+            {recalculando ? 'Recalculando...' : 'Recalcular puntajes'}
+          </Button>
         </div>
 
         {stats && (
@@ -130,7 +153,8 @@ export default function PaginaResultados() {
                               PUNTAJE EVALUACIÓN
                             </p>
                             <p className="text-2xl font-bold text-foreground">
-                              {resultado.puntaje_evaluacion.toFixed(2)}/5
+                              {Number(resultado.puntaje_evaluacion ?? 0).toFixed(1)}
+                              <span className="text-sm font-normal text-muted-foreground">/100</span>
                             </p>
                           </div>
                           <div>
@@ -138,7 +162,7 @@ export default function PaginaResultados() {
                               VOTOS RECIBIDOS
                             </p>
                             <p className="text-2xl font-bold text-foreground">
-                              {resultado.votos_recibidos}
+                              {resultado.votos_recibidos ?? 0}
                             </p>
                           </div>
                           <div>
@@ -146,26 +170,27 @@ export default function PaginaResultados() {
                               PUNTAJE FINAL
                             </p>
                             <p className="text-2xl font-bold text-primary">
-                              {resultado.puntaje_final.toFixed(2)}/5
+                              {Number(resultado.puntaje_final ?? 0).toFixed(1)}
+                              <span className="text-sm font-normal text-muted-foreground">/100</span>
                             </p>
                           </div>
                         </div>
 
                         <div className="mt-4">
                           <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                            <span>Progreso</span>
-                            <span>{((resultado.puntaje_final / 5) * 100).toFixed(0)}%</span>
+                            <span>Puntaje final</span>
+                            <span>{Number(resultado.puntaje_final ?? 0).toFixed(1)}%</span>
                           </div>
                           <div className="h-2 rounded-full bg-secondary overflow-hidden">
                             <div
-                              className={`h-full ${
+                              className={`h-full transition-all ${
                                 resultado.estado_semaforo === 'verde'
                                   ? 'bg-green-500'
                                   : resultado.estado_semaforo === 'amarillo'
                                     ? 'bg-yellow-500'
                                     : 'bg-red-500'
                               }`}
-                              style={{ width: `${(resultado.puntaje_final / 5) * 100}%` }}
+                              style={{ width: `${Math.min(Number(resultado.puntaje_final ?? 0), 100)}%` }}
                             />
                           </div>
                         </div>

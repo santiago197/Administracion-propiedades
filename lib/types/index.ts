@@ -514,6 +514,7 @@ export interface UsuarioConConjunto extends Usuario {
     id: string
     nombre: string
   } | null
+  permisos?: Permiso[]
 }
 
 export const LABEL_ROL_USUARIO: Record<RolUsuario, string> = {

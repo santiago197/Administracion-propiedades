@@ -169,6 +169,46 @@ export async function POST(
       console.warn('[v0] Error updating propuesta after evaluación_admin:', propError)
     }
 
+    // 3.1 Resolver estado actual y aplicar transiciones por máquina de estados
+    const { data: propuestaActual, error: propuestaError } = await supabase
+      .from('propuestas')
+      .select('estado')
+      .eq('id', id)
+      .single()
+
+    if (propuestaError) {
+      console.warn('[evaluar] Error fetching propuesta estado:', propuestaError)
+    } else {
+      let estadoBase = propuestaActual?.estado ?? null
+      if (estadoBase === 'habilitada') {
+        const { error: estadoError } = await supabase.rpc('cambiar_estado_propuesta', {
+          p_propuesta_id: id,
+          p_estado_nuevo: 'en_evaluacion',
+          p_usuario_id: user.id,
+          p_observacion: 'Evaluación administrativa registrada',
+          p_metadata: { origen: 'evaluacion_admin' },
+        })
+        if (estadoError) {
+          console.warn('[evaluar] Error updating estado propuesta:', estadoError)
+        } else {
+          estadoBase = 'en_evaluacion'
+        }
+      }
+
+      if (estadoBase === 'en_evaluacion') {
+        const { error: clasificacionError } = await supabase.rpc('cambiar_estado_propuesta', {
+          p_propuesta_id: id,
+          p_estado_nuevo: clasificacion,
+          p_usuario_id: user.id,
+          p_observacion: 'Evaluación administrativa guardada',
+          p_metadata: { origen: 'evaluacion_admin', puntaje_total },
+        })
+        if (clasificacionError) {
+          console.warn('[evaluar] Error updating estado final:', clasificacionError)
+        }
+      }
+    }
+
     // 4. Auditoría (best-effort)
     const { error: auditError } = await supabase.from('audit_log').insert({
       accion: 'EVALUACION_ADMIN',

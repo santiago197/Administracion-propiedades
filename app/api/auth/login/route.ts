@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
+import { logAuthEvent } from '@/lib/supabase/audit'
 // import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
@@ -9,6 +10,7 @@ export async function POST(request: NextRequest) {
   // }
 
   const { email, password } = await request.json()
+  const normalizedEmail = String(email ?? '').trim().toLowerCase()
 
   if (!email || !password) {
     return NextResponse.json(
@@ -50,6 +52,12 @@ export async function POST(request: NextRequest) {
     })
 
     if (error) {
+      await logAuthEvent({
+        request,
+        accion: 'LOGIN_FAILED',
+        entidadId: null,
+        datosNuevos: { email: normalizedEmail },
+      })
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
         { status: 401 }
@@ -59,26 +67,73 @@ export async function POST(request: NextRequest) {
     if (!data.session) {
       return NextResponse.json(
         { error: 'No se pudo crear sesión' },
-        { status: 500 }
+        { status: 500 },
       )
     }
 
-    // Actualizar ultimo_acceso del usuario
-    const { error: updateError } = await supabase
+    const { data: usuarioRow, error: usuarioError } = await supabase
       .from('usuarios')
-      .update({ ultimo_acceso: new Date().toISOString() })
+      .select('conjunto_id, rol, activo')
       .eq('id', data.user.id)
+      .maybeSingle()
 
-    if (updateError) {
-      console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
+    if (usuarioError) {
+      console.warn('[login] No se pudo obtener usuario:', usuarioError.message)
+      await supabase.auth.signOut({ scope: 'global' })
+      return NextResponse.json(
+        { error: 'No se pudo validar el usuario' },
+        { status: 500 },
+      )
     }
+
+    if (!usuarioRow || usuarioRow.activo === false || !usuarioRow.rol) {
+      await supabase.auth.signOut({ scope: 'global' })
+      return NextResponse.json(
+        { error: 'Usuario no habilitado' },
+        { status: 403 },
+      )
+    }
+
+    let conjuntoId: string | null = usuarioRow.conjunto_id ?? null
+    const rol = usuarioRow.rol
+
+    // Actualizar ultimo_acceso del usuario (RPC con SECURITY DEFINER y fallback)
+    const { error: rpcError } = await supabase.rpc('update_last_access')
+    if (rpcError) {
+      const { error: updateError } = await supabase
+        .from('usuarios')
+        .update({ ultimo_acceso: new Date().toISOString() })
+        .eq('id', data.user.id)
+      if (updateError) {
+        console.warn('[login] No se pudo actualizar ultimo_acceso:', updateError.message)
+      }
+    }
+
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_SUCCESS',
+      entidadId: data.user.id,
+      conjuntoId,
+      supabase,
+    })
 
     const setCookieHeaders = response.cookies.getAll().map(c => c.name)
     console.log('[login] cookies en respuesta:', setCookieHeaders)
 
-    return response
+    // Crear respuesta final con el rol incluido, preservando las cookies de sesión
+    const finalResponse = NextResponse.json({ success: true, rol }, { status: 200 })
+    response.cookies.getAll().forEach(({ name, value, ...options }) => {
+      finalResponse.cookies.set(name, value, options)
+    })
+    return finalResponse
   } catch (error) {
     console.error('[auth] Login error:', error)
+    await logAuthEvent({
+      request,
+      accion: 'LOGIN_FAILED',
+      entidadId: null,
+      datosNuevos: { email: normalizedEmail },
+    })
     return NextResponse.json(
       { error: 'Error al procesar login' },
       { status: 500 }

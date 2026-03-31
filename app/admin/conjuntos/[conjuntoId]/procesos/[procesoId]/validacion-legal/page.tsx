@@ -838,7 +838,7 @@ function ValidacionLegalContent() {
                       {/* Acciones */}
                       <div className="flex gap-2 shrink-0 flex-wrap">
                         <Link
-                          href={`/admin/conjuntos/${conjuntoId}/procesos/${procesoId}/propuestas/${p.id}`}
+                          href={`/admin/propuestas/${p.id}/documentos`}
                           target="_blank"
                         >
                           <Button variant="outline" size="sm" className="gap-2 bg-background">

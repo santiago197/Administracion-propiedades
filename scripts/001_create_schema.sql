@@ -565,7 +565,7 @@ SELECT
   pr.nombre as proceso_nombre,
   pr.estado as proceso_estado,
   c.nombre as conjunto_nombre,
-  (SELECT COUNT(*) FROM documentos d WHERE d.propuesta_id = p.id AND d.estado = 'completo') as docs_completos,
+  (SELECT COUNT(*) FROM documentos d WHERE d.propuesta_id = p.id AND d.estado IN ('CARGADO', 'EN_REVISION', 'APROBADO')) as docs_completos,
   (SELECT COUNT(*) FROM documentos d WHERE d.propuesta_id = p.id) as docs_total
 FROM propuestas p
 JOIN procesos pr ON p.proceso_id = pr.id

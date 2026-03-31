@@ -104,6 +104,10 @@ export default async function AdminDashboard() {
   })
 
   if (!user.authorized || !user.conjuntoId) {
+    // Si hay usuario autenticado pero sin conjunto_id es superadmin → redirigir a su panel
+    if (user.user) {
+      redirect('/admin/conjuntos')
+    }
     console.log('[admin/page] redirigiendo a /login')
     redirect('/login')
   }

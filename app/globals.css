@@ -123,3 +123,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+  .text-destructive-foreground {
+    background: var(--destructive-foreground);
+    color: white;
+  }

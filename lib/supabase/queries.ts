@@ -22,6 +22,7 @@ import type {
   TipoPersona,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
+import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
 
 // CONJUNTOS
 export async function createConjunto(data: Omit<Conjunto, 'id' | 'created_at' | 'updated_at'>) {
@@ -302,17 +303,36 @@ export async function createDocumento(
   data: Omit<Documento, 'id' | 'created_at' | 'updated_at'>
 ) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').insert([data]).select().single()
+  const payload = {
+    ...data,
+    estado: normalizeEstadoDocumentoDb(data.estado),
+  }
+  return supabase.from('documentos').insert([payload]).select().single()
 }
 
 export async function getDocumentos(propuesta_id: string) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').select('*').eq('propuesta_id', propuesta_id)
+  const { data, error } = await supabase
+    .from('documentos')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+
+  return {
+    data: (data ?? []).map((doc) => ({
+      ...doc,
+      estado: normalizeEstadoDocumentoApp(doc.estado),
+    })),
+    error,
+  }
 }
 
 export async function updateDocumento(id: string, data: Partial<Documento>) {
   const supabase = await createServerClient()
-  return supabase.from('documentos').update(data).eq('id', id).select().single()
+  const payload = {
+    ...data,
+    ...(data.estado ? { estado: normalizeEstadoDocumentoDb(data.estado) } : {}),
+  }
+  return supabase.from('documentos').update(payload).eq('id', id).select().single()
 }
 
 export async function deleteDocumento(id: string) {
@@ -330,7 +350,9 @@ export async function validarDocumentacionObligatoria(propuesta_id: string) {
   if (error) throw error
 
   const incompletos =
-    documentos?.filter((d) => d.es_obligatorio && d.estado !== 'completo') ?? []
+    documentos?.filter(
+      (d) => d.es_obligatorio && normalizeEstadoDocumentoApp(d.estado) !== 'completo'
+    ) ?? []
 
   return {
     completa: incompletos.length === 0,
@@ -413,7 +435,7 @@ export async function validarDocumentacionPropuesta(
   if (docsError) throw docsError
 
   const hayObligatoriosFaltantes = documentos?.some(
-    (d) => d.es_obligatorio && d.estado !== 'completo'
+    (d) => d.es_obligatorio && normalizeEstadoDocumentoApp(d.estado) !== 'completo'
   )
 
   if (hayObligatoriosFaltantes) {
@@ -481,11 +503,12 @@ export async function procesarValidacionLegal(
 
 export async function validarDocumento(id: string, estado: string, observaciones: string, userId: string) {
   const supabase = await createServerClient()
+  const estadoNormalizado = normalizeEstadoDocumentoDb(estado)
 
   const { data, error } = await supabase
     .from('documentos')
     .update({
-      estado,
+      estado: estadoNormalizado,
       observaciones,
       validado_por: userId,
       fecha_validacion: new Date().toISOString()
@@ -498,10 +521,10 @@ export async function validarDocumento(id: string, estado: string, observaciones
 
   // Registrar auditoría
   await supabase.from('audit_log').insert({
-    accion: estado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
+    accion: estadoNormalizado === 'APROBADO' ? 'APROBACION_DOCUMENTO' : 'RECHAZO_DOCUMENTO',
     entidad: 'documentos',
     entidad_id: id,
-    datos_nuevos: { estado, observaciones },
+    datos_nuevos: { estado: estadoNormalizado, observaciones },
     consejero_id: userId // Usar como responsable genérico si aplica
   })
 
@@ -638,9 +661,10 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
   return propuestas.map((p, index) => {
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
 
-    if (p.puntaje_final >= 4) {
+    // Escala 0–100 (clasificar_candidato: destacado ≥85, apto ≥70, condicionado ≥55)
+    if (p.puntaje_final >= 70) {
       estado_semaforo = 'verde'
-    } else if (p.puntaje_final >= 3) {
+    } else if (p.puntaje_final >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
@@ -806,11 +830,22 @@ export async function getDocumentosFaltantes(propuesta_id: string): Promise<{
 
   const { data: documentos } = await supabase
     .from('documentos')
-    .select('tipo_documento_id')
+    .select('tipo_documento_id, tipo')
     .eq('propuesta_id', propuesta_id)
-    .not('tipo_documento_id', 'is', null)
-
-  const tiposCubiertos = new Set((documentos ?? []).map((d) => d.tipo_documento_id as string))
+ 
+  const tiposCubiertos = new Set<string>()
+  const codigoToId = new Map(
+    (tipos as TipoDocumentoConfig[]).map((t) => [t.codigo, t.id])
+  )
+  ;(documentos ?? []).forEach((doc) => {
+    if (doc.tipo_documento_id) {
+      tiposCubiertos.add(doc.tipo_documento_id as string)
+      return
+    }
+    if (doc.tipo && codigoToId.has(doc.tipo as string)) {
+      tiposCubiertos.add(codigoToId.get(doc.tipo as string)!)
+    }
+  })
 
   const faltantes = (tipos as TipoDocumentoConfig[]).filter(
     (t) => t.es_obligatorio && !tiposCubiertos.has(t.id)
@@ -988,7 +1023,8 @@ export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioC
     .from('usuarios')
     .select(`
       *,
-      conjunto:conjuntos(id, nombre)
+      conjunto:conjuntos(id, nombre),
+      usuarios_permisos(permiso:permisos(id, codigo, nombre, categoria))
     `)
     .order('created_at', { ascending: false })
 
@@ -999,7 +1035,18 @@ export async function getUsuarios(conjunto_id?: string | null): Promise<UsuarioC
   const { data, error } = await query
 
   if (error) throw error
-  return (data ?? []) as UsuarioConConjunto[]
+  return (data ?? []).map((row) => {
+    const record = row as Record<string, unknown>
+    const permisosRaw = (record.usuarios_permisos ?? []) as Array<{ permiso?: unknown }>
+    const permisos = permisosRaw
+      .map((item) => item.permiso)
+      .filter(Boolean) as UsuarioConConjunto['permisos']
+    const { usuarios_permisos: _ignored, ...rest } = record
+    return {
+      ...(rest as UsuarioConConjunto),
+      permisos,
+    }
+  })
 }
 
 export async function getUsuario(id: string): Promise<UsuarioConConjunto | null> {
@@ -1009,13 +1056,23 @@ export async function getUsuario(id: string): Promise<UsuarioConConjunto | null>
     .from('usuarios')
     .select(`
       *,
-      conjunto:conjuntos(id, nombre)
+      conjunto:conjuntos(id, nombre),
+      usuarios_permisos(permiso:permisos(id, codigo, nombre, categoria))
     `)
     .eq('id', id)
     .single()
 
   if (error) return null
-  return data as UsuarioConConjunto
+  const record = data as Record<string, unknown>
+  const permisosRaw = (record.usuarios_permisos ?? []) as Array<{ permiso?: unknown }>
+  const permisos = permisosRaw
+    .map((item) => item.permiso)
+    .filter(Boolean) as UsuarioConConjunto['permisos']
+  const { usuarios_permisos: _ignored, ...rest } = record
+  return {
+    ...(rest as UsuarioConConjunto),
+    permisos,
+  }
 }
 
 export async function updateUsuario(
@@ -1025,6 +1082,7 @@ export async function updateUsuario(
     rol?: RolUsuario
     activo?: boolean
     conjunto_id?: string | null
+    permisos_ids?: string[]
   }
 ) {
   const supabase = await createServerClient()
@@ -1043,7 +1101,27 @@ export async function updateUsuario(
     .single()
 
   if (error) throw error
-  return updated as Usuario
+
+  if (data.permisos_ids !== undefined) {
+    const { error: deleteError } = await supabase
+      .from('usuarios_permisos')
+      .delete()
+      .eq('usuario_id', id)
+    if (deleteError) throw deleteError
+
+    if (data.permisos_ids.length > 0) {
+      const usuariosPermisos = data.permisos_ids.map((permiso_id) => ({
+        usuario_id: id,
+        permiso_id,
+      }))
+      const { error: insertError } = await supabase
+        .from('usuarios_permisos')
+        .insert(usuariosPermisos)
+      if (insertError) throw insertError
+    }
+  }
+
+  return (await getUsuario(id)) ?? (updated as Usuario)
 }
 
 export async function deleteUsuario(id: string) {

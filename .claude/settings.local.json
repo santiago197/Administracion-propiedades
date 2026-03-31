@@ -34,5 +34,9 @@
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -type f \\\\\\(-name *propuesta* -o -name *rut* \\\\\\))",
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin -type f -name *.tsx -o -name *.ts)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ],
+  "enableAllProjectMcpServers": true
 }
