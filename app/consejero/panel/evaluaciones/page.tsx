@@ -23,6 +23,9 @@ interface Criterio {
   nombre: string
   descripcion?: string | null
   peso: number
+  tipo?: 'numerico' | 'booleano' | 'escala'
+  valor_minimo?: number
+  valor_maximo?: number
   orden?: number
 }
 
@@ -229,7 +232,7 @@ export default function EvaluacionesPage() {
 
   function isComplete(propuestaId: string) {
     const evs = evaluaciones[propuestaId] ?? {}
-    return criterios.every((c) => evs[c.id] !== undefined && evs[c.id] > 0)
+    return criterios.every((c) => evs[c.id] !== undefined)
   }
 
   const totalEvaluadas = propuestas.filter((p) => isComplete(p.id)).length
@@ -335,22 +338,45 @@ export default function EvaluacionesPage() {
                         Peso: {criterio.peso}%
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {[1, 2, 3, 4, 5].map((v) => (
-                        <button
-                          key={v}
-                          onClick={() => handleScore(current.id, criterio.id, v)}
-                          className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[70px] ${
-                            score === v
-                              ? 'border-primary bg-primary text-primary-foreground shadow'
-                              : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
-                          }`}
-                        >
-                          <span className="text-lg font-bold leading-none">{v}</span>
-                          <span className="mt-0.5">{SCORE_LABELS[v]}</span>
-                        </button>
-                      ))}
-                    </div>
+                    {criterio.tipo === 'booleano' ? (
+                      <div className="flex flex-wrap gap-2">
+                        {[0, 1].map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => handleScore(current.id, criterio.id, v)}
+                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[90px] ${
+                              score === v
+                                ? v === 1
+                                  ? 'border-green-500 bg-green-600 text-white shadow'
+                                  : 'border-destructive bg-destructive text-destructive-foreground shadow'
+                                : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold leading-none">{v === 1 ? 'Cumple' : 'No cumple'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {Array.from(
+                          { length: (criterio.valor_maximo ?? 5) - (criterio.valor_minimo ?? 1) + 1 },
+                          (_, idx) => (criterio.valor_minimo ?? 1) + idx
+                        ).map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => handleScore(current.id, criterio.id, v)}
+                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[70px] ${
+                              score === v
+                                ? 'border-primary bg-primary text-primary-foreground shadow'
+                                : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
+                            }`}
+                          >
+                            <span className="text-lg font-bold leading-none">{v}</span>
+                            <span className="mt-0.5">{SCORE_LABELS[v] ?? 'Valor'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}

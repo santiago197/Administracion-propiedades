@@ -176,11 +176,12 @@ La función `getMatrizEvaluacionAdmin(proceso_id)` en `queries.ts` y el endpoint
 
 Los criterios de la matriz se gestionan dinámicamente desde la BD en lugar de estar completamente hardcodeados:
 
-- **Tabla**: `criterios_evaluacion` — columnas `id`, `codigo`, `nombre`, `descripcion`, `peso`, `activo`, `orden`
-- **UI Admin**: `app/admin/configuracion/criterios/page.tsx` — CRUD completo con drag-and-drop y validación de pesos
-- **API**: `GET/POST /api/criterios` y `GET/PUT/DELETE /api/criterios/[id]` — requieren `requireAuth()`
-- **Queries**: `getCriterios()`, `createCriterio()`, `updateCriterio()`, `deleteCriterio()`, `getPesoTotalCriterios()` en `queries.ts`
-- **Validación**: peso entre 0–100 por criterio; la suma total de activos debe ser 100 (validado en UI y API)
+- **Tabla catálogo**: `criterios_evaluacion` — columnas `id`, `nombre`, `descripcion`, `tipo`, `activo`, `orden`
+- **Tabla proceso**: `criterios` — columnas `id`, `proceso_id`, `criterio_evaluacion_id`, `peso`, `valor_minimo`, `valor_maximo`, `orden`, `activo`
+- **UI Admin**: `app/admin/configuracion/criterios/page.tsx` — CRUD catálogo con drag-and-drop
+- **API**: `GET/POST /api/criterios` y `GET/PUT/DELETE /api/criterios/[id]` — requieren `requireAuth()` (catálogo) y soportan `proceso_id` para configuración por proceso
+- **Queries**: `getCriterios()`, `createCriterio()`, `updateCriterio()`, `deleteCriterio()`, `getCriteriosProceso()`, `createCriterioProceso()` en `queries.ts`
+- **Validación**: peso entre 0–100 por criterio; la suma total de activos debe ser 100 (validado en UI y API de proceso)
 - **RLS**: lectura para todos los autenticados; escritura solo para `superadmin` y `admin`
 
 ### Permisos granulares por usuario

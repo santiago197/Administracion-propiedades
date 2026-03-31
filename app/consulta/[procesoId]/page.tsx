@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -17,55 +19,24 @@ import {
   Info,
 } from 'lucide-react'
 
-// Datos mock para el panel público
-const mockProceso = {
-  conjunto: 'Conjunto Residencial Los Pinos',
-  nombre: 'Selección Administrador 2025',
-  etapa: 'evaluacion',
-  fechaInicio: '2025-01-15',
-  fechaEstimadaFin: '2025-02-28',
-  totalCandidatos: 5,
-  evaluacionesCompletadas: 60,
-  votacionCompletada: 0,
-}
-
-const mockCronograma = [
-  { fecha: '2025-01-15', evento: 'Apertura de convocatoria', completado: true },
-  { fecha: '2025-01-25', evento: 'Cierre de recepción de propuestas', completado: true },
-  { fecha: '2025-01-28', evento: 'Inicio de evaluación técnica', completado: true },
-  { fecha: '2025-02-10', evento: 'Cierre de evaluación técnica', completado: false },
-  { fecha: '2025-02-15', evento: 'Inicio de votación del consejo', completado: false },
-  { fecha: '2025-02-20', evento: 'Cierre de votación', completado: false },
-  { fecha: '2025-02-28', evento: 'Publicación de resultados', completado: false },
-]
-
-const mockComunicados = [
-  {
-    id: 1,
-    fecha: '2025-01-28',
-    titulo: 'Inicio del proceso de evaluación',
-    mensaje: 'Informamos a la comunidad que el consejo de administración ha iniciado la fase de evaluación técnica de las propuestas recibidas.',
-  },
-  {
-    id: 2,
-    fecha: '2025-01-25',
-    titulo: 'Cierre de convocatoria',
-    mensaje: 'Se cierra la recepción de propuestas con un total de 5 candidatos postulados. Agradecemos a todos los participantes.',
-  },
-  {
-    id: 3,
-    fecha: '2025-01-15',
-    titulo: 'Apertura del proceso de selección',
-    mensaje: 'El consejo de administración comunica la apertura oficial del proceso de selección de administrador para el periodo 2025-2026.',
-  },
-]
-
 const ETAPAS = {
   convocatoria: { label: 'Convocatoria', color: 'bg-blue-500' },
   recepcion: { label: 'Recepción de propuestas', color: 'bg-purple-500' },
   evaluacion: { label: 'Evaluación técnica', color: 'bg-amber-500' },
   votacion: { label: 'Votación', color: 'bg-indigo-500' },
   finalizado: { label: 'Finalizado', color: 'bg-green-500' },
+}
+
+type PublicProcesoResponse = {
+  conjunto: string
+  nombre: string
+  estado: string
+  fecha_inicio: string
+  fecha_estimado_fin: string
+  total_candidatos: number
+  evaluaciones_completadas: number
+  votacion_completada: number
+  comunicados: string[]
 }
 
 function formatDate(dateStr: string) {
@@ -76,10 +47,99 @@ function formatDate(dateStr: string) {
   })
 }
 
+function normalizeEtapaKey(value: string) {
+  const normalized = value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '')
+
+  if (normalized.includes('evaluacion')) return 'evaluacion'
+  if (normalized.includes('votacion')) return 'votacion'
+  if (normalized.includes('final')) return 'finalizado'
+  if (normalized.includes('recepcion')) return 'recepcion'
+  if (normalized.includes('convocatoria')) return 'convocatoria'
+
+  return 'convocatoria'
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
 export default function ConsultaPublicaPage() {
-  const proceso = mockProceso
-  const cronograma = mockCronograma
-  const comunicados = mockComunicados
+  const params = useParams()
+  const procesoId = params.procesoId as string
+  const [data, setData] = useState<PublicProcesoResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchProceso = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const res = await fetch(`/procesos/${procesoId}/publico`)
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error ?? 'No se pudo cargar el proceso')
+        }
+        const body = await res.json()
+        setData(body)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al cargar el proceso'
+        setError(message)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (procesoId) {
+      fetchProceso()
+    }
+  }, [procesoId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <main className="mx-auto max-w-5xl px-4 py-8">
+          <p className="text-sm text-muted-foreground">Cargando proceso...</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (error || !data) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <main className="mx-auto max-w-5xl px-4 py-8">
+          <p className="text-sm text-destructive">{error ?? 'Error al cargar el proceso'}</p>
+        </main>
+      </div>
+    )
+  }
+
+  const proceso = {
+    conjunto: data.conjunto,
+    nombre: data.nombre,
+    etapa: normalizeEtapaKey(data.estado),
+    fechaInicio: data.fecha_inicio,
+    fechaEstimadaFin: data.fecha_estimado_fin,
+    totalCandidatos: data.total_candidatos,
+    evaluacionesCompletadas: clampPercent(data.evaluaciones_completadas),
+    votacionCompletada: clampPercent(data.votacion_completada),
+  }
+
+  const cronograma: Array<{ fecha: string; evento: string; completado: boolean }> = []
+
+  const comunicados = (data.comunicados ?? []).map((mensaje, index) => ({
+    id: index + 1,
+    fecha: data.fecha_inicio,
+    titulo: 'Comunicado',
+    mensaje,
+  }))
+
   const etapaInfo = ETAPAS[proceso.etapa as keyof typeof ETAPAS] || ETAPAS.convocatoria
 
   return (
@@ -226,38 +286,44 @@ export default function ConsultaPublicaPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {cronograma.map((item, index) => (
-                    <div key={index} className="flex items-start gap-3">
-                      <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                        item.completado 
-                          ? 'bg-green-100 text-green-600' 
-                          : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {item.completado ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : (
-                          <Clock className="h-3 w-3" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm font-medium ${
-                            item.completado ? 'text-foreground' : 'text-muted-foreground'
-                          }`}>
-                            {item.evento}
-                          </p>
-                          {item.completado && (
-                            <Badge variant="secondary" className="shrink-0 text-xs">
-                              Completado
-                            </Badge>
+                  {cronograma.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No hay fechas publicadas.
+                    </p>
+                  ) : (
+                    cronograma.map((item, index) => (
+                      <div key={index} className="flex items-start gap-3">
+                        <div className={`mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                          item.completado
+                            ? 'bg-green-100 text-green-600'
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {item.completado ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <Clock className="h-3 w-3" />
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDate(item.fecha)}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className={`text-sm font-medium ${
+                              item.completado ? 'text-foreground' : 'text-muted-foreground'
+                            }`}>
+                              {item.evento}
+                            </p>
+                            {item.completado && (
+                              <Badge variant="secondary" className="shrink-0 text-xs">
+                                Completado
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(item.fecha)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

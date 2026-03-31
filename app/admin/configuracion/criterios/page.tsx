@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { Progress } from '@/components/ui/progress'
 import {
   Sheet,
   SheetContent,
@@ -27,8 +26,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 import type { CriterioEvaluacion } from '@/lib/types/index'
 import {
   AlertCircle,
@@ -39,37 +38,24 @@ import {
   Plus,
   RefreshCcw,
   Trash2,
-  Wand2,
 } from 'lucide-react'
 
 type FormState = {
-  codigo: string
   nombre: string
   descripcion: string
-  peso: number
   orden: number
   activo: boolean
+  tipo: CriterioEvaluacion['tipo']
 }
 
 type RowStatus = Record<string, 'saving' | 'error' | 'idle'>
 
 const INITIAL_FORM: FormState = {
-  codigo: '',
   nombre: '',
   descripcion: '',
-  peso: 0,
   orden: 1,
   activo: true,
-}
-
-function generarCodigo(value: string) {
-  const normalized = value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s-_]/g, '')
-    .trim()
-  return normalized.replace(/[\s-]+/g, '_').slice(0, 40)
+  tipo: 'escala',
 }
 
 function ordenarCriterios(items: CriterioEvaluacion[]) {
@@ -88,7 +74,6 @@ export default function CriteriosPage() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [autoCodigo, setAutoCodigo] = useState(true)
 
   const [deleteTarget, setDeleteTarget] = useState<CriterioEvaluacion | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -118,11 +103,6 @@ export default function CriteriosPage() {
   }, [fetchCriterios])
 
   const orderedCriterios = useMemo(() => ordenarCriterios(criterios), [criterios])
-  const pesoActivos = useMemo(
-    () => orderedCriterios.filter((c) => c.activo).reduce((sum, c) => sum + c.peso, 0),
-    [orderedCriterios]
-  )
-  const pesoValido = pesoActivos === 100
   const totalCriterios = orderedCriterios.length
   const criteriosActivos = orderedCriterios.filter((c) => c.activo).length
 
@@ -130,22 +110,19 @@ export default function CriteriosPage() {
     setEditingId(null)
     setForm({ ...INITIAL_FORM, orden: totalCriterios + 1 })
     setFormError(null)
-    setAutoCodigo(true)
     setSheetOpen(true)
   }
 
   function openEdit(criterio: CriterioEvaluacion) {
     setEditingId(criterio.id)
     setForm({
-      codigo: criterio.codigo,
       nombre: criterio.nombre,
       descripcion: criterio.descripcion ?? '',
-      peso: criterio.peso,
       orden: criterio.orden,
       activo: criterio.activo,
+      tipo: criterio.tipo,
     })
     setFormError(null)
-    setAutoCodigo(false)
     setSheetOpen(true)
   }
 
@@ -181,16 +158,8 @@ export default function CriteriosPage() {
   }
 
   async function handleSave() {
-    if (!form.codigo.trim()) {
-      setFormError('El código es requerido')
-      return
-    }
     if (!form.nombre.trim()) {
       setFormError('El nombre es requerido')
-      return
-    }
-    if (form.peso < 0 || form.peso > 100) {
-      setFormError('El peso debe estar entre 0 y 100')
       return
     }
 
@@ -205,12 +174,11 @@ export default function CriteriosPage() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          codigo: form.codigo.trim(),
           nombre: form.nombre.trim(),
           descripcion: form.descripcion.trim() || null,
-          peso: form.peso,
           activo: form.activo,
           orden: form.orden,
+          tipo: form.tipo,
         }),
       })
 
@@ -273,19 +241,6 @@ export default function CriteriosPage() {
     } catch (err) {
       setError('Error al cambiar estado')
     }
-  }
-
-  async function handlePesoBlur(criterio: CriterioEvaluacion, value: number) {
-    if (value === criterio.peso) return
-    if (value < 0 || value > 100 || Number.isNaN(value)) {
-      toast({
-        title: 'Peso invalido',
-        description: 'El peso debe estar entre 0 y 100.',
-        variant: 'destructive',
-      })
-      return
-    }
-    await updateCriterio(criterio.id, { peso: value })
   }
 
   async function handleDragReorder(fromId: string, toId: string) {
@@ -376,34 +331,26 @@ export default function CriteriosPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Distribucion de pesos</CardTitle>
+            <CardTitle className="text-base">Resumen de catálogo</CardTitle>
             <CardDescription>
-              El peso total de los criterios activos debe sumar 100%.
+              Administra el catálogo global de criterios que luego se usan en cada proceso.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center gap-4">
-              <Progress value={pesoActivos} className="flex-1" />
-              <span
-                className={cn(
-                  'text-sm font-semibold tabular-nums',
-                  pesoValido ? 'text-green-600' : 'text-amber-600'
-                )}
-              >
-                {pesoActivos}%
-              </span>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Criterios activos</span>
+              <span className="font-semibold">{criteriosActivos}</span>
             </div>
-            {!pesoValido && (
-              <p className="text-xs text-amber-600">
-                El peso total debe ser exactamente 100%. Actualmente: {pesoActivos}%.
-              </p>
-            )}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Total criterios</span>
+              <span className="font-semibold">{totalCriterios}</span>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Resumen rapido</CardTitle>
-            <CardDescription>Estado general de la matriz</CardDescription>
+            <CardTitle className="text-base">Estado del catálogo</CardTitle>
+            <CardDescription>Disponibilidad para nuevos procesos</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
@@ -414,19 +361,10 @@ export default function CriteriosPage() {
               <Badge variant="secondary">{criteriosActivos} activos</Badge>
             </div>
             <div className="rounded-md border border-border/60 p-3 text-sm">
-              <p className="text-muted-foreground">Estado de cumplimiento</p>
+              <p className="text-muted-foreground">Uso recomendado</p>
               <div className="mt-2 flex items-center gap-2">
-                {pesoValido ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <span>Pesos balanceados</span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                    <span>Requiere ajustes</span>
-                  </>
-                )}
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <span>Catálogo listo para procesos nuevos</span>
               </div>
             </div>
           </CardContent>
@@ -436,9 +374,9 @@ export default function CriteriosPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Criterios configurados</CardTitle>
+            <CardTitle>Criterios del catálogo</CardTitle>
             <CardDescription>
-              Arrastra para reordenar y ajusta pesos con edicion rapida.
+              Arrastra para reordenar y gestiona el estado de cada criterio.
             </CardDescription>
           </div>
           <div className="text-sm text-muted-foreground">
@@ -457,8 +395,7 @@ export default function CriteriosPage() {
                   <tr className="text-left text-xs uppercase text-muted-foreground">
                     <th className="py-3 pr-4 w-10">Orden</th>
                     <th className="py-3 pr-4">Nombre</th>
-                    <th className="py-3 pr-4">Codigo</th>
-                    <th className="py-3 pr-4 w-64">Peso</th>
+                    <th className="py-3 pr-4">Tipo</th>
                     <th className="py-3 pr-4 w-32">Estado</th>
                     <th className="py-3 pr-4 w-28 text-right">Acciones</th>
                   </tr>
@@ -513,30 +450,7 @@ export default function CriteriosPage() {
                         </div>
                       </td>
                       <td className="py-4 pr-4">
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                          {criterio.codigo}
-                        </code>
-                      </td>
-                      <td className="py-4 pr-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1">
-                            <Progress value={criterio.peso} className="h-2" />
-                          </div>
-                          <div className="w-16">
-                            <Input
-                              key={`peso-${criterio.id}-${criterio.peso}`}
-                              type="number"
-                              min={0}
-                              max={100}
-                              className="h-8 text-sm"
-                              defaultValue={criterio.peso}
-                              onBlur={(event) =>
-                                handlePesoBlur(criterio, Number(event.currentTarget.value))
-                              }
-                              disabled={rowStatus[criterio.id] === 'saving'}
-                            />
-                          </div>
-                        </div>
+                        <Badge variant="outline">{criterio.tipo}</Badge>
                       </td>
                       <td className="py-4 pr-4">
                         <div className="flex items-center gap-2">
@@ -581,7 +495,7 @@ export default function CriteriosPage() {
           <SheetHeader>
             <SheetTitle>{editingId ? 'Editar criterio' : 'Nuevo criterio'}</SheetTitle>
             <SheetDescription>
-              Configura el peso y el orden de aparicion para la matriz de evaluacion.
+                Configura el catálogo global que usarán los procesos.
             </SheetDescription>
           </SheetHeader>
 
@@ -604,36 +518,25 @@ export default function CriteriosPage() {
                     setForm((prev) => ({
                       ...prev,
                       nombre: value,
-                      codigo: autoCodigo ? generarCodigo(value) : prev.codigo,
                     }))
                   }}
                   placeholder="Experiencia en Propiedad Horizontal"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="codigo">Codigo *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="codigo"
-                    value={form.codigo}
-                    onChange={(event) => {
-                      setAutoCodigo(false)
-                      setForm((prev) => ({ ...prev, codigo: event.target.value }))
-                    }}
-                    placeholder="exp_ph"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setAutoCodigo(true)
-                      setForm((prev) => ({ ...prev, codigo: generarCodigo(prev.nombre) }))
-                    }}
-                    className="gap-2"
-                  >
-                    <Wand2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Label htmlFor="tipo">Tipo *</Label>
+                <select
+                  id="tipo"
+                  value={form.tipo}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, tipo: event.target.value as FormState['tipo'] }))
+                  }
+                  className="flex h-10 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+                >
+                  <option value="numerico">Numerico</option>
+                  <option value="booleano">Booleano</option>
+                  <option value="escala">Escala</option>
+                </select>
               </div>
             </div>
 
@@ -649,19 +552,6 @@ export default function CriteriosPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="peso">Peso (%) *</Label>
-                <Input
-                  id="peso"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={form.peso}
-                  onChange={(event) =>
-                    setForm({ ...form, peso: Number(event.target.value) || 0 })
-                  }
-                />
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="orden">Orden</Label>
                 <Input

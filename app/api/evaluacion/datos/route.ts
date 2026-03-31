@@ -2,14 +2,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getConsejeroSessionFromRequest } from '@/lib/consejero-session'
 
-function normalizeCriterioNombre(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-}
-
 /**
  * GET /api/evaluacion/datos?proceso_id=<uuid>
  *
@@ -79,8 +71,7 @@ export async function GET(request: NextRequest) {
     // 3. Cargar todo en paralelo
     const [
       { data: propuestas },
-      { data: criteriosProceso },
-      { data: criteriosConfigurados },
+      { data: criterios },
       { data: evaluaciones },
       { data: voto },
     ] = await Promise.all([
@@ -92,14 +83,8 @@ export async function GET(request: NextRequest) {
 
       supabase
         .from('criterios')
-        .select('id, nombre, descripcion, peso, tipo, valor_minimo, valor_maximo, orden')
+        .select('id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (nombre, descripcion, tipo)')
         .eq('proceso_id', proceso_id)
-        .eq('activo', true)
-        .order('orden', { ascending: true }),
-
-      supabase
-        .from('criterios_evaluacion')
-        .select('codigo, nombre, descripcion, peso, orden')
         .eq('activo', true)
         .order('orden', { ascending: true }),
 
@@ -117,75 +102,20 @@ export async function GET(request: NextRequest) {
         .maybeSingle(),
     ])
 
-    const criteriosBase = criteriosProceso ?? []
-    const criteriosConfig = criteriosConfigurados ?? []
+    const criteriosFinal = (criterios ?? []).map((criterio) => ({
+      id: criterio.id,
+      nombre: criterio.criterios_evaluacion?.nombre ?? 'Criterio',
+      descripcion: criterio.criterios_evaluacion?.descripcion ?? null,
+      peso: criterio.peso,
+      tipo: criterio.criterios_evaluacion?.tipo ?? 'escala',
+      valor_minimo: criterio.valor_minimo,
+      valor_maximo: criterio.valor_maximo,
+      orden: criterio.orden ?? 0,
+    }))
 
-    if (!criteriosBase.length) {
+    if (criteriosFinal.length === 0) {
       return NextResponse.json(
         { error: 'No hay criterios configurados para este proceso' },
-        { status: 409 }
-      )
-    }
-
-    if (!criteriosConfig.length) {
-      return NextResponse.json(
-        { error: 'No hay criterios activos configurados en el sistema' },
-        { status: 409 }
-      )
-    }
-
-    const ordenadosBase = [...criteriosBase].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
-    const ordenadosConfig = [...criteriosConfig].sort(
-      (a, b) => (a.orden ?? 0) - (b.orden ?? 0)
-    )
-
-    const baseByName = new Map(
-      criteriosBase.map((criterio) => [
-        normalizeCriterioNombre(criterio.nombre),
-        criterio,
-      ])
-    )
-
-    const criterios =
-      criteriosBase.length === criteriosConfig.length &&
-      ordenadosConfig.every((criterio) =>
-        baseByName.has(normalizeCriterioNombre(criterio.nombre))
-      )
-        ? ordenadosConfig
-            .map((criterioConfig, index) => {
-              const normalizedConfig = normalizeCriterioNombre(criterioConfig.nombre)
-              const matched = baseByName.get(normalizedConfig)
-
-              if (!matched) return null
-
-              return {
-                ...matched,
-                nombre: criterioConfig.nombre,
-                descripcion: criterioConfig.descripcion,
-                peso: criterioConfig.peso,
-                orden: criterioConfig.orden ?? matched.orden ?? index + 1,
-              }
-            })
-            .filter((criterio): criterio is NonNullable<typeof criterio> => criterio !== null)
-        : criteriosBase.length === criteriosConfig.length
-        ? ordenadosConfig.map((criterioConfig, index) => {
-            const matched = ordenadosBase[index]
-            return {
-              ...matched,
-              nombre: criterioConfig.nombre,
-              descripcion: criterioConfig.descripcion,
-              peso: criterioConfig.peso,
-              orden: criterioConfig.orden ?? matched.orden ?? index + 1,
-            }
-          })
-        : []
-
-    if (!criterios.length) {
-      return NextResponse.json(
-        {
-          error:
-            'Los criterios activos no coinciden en cantidad con los del proceso. Contacta al administrador.',
-        },
         { status: 409 }
       )
     }
@@ -200,7 +130,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       propuestas: propuestas ?? [],
-      criterios: criterios ?? [],
+      criterios: criteriosFinal,
       evaluaciones: evaluaciones ?? [],
       documentos: documentos ?? [],
       consejero: consejero,

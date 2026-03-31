@@ -18,6 +18,8 @@ import type {
   FilaMatrizEvaluacion,
   DetallesCriterio,
   ClasificacionPropuesta,
+  Criterio,
+  CriterioEvaluacion,
   TipoDocumentoConfig,
   TipoPersona,
 } from '../types/index'
@@ -1224,8 +1226,6 @@ export async function deleteUsuario(id: string) {
 }
 
 // CRITERIOS DE EVALUACIÓN — CRUD
-import type { Criterio, CriterioEvaluacion } from '../types/index'
-
 export async function getCriterios(soloActivos = false): Promise<CriterioEvaluacion[]> {
   const supabase = await createServerClient()
 
@@ -1273,6 +1273,115 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
       activo: row.activo ?? true,
     }
   })
+}
+
+export async function createCriterioProceso(data: {
+  proceso_id: string
+  criterio_evaluacion_id: string
+  peso: number
+  valor_minimo: number
+  valor_maximo: number
+  orden?: number
+  activo?: boolean
+}): Promise<Criterio> {
+  const supabase = await createServerClient()
+
+  const { data: catalogoData } = await supabase
+    .from('criterios_evaluacion')
+    .select('nombre, descripcion, tipo')
+    .eq('id', data.criterio_evaluacion_id)
+    .maybeSingle()
+
+  try {
+    const insertPayload = {
+      proceso_id: data.proceso_id,
+      criterio_evaluacion_id: data.criterio_evaluacion_id,
+      peso: data.peso,
+      valor_minimo: data.valor_minimo,
+      valor_maximo: data.valor_maximo,
+      orden: data.orden ?? 0,
+      activo: data.activo ?? true,
+    }
+
+    const { data: created, error } = await supabase
+      .from('criterios')
+      .insert([insertPayload])
+      .select('id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo')
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: created.id,
+      proceso_id: created.proceso_id,
+      criterio_evaluacion_id: created.criterio_evaluacion_id,
+      nombre: catalogoData?.nombre ?? 'Criterio',
+      descripcion: catalogoData?.descripcion ?? null,
+      tipo: catalogoData?.tipo ?? 'escala',
+      peso: created.peso,
+      valor_minimo: created.valor_minimo,
+      valor_maximo: created.valor_maximo,
+      orden: created.orden ?? 0,
+      activo: created.activo ?? true,
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+          ? String((error as { message?: unknown }).message)
+          : ''
+    const details =
+      typeof error === 'object' && error && 'details' in error
+        ? String((error as { details?: unknown }).details)
+        : ''
+    const code =
+      typeof error === 'object' && error && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : ''
+    const lowerMessage = `${message} ${details}`.toLowerCase()
+    const missingColumn =
+      code === 'PGRST204' ||
+      lowerMessage.includes('criterio_evaluacion_id') ||
+      lowerMessage.includes('column') ||
+      lowerMessage.includes('does not exist')
+
+    if (!missingColumn) throw error
+
+    const legacyPayload = {
+      proceso_id: data.proceso_id,
+      nombre: catalogoData?.nombre ?? 'Criterio',
+      descripcion: catalogoData?.descripcion ?? null,
+      tipo: catalogoData?.tipo ?? 'escala',
+      peso: data.peso,
+      valor_minimo: data.valor_minimo,
+      valor_maximo: data.valor_maximo,
+      orden: data.orden ?? 0,
+      activo: data.activo ?? true,
+    }
+
+    const { data: createdLegacy, error: legacyError } = await supabase
+      .from('criterios')
+      .insert([legacyPayload])
+      .select('id, proceso_id, nombre, descripcion, tipo, peso, valor_minimo, valor_maximo, orden, activo')
+      .single()
+
+    if (legacyError) throw legacyError
+
+    return {
+      id: createdLegacy.id,
+      proceso_id: createdLegacy.proceso_id,
+      criterio_evaluacion_id: data.criterio_evaluacion_id,
+      nombre: createdLegacy.nombre ?? 'Criterio',
+      descripcion: createdLegacy.descripcion ?? null,
+      tipo: createdLegacy.tipo ?? 'escala',
+      peso: createdLegacy.peso,
+      valor_minimo: createdLegacy.valor_minimo,
+      valor_maximo: createdLegacy.valor_maximo,
+      orden: createdLegacy.orden ?? 0,
+      activo: createdLegacy.activo ?? true,
+    }
+  }
 }
 
 export async function getCriterio(id: string): Promise<CriterioEvaluacion | null> {
