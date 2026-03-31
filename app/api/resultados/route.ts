@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
   // Validar autenticación
@@ -36,6 +37,44 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(resultados)
   } catch (error) {
     console.error('[v0] API error:', error)
+    return NextResponse.json({ error: 'Error en el servidor' }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/resultados?proceso_id=<uuid>
+ * Dispara el recálculo completo de puntajes del proceso.
+ * Solo accesible por admins autenticados.
+ */
+export async function POST(request: NextRequest) {
+  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  if (!authorized && authError) return authError
+
+  try {
+    const { searchParams } = new URL(request.url)
+    const procesoId = searchParams.get('proceso_id')
+
+    if (!procesoId) {
+      return NextResponse.json({ error: 'proceso_id es requerido' }, { status: 400 })
+    }
+
+    const { data: proceso, error: procError } = await getProcesoConjunto(procesoId, conjuntoId!)
+    if (procError || !proceso) {
+      return NextResponse.json({ error: 'Proceso no encontrado' }, { status: 404 })
+    }
+
+    const supabase = createAdminClient()
+    const { data: resultados, error } = await supabase
+      .rpc('recalcular_resultados', { p_proceso_id: procesoId })
+
+    if (error) {
+      console.error('[resultados/calcular]', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, resultados: resultados ?? [] })
+  } catch (error) {
+    console.error('[resultados/calcular] error:', error)
     return NextResponse.json({ error: 'Error en el servidor' }, { status: 500 })
   }
 }

@@ -137,6 +137,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // 7. Recalcular resultados completos (puntaje_evaluacion + votos + puntaje_final)
+    // Se ejecuta en segundo plano para no bloquear la respuesta al consejero
+    supabase
+      .rpc('recalcular_resultados', { p_proceso_id: proceso_id })
+      .then(({ error: rpcError }) => {
+        if (rpcError) console.warn('[evaluacion/votar] recalcular_resultados:', rpcError.message)
+      })
+
     return NextResponse.json({ success: true, voto_id: data.id })
   } catch (err) {
     console.error('[evaluacion/votar] error:', err)

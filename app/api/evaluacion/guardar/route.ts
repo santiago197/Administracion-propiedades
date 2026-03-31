@@ -133,18 +133,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
 
-    // 5. Verificar si la evaluación está completa (todas las propuestas evaluadas)
-    const { count: totalPropuestas } = await supabase
-      .from('propuestas')
-      .select('*', { count: 'exact', head: true })
-      .eq('proceso_id', proceso_id)
-      .eq('estado', 'en_evaluacion')
+    // 5. Recalcular puntaje de la propuesta en segundo plano (no bloquea la respuesta)
+    supabase
+      .rpc('actualizar_puntaje_propuesta', { p_propuesta_id: propuesta_id })
+      .then(({ error }) => {
+        if (error) console.warn('[evaluacion/guardar] recálculo puntaje:', error.message)
+      })
 
-    const { data: evaluacionesGuardadas } = await supabase
-      .from('evaluaciones')
-      .select('propuesta_id')
-      .eq('proceso_id', proceso_id)
-      .eq('consejero_id', session.consejeroId)
+    // 6. Verificar si la evaluación está completa (todas las propuestas evaluadas)
+    const [{ count: totalPropuestas }, { data: evaluacionesGuardadas }] = await Promise.all([
+      supabase
+        .from('propuestas')
+        .select('*', { count: 'exact', head: true })
+        .eq('proceso_id', proceso_id)
+        .eq('estado', 'en_evaluacion'),
+      supabase
+        .from('evaluaciones')
+        .select('propuesta_id')
+        .eq('proceso_id', proceso_id)
+        .eq('consejero_id', session.consejeroId),
+    ])
 
     const propuestasEvaluadas = new Set(evaluacionesGuardadas?.map((e) => e.propuesta_id))
     const evaluacionCompleta = propuestasEvaluadas.size >= (totalPropuestas ?? 0)

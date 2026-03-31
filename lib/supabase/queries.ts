@@ -661,9 +661,10 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
   return propuestas.map((p, index) => {
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
 
-    if (p.puntaje_final >= 4) {
+    // Escala 0–100 (clasificar_candidato: destacado ≥85, apto ≥70, condicionado ≥55)
+    if (p.puntaje_final >= 70) {
       estado_semaforo = 'verde'
-    } else if (p.puntaje_final >= 3) {
+    } else if (p.puntaje_final >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
