@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
         vencidos: 0,
       },
       tipos_faltantes: faltantes,
+      tipos_cubiertos: cubiertos,
     }, { status: 201 })
   } catch (error) {
     console.error('[proponente/documentos POST] Error:', error)
