@@ -1440,3 +1440,176 @@ export async function deleteCriterio(id: string): Promise<{ success: boolean }> 
   if (error) throw error
   return { success: true }
 }
+
+// ============================================================
+// ACCESO PROPONENTES
+// ============================================================
+
+/**
+ * Valida un código de acceso de proponente
+ * Retorna la propuesta y el estado de documentación
+ */
+export async function validarCodigoProponente(codigo: string) {
+  const supabase = await createServerClient()
+
+  // Obtener acceso
+  const { data: acceso, error: accesoError } = await supabase
+    .from('acceso_proponentes')
+    .select(`
+      *,
+      propuestas:propuesta_id(
+        id, razon_social, numero_documento, email, proceso_id
+      )
+    `)
+    .eq('codigo', codigo)
+    .eq('activo', true)
+    .single()
+
+  if (accesoError || !acceso) {
+    return { data: null, error: new Error('Código inválido o inactivo') }
+  }
+
+  // Validar fecha límite
+  if (acceso.fecha_limite && new Date() > new Date(acceso.fecha_limite)) {
+    return { data: null, error: new Error('Código expirado') }
+  }
+
+  // Obtener documentos y tipos faltantes
+  const { faltantes, cubiertos } = await getDocumentosFaltantes(acceso.propuesta_id)
+  const { data: documentos } = await getDocumentos(acceso.propuesta_id)
+
+  // Calcular estadísticas
+  const totalObligatorios = faltantes.length + cubiertos.filter(t => t.es_obligatorio).length
+  const completados = cubiertos.filter(t => t.es_obligatorio).length
+  const porcentaje = totalObligatorios > 0 
+    ? Math.round((completados / totalObligatorios) * 100)
+    : 100
+
+  // Verificar documentos vencidos
+  const hoy = new Date()
+  const vencidos = (documentos ?? []).filter(d => {
+    if (!d.fecha_vencimiento) return false
+    return new Date(d.fecha_vencimiento) < hoy
+  }).length
+
+  return {
+    data: {
+      propuesta_id: acceso.propuesta_id,
+      razon_social: acceso.propuestas.razon_social,
+      numero_documento: acceso.propuestas.numero_documento,
+      email: acceso.propuestas.email,
+      estadisticas: {
+        total_obligatorios: totalObligatorios,
+        completados,
+        faltantes: faltantes.length,
+        porcentaje,
+        vencidos,
+      },
+      tipos_faltantes: faltantes,
+      tipos_cubiertos: cubiertos,
+      documentos: documentos ?? [],
+    },
+    error: null,
+  }
+}
+
+/**
+ * Genera un nuevo código de acceso para una propuesta
+ */
+export async function generarCodigoAccesoProponente(
+  propuesta_id: string,
+  usuario_id: string,
+  fecha_limite?: Date
+) {
+  const supabase = await createServerClient()
+
+  // Generar código único
+  const codigo = generarCodigoUnico()
+
+  // Fecha límite por defecto: 7 días
+  const fechaLimite = fecha_limite || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .upsert(
+      {
+        propuesta_id,
+        codigo,
+        activo: true,
+        fecha_limite: fechaLimite.toISOString(),
+        created_by: usuario_id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'propuesta_id' }
+    )
+    .select()
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Actualiza configuración de acceso de proponente
+ */
+export async function actualizarAccesoProponente(
+  propuesta_id: string,
+  activo: boolean,
+  fecha_limite: Date | null
+) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .update({
+      activo,
+      fecha_limite: fecha_limite?.toISOString() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('propuesta_id', propuesta_id)
+    .select()
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Revoca el acceso de un proponente
+ */
+export async function revocarAccesoProponente(propuesta_id: string) {
+  const supabase = await createServerClient()
+
+  const { error } = await supabase
+    .from('acceso_proponentes')
+    .delete()
+    .eq('propuesta_id', propuesta_id)
+
+  return { error }
+}
+
+/**
+ * Obtiene el estado actual de acceso de una propuesta
+ */
+export async function obtenerAccesoProponente(propuesta_id: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Genera código único (3 letras + 5 números)
+ */
+function generarCodigoUnico(): string {
+  const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const codigoLetras = Array(3)
+    .fill(0)
+    .map(() => letras[Math.floor(Math.random() * letras.length)])
+    .join('')
+  const codigoNumeros = Math.floor(10000 + Math.random() * 90000).toString()
+  return codigoLetras + codigoNumeros
+}

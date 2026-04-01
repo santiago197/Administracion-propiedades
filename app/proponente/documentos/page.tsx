@@ -85,9 +85,25 @@ export default function ProponenteDocumentosPage() {
           throw new Error(data.error || 'Código inválido o expirado')
         }
 
-        const { propuesta: prop, estadoDocumentos: estado } = await res.json()
-        setPropuesta(prop)
-        setEstadoDocumentos(estado)
+        const data = await res.json()
+        setPropuesta({
+          id: data.propuesta_id,
+          razon_social: data.razon_social,
+          numero_documento: data.numero_documento,
+          email: data.email,
+        } as Propuesta)
+        setEstadoDocumentos({
+          total: data.estadisticas.total_obligatorios,
+          completados: data.estadisticas.completados,
+          porcentaje: data.estadisticas.porcentaje,
+          faltantes: data.tipos_faltantes.map((tipo: any) => ({
+            id: tipo.id,
+            nombre: tipo.nombre,
+            descripcion: tipo.descripcion,
+            esObligatorio: tipo.es_obligatorio,
+          })),
+          vencidos: data.estadisticas.vencidos,
+        })
         setError(null)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error al validar acceso')
@@ -107,6 +123,7 @@ export default function ProponenteDocumentosPage() {
       if (!archivo || !propuesta) return
 
       setUploading(true)
+      setDocumentoSeleccionado(tipoDocId)
       try {
         // 1. Subir archivo a /api/upload
         const formData = new FormData()
@@ -149,7 +166,18 @@ export default function ProponenteDocumentosPage() {
         )
         if (statusRes.ok) {
           const newStatus = await statusRes.json()
-          setEstadoDocumentos(newStatus.estadisticas)
+          setEstadoDocumentos({
+            total: newStatus.estadisticas.total_obligatorios,
+            completados: newStatus.estadisticas.completados,
+            porcentaje: newStatus.estadisticas.porcentaje,
+            faltantes: newStatus.tipos_faltantes.map((tipo: any) => ({
+              id: tipo.id,
+              nombre: tipo.nombre,
+              descripcion: tipo.descripcion,
+              esObligatorio: tipo.es_obligatorio,
+            })),
+            vencidos: newStatus.estadisticas.vencidos,
+          })
         }
 
         setDocumentoSeleccionado(null)

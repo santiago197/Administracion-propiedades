@@ -482,22 +482,26 @@ export function useAccesoProponentes() {
     async (propuestaId: string) => {
       setLoading(true)
       try {
-        // TODO: Llamar a API real
-        // const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, { method: 'POST' })
-        // const nuevoAcceso = await res.json()
-
-        // Por ahora, simulamos
-        const nuevoAcceso: AccesoProponente = {
-          propuestaId,
-          codigo: generarCodigoUnico(),
-          estado: 'activo',
-          fechaLimite: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 días
-          activo: true,
-          createdAt: new Date(),
+        const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, {
+          method: 'POST',
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Error al generar código')
         }
 
-        setAccesosMap((prev) => new Map(prev).set(propuestaId, nuevoAcceso))
-        return nuevoAcceso
+        const nuevoAcceso = await res.json()
+        setAccesosMap((prev) =>
+          new Map(prev).set(propuestaId, {
+            propuestaId,
+            codigo: nuevoAcceso.codigo,
+            estado: 'activo',
+            fechaLimite: nuevoAcceso.fecha_limite
+              ? new Date(nuevoAcceso.fecha_limite)
+              : null,
+            activo: nuevoAcceso.activo,
+          })
+        )
       } finally {
         setLoading(false)
       }
@@ -509,15 +513,20 @@ export function useAccesoProponentes() {
     async (propuestaId: string, acceso: AccesoProponente) => {
       setLoading(true)
       try {
-        // TODO: Llamar a API real
-        // const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, {
-        //   method: 'PUT',
-        //   body: JSON.stringify(acceso)
-        // })
-        // const actualizado = await res.json()
+        const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activo: acceso.activo,
+            fechaLimite: acceso.fechaLimite?.toISOString(),
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Error al actualizar')
+        }
 
         setAccesosMap((prev) => new Map(prev).set(propuestaId, acceso))
-        return acceso
       } finally {
         setLoading(false)
       }
@@ -529,8 +538,10 @@ export function useAccesoProponentes() {
     async (propuestaId: string) => {
       setLoading(true)
       try {
-        // TODO: Llamar a API real
-        // await fetch(`/api/propuestas/${propuestaId}/acceso`, { method: 'DELETE' })
+        const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) throw new Error('Error al revocar acceso')
 
         setAccesosMap((prev) => {
           const newMap = new Map(prev)

@@ -417,146 +417,145 @@ export default function PropuestasPage() {
             <p className="text-center py-8 text-muted-foreground">No hay propuestas registradas para este proceso.</p>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa / persona</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Puntaje</TableHead>
-                    <TableHead>Clasificación</TableHead>
-                    <TableHead>Acceso Proponente</TableHead>
-                    <TableHead>Contacto</TableHead>
-                    <TableHead className="text-right w-24">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {propuestas.map((p) => (
-                    <TableRow
-                      key={p.id}
-                      className={`cursor-pointer hover:bg-muted/40 transition-colors ${
-                        selectedPropuesta?.id === p.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''
-                      }`}
-                      onClick={() => setSelectedPropuesta(p)}
-                    >
-                      <TableCell className="font-medium">{p.razon_social}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {p.tipo_persona === 'juridica' ? 'Jurídica' : 'Natural'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`text-xs ${ESTADO_CLS[p.estado]}`}>
-                          {LABEL_ESTADO[p.estado]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-semibold tabular-nums text-sm">
-                          {p.puntaje_final > 0 ? p.puntaje_final.toFixed(1) : '—'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {p.clasificacion ? (
-                          <Badge variant="outline" className={`text-xs ${CLAS_CLS[p.clasificacion]}`}>
-                            {p.clasificacion.toUpperCase()}
+              <div className="overflow-x-auto -mx-6 px-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Empresa / persona</TableHead>
+                      <TableHead className="hidden sm:table-cell">Tipo</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="hidden md:table-cell text-right">Puntaje</TableHead>
+                      <TableHead className="hidden md:table-cell">Clasificación</TableHead>
+                      <TableHead className="hidden lg:table-cell">Acceso Proponente</TableHead>
+                      <TableHead className="hidden lg:table-cell">Contacto</TableHead>
+                      <TableHead className="text-right w-20">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {propuestas.map((p) => (
+                      <TableRow
+                        key={p.id}
+                        className={`cursor-pointer hover:bg-muted/40 transition-colors ${
+                          selectedPropuesta?.id === p.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''
+                        }`}
+                        onClick={() => setSelectedPropuesta(p)}
+                      >
+                        <TableCell className="font-medium max-w-[160px] truncate">{p.razon_social}</TableCell>
+                        <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                          {p.tipo_persona === 'juridica' ? 'Jurídica' : 'Natural'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`text-xs whitespace-nowrap ${ESTADO_CLS[p.estado]}`}>
+                            {LABEL_ESTADO[p.estado]}
                           </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">Sin clasificar</span>
-                        )}
-                      </TableCell>
-                      {/* Acceso Proponente */}
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        {(() => {
-                          const acceso = getAcceso(p.id)
-                          const estado = calcularEstadoAcceso(acceso)
-                          const isGenerando = generandoCodigo === p.id
-                          const isCopied = copiedId === p.id
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-right">
+                          <span className="font-semibold tabular-nums text-sm">
+                            {p.puntaje_final > 0 ? p.puntaje_final.toFixed(1) : '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {p.clasificacion ? (
+                            <Badge variant="outline" className={`text-xs ${CLAS_CLS[p.clasificacion]}`}>
+                              {p.clasificacion.toUpperCase()}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sin clasificar</span>
+                          )}
+                        </TableCell>
+                        {/* Acceso Proponente */}
+                        <TableCell className="hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                          {(() => {
+                            const acceso = getAcceso(p.id)
+                            const estado = calcularEstadoAcceso(acceso)
+                            const isGenerando = generandoCodigo === p.id
+                            const isCopied = copiedId === p.id
 
-                          return (
-                            <div className="flex items-center gap-2">
-                              {/* Badge de estado */}
-                              <Badge 
-                                variant="outline" 
-                                className={`text-xs shrink-0 ${ESTADO_ACCESO_CLS[estado]}`}
-                              >
-                                {ESTADO_ACCESO_LABEL[estado]}
-                              </Badge>
-
-                              {/* Botones de acción */}
-                              <div className="flex items-center gap-1">
-                                {!acceso.codigo ? (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1"
-                                    onClick={() => handleGenerarCodigo(p)}
-                                    disabled={isGenerando}
-                                  >
-                                    {isGenerando ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Link2 className="h-3 w-3" />
-                                    )}
-                                    Generar
-                                  </Button>
-                                ) : (
-                                  <>
+                            return (
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs shrink-0 ${ESTADO_ACCESO_CLS[estado]}`}
+                                >
+                                  {ESTADO_ACCESO_LABEL[estado]}
+                                </Badge>
+                                <div className="flex items-center gap-1">
+                                  {!acceso.codigo ? (
                                     <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      title="Copiar link"
-                                      onClick={() => handleCopiarLink(p)}
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs gap-1"
+                                      onClick={() => handleGenerarCodigo(p)}
+                                      disabled={isGenerando}
                                     >
-                                      {isCopied ? (
-                                        <Check className="h-3.5 w-3.5 text-green-600" />
+                                      {isGenerando ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
                                       ) : (
-                                        <Copy className="h-3.5 w-3.5" />
+                                        <Link2 className="h-3 w-3" />
                                       )}
+                                      Generar
                                     </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      title="Configurar acceso"
-                                      onClick={() => setConfigTarget(p)}
-                                    >
-                                      <Settings className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </>
-                                )}
+                                  ) : (
+                                    <>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7"
+                                        title="Copiar link"
+                                        onClick={() => handleCopiarLink(p)}
+                                      >
+                                        {isCopied ? (
+                                          <Check className="h-3.5 w-3.5 text-green-600" />
+                                        ) : (
+                                          <Copy className="h-3.5 w-3.5" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7"
+                                        title="Configurar acceso"
+                                        onClick={() => setConfigTarget(p)}
+                                      >
+                                        <Settings className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{p.email ?? '—'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            title="Ver detalle"
-                            onClick={() => setSelectedPropuesta(p)}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          {!ESTADOS_TERMINALES.includes(p.estado) && (
+                            )
+                          })()}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{p.email ?? '—'}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 text-destructive hover:text-destructive/80"
-                              title="Retirar propuesta"
-                              onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
+                              className="h-7 w-7"
+                              title="Ver detalle"
+                              onClick={() => setSelectedPropuesta(p)}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                            {!ESTADOS_TERMINALES.includes(p.estado) && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-destructive hover:text-destructive/80"
+                                title="Retirar propuesta"
+                                onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 Haz clic en una fila para ver el detalle. No avanza a Evaluación si la documentación es incompleta o la validación legal es No Apto.
               </p>

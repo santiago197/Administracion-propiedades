@@ -2,14 +2,16 @@
  * API: Validar código de acceso del proponente
  * GET /api/proponente/validar?codigo=ABC12345
  * 
- * Devuelve:
- * - propuesta: datos de la propuesta
- * - estadoDocumentos: documentos faltantes y estado
+ * Flujo:
+ * 1. Valida código en tabla acceso_proponentes
+ * 2. Verifica que esté activo y no expirado
+ * 3. Obtiene documentos cargados vs faltantes
+ * 4. Retorna estado completo de documentación
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { validarCodigoProponente } from '@/lib/supabase/queries'
 
-// TODO: Implementar con datos reales de Supabase
 export async function GET(request: NextRequest) {
   try {
     const codigo = request.nextUrl.searchParams.get('codigo')
@@ -21,69 +23,20 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // TODO: Validar código en tabla `acceso_proponentes` o similar
-    // const { data: acceso } = await supabase
-    //   .from('acceso_proponentes')
-    //   .select('propuesta_id, activo, fecha_limite')
-    //   .eq('codigo', codigo)
-    //   .single()
+    // Validar código y obtener propuesta + documentos
+    const { data, error } = await validarCodigoProponente(codigo)
 
-    // Datos de ejemplo
-    const propuestaData = {
-      id: 'prop-123',
-      razon_social: 'Empresa XYZ SAS',
-      numero_documento: '123456789',
-      email: 'contact@empresa.com',
+    if (error || !data) {
+      return NextResponse.json(
+        { error: error?.message || 'Código inválido o expirado' },
+        { status: 403 }
+      )
     }
 
-    const estadoDocumentos = {
-      total: 8,
-      completados: 3,
-      porcentaje: 37,
-      faltantes: [
-        {
-          id: 'tipo-hoja-vida',
-          nombre: 'Hoja de Vida',
-          descripcion: 'Documento con experiencia y formación',
-          esObligatorio: true,
-        },
-        {
-          id: 'tipo-rut',
-          nombre: 'RUT Actualizado',
-          descripcion: 'Registro Único Tributario',
-          esObligatorio: true,
-        },
-        {
-          id: 'tipo-cedula',
-          nombre: 'Cédula',
-          descripcion: 'Documento de identidad',
-          esObligatorio: true,
-        },
-        {
-          id: 'tipo-certificados',
-          nombre: 'Certificados de experiencia',
-          descripcion: 'Comprobante de experiencia en PH',
-          esObligatorio: true,
-        },
-        {
-          id: 'tipo-referencias',
-          nombre: 'Referencias',
-          descripcion: 'Contactos de referencias profesionales',
-          esObligatorio: false,
-        },
-      ],
-      vencidos: 0,
-    }
-
-    return NextResponse.json(
-      {
-        propuesta: propuestaData,
-        estadoDocumentos,
-      },
-      { status: 200 }
-    )
+    // Retornar datos en formato esperado por frontend
+    return NextResponse.json(data, { status: 200 })
   } catch (error) {
-    console.error('Error validating proponent code:', error)
+    console.error('[proponente/validar] Error:', error)
     return NextResponse.json(
       { error: 'Error al validar código' },
       { status: 500 }
