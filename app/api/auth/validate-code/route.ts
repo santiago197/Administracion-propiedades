@@ -10,8 +10,11 @@ export async function POST(request: NextRequest) {
   //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
   // }
 
+  let codigo_acceso: string | undefined
+
   try {
-    const { codigo_acceso } = await request.json()
+    const body = await request.json()
+    codigo_acceso = body.codigo_acceso
 
     if (!codigo_acceso) {
       return NextResponse.json(
