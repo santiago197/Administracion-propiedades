@@ -153,14 +153,35 @@ function ProponenteDocumentosContent() {
       setUploading(true)
       setDocumentoSeleccionado(tipoDoc.id)
       try {
-        // 1. Subir archivo
-        const formData = new FormData()
-        formData.append('file', archivo)
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
-        if (!uploadRes.ok) throw new Error('Error al subir archivo')
-        const { url, pathname } = await uploadRes.json()
+        // 1. Obtener URL pre-firmada del servidor (sin enviar el archivo)
+        const urlRes = await fetch('/api/proponente/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            codigo,
+            nombre: archivo.name,
+            tipo_mime: archivo.type,
+            tamanio: archivo.size,
+          }),
+        })
+        if (!urlRes.ok) {
+          const body = await urlRes.json()
+          throw new Error(body.error || 'Error al obtener URL de subida')
+        }
+        const { signed_url, path, public_url } = await urlRes.json()
 
-        // 2. Registrar documento (endpoint público)
+        // 2. Subir directamente a Supabase Storage (no pasa por Vercel)
+        const storageRes = await fetch(signed_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': archivo.type },
+          body: archivo,
+        })
+        if (!storageRes.ok) throw new Error('Error al subir el archivo al storage')
+
+        const url = public_url
+        const pathname = path
+
+        // 3. Registrar documento (endpoint público)
         const docRes = await fetch('/api/proponente/documentos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -214,10 +235,10 @@ function ProponenteDocumentosContent() {
   if (validando) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-0 shadow-lg">
-          <CardContent className="pt-8 text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Validando acceso...</p>
+        <Card className="w-full max-w-sm border-0 shadow-lg">
+          <CardContent className="pt-10 pb-10 text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground text-sm">Validando acceso...</p>
           </CardContent>
         </Card>
       </div>
@@ -227,18 +248,18 @@ function ProponenteDocumentosContent() {
   if (error || !propuesta) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-red-500/5 to-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-destructive/30 shadow-lg">
-          <CardContent className="pt-8">
+        <Card className="w-full max-w-sm border-destructive/30 shadow-lg">
+          <CardContent className="pt-8 pb-8 px-6">
             <div className="flex justify-center mb-4">
               <div className="rounded-full bg-destructive/10 p-3">
                 <AlertCircle className="h-8 w-8 text-destructive" />
               </div>
             </div>
-            <h2 className="text-lg font-semibold text-center mb-2">Acceso no válido</h2>
-            <p className="text-sm text-muted-foreground text-center mb-4">
+            <h2 className="text-base font-semibold text-center mb-2">Acceso no válido</h2>
+            <p className="text-sm text-muted-foreground text-center mb-6">
               {error || 'El código proporcionado no es válido o ha expirado. Contacta al administrador.'}
             </p>
-            <Button variant="outline" className="w-full" onClick={() => window.history.back()}>
+            <Button variant="outline" className="w-full h-11" onClick={() => window.history.back()}>
               Volver atrás
             </Button>
           </CardContent>
@@ -254,13 +275,13 @@ function ProponenteDocumentosContent() {
   const totalObligatorios = estadoDocumentos?.total ?? 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background py-8 px-4">
-      <div className="mx-auto max-w-2xl space-y-6">
+    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background py-6 sm:py-8 px-4 pb-safe">
+      <div className="mx-auto max-w-2xl space-y-5 sm:space-y-6">
 
         {/* Header */}
-        <div className="text-center space-y-1 mb-8">
-          <h1 className="text-3xl font-bold">Cargar Documentos</h1>
-          <p className="text-muted-foreground">{propuesta.razon_social}</p>
+        <div className="text-center space-y-1 mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold">Cargar Documentos</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">{propuesta.razon_social}</p>
         </div>
 
         {/* Progreso */}
@@ -302,7 +323,7 @@ function ProponenteDocumentosContent() {
               {faltantes.map((doc) => (
                 <label
                   key={doc.id}
-                  className="block p-4 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all cursor-pointer group"
+                  className="block p-4 sm:p-5 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 transition-all cursor-pointer group touch-manipulation"
                 >
                   <input
                     type="file"
@@ -311,8 +332,8 @@ function ProponenteDocumentosContent() {
                     onChange={(e) => handleSubirDocumento(e, doc)}
                     disabled={uploading}
                   />
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-lg bg-primary/10 p-2 group-hover:bg-primary/20 transition-colors shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-primary/10 p-2.5 group-hover:bg-primary/20 transition-colors shrink-0">
                       {uploading && documentoSeleccionado === doc.id ? (
                         <Loader2 className="h-5 w-5 text-primary animate-spin" />
                       ) : (
@@ -325,10 +346,13 @@ function ProponenteDocumentosContent() {
                         {doc.esObligatorio && <span className="ml-1 text-destructive">*</span>}
                       </p>
                       {doc.descripcion && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{doc.descripcion}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{doc.descripcion}</p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">PDF, DOC, DOCX, JPG, PNG</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {uploading && documentoSeleccionado === doc.id ? 'Subiendo...' : 'Toca para seleccionar archivo'}
+                      </p>
                     </div>
+                    <UploadCloud className="h-4 w-4 text-muted-foreground shrink-0 sm:hidden" />
                   </div>
                 </label>
               ))}
@@ -348,32 +372,34 @@ function ProponenteDocumentosContent() {
                 const cfg = estadoDocConfig(doc.estado)
                 return (
                   <div key={doc.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="rounded-lg bg-muted p-2 shrink-0">
+                    <div className="rounded-lg bg-muted p-2 shrink-0 mt-0.5">
                       <Check className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{doc.tipoNombre}</p>
-                      <p className="text-xs text-muted-foreground truncate">{doc.nombre}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {format(new Date(doc.creadoEn), "d 'de' MMMM, HH:mm", { locale: es })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant="outline" className={`text-xs gap-1 ${cfg.cls}`}>
-                        {cfg.icon}
-                        {cfg.label}
-                      </Badge>
-                      {doc.archivoUrl && (
-                        <a
-                          href={doc.archivoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          title="Ver archivo"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
-                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium truncate flex-1 min-w-0">{doc.tipoNombre}</p>
+                        {doc.archivoUrl && (
+                          <a
+                            href={doc.archivoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5"
+                            title="Ver archivo"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{doc.nombre}</p>
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <Badge variant="outline" className={`text-xs gap-1 ${cfg.cls}`}>
+                          {cfg.icon}
+                          {cfg.label}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(doc.creadoEn), "d MMM, HH:mm", { locale: es })}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )
@@ -414,10 +440,13 @@ function ProponenteDocumentosContent() {
           </CardContent>
         </Card>
 
-        <Button variant="outline" className="w-full" onClick={() => { window.location.href = '/' }}>
+        <Button variant="outline" className="w-full h-11" onClick={() => { window.location.href = '/' }}>
           <LogOut className="h-4 w-4 mr-2" />
           Cerrar sesión
         </Button>
+
+        {/* Espacio seguro inferior (iPhone home bar) */}
+        <div className="h-4 sm:hidden" />
 
       </div>
     </div>
