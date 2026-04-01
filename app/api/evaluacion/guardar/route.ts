@@ -104,12 +104,25 @@ export async function POST(request: NextRequest) {
     // 3. Validar propuesta pertenece al proceso y está en evaluación
     const { data: propuesta } = await supabase
       .from('propuestas')
-      .select('proceso_id, estado')
+      .select('proceso_id, estado, razon_social')
       .eq('id', propuesta_id)
       .single()
 
+    console.log('[evaluacion/guardar] Debug - propuesta:', { propuesta, estado_buscado: 'en_evaluacion' })
+
     if (!propuesta || propuesta.proceso_id !== proceso_id || propuesta.estado !== 'en_evaluacion') {
-      return NextResponse.json({ error: 'Propuesta no válida o no está en evaluación' }, { status: 403 })
+      return NextResponse.json(
+        { 
+          error: 'Propuesta no válida o no está en evaluación',
+          debug: { 
+            propuesta_existe: !!propuesta,
+            proceso_correcto: propuesta?.proceso_id === proceso_id,
+            estado_actual: propuesta?.estado,
+            estado_requerido: 'en_evaluacion'
+          }
+        }, 
+        { status: 403 }
+      )
     }
 
     // 4. Upsert en batch

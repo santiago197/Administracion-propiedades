@@ -95,12 +95,12 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
-  // "Activas" para estadísticas = candidatos en evaluación activa
+  // "Activas" para estadísticas = candidatos habilitados o en evaluación
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .or('estado.eq.habilitada,estado.eq.en_evaluacion')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,

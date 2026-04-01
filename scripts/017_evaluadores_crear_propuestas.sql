@@ -28,10 +28,12 @@ DROP POLICY IF EXISTS "propuestas_update" ON propuestas;
 
 CREATE POLICY "propuestas_update" ON propuestas
   FOR UPDATE USING (
-    auth_user_role() IN ('superadmin', 'admin')
-    OR (
-      auth_user_role() = 'evaluador'
-      AND created_by = auth.uid()
+    (
+      auth_user_role() IN ('superadmin', 'admin')
+      OR (
+        auth_user_role() = 'evaluador'
+        AND created_by = auth.uid()
+      )
     )
     AND EXISTS (
       SELECT 1 FROM procesos pr
