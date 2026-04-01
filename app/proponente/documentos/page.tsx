@@ -120,7 +120,7 @@ export default function ProponenteDocumentosPage() {
   const handleSubirDocumento = useCallback(
     async (evento: React.ChangeEvent<HTMLInputElement>, tipoDocId: string) => {
       const archivo = evento.target.files?.[0]
-      if (!archivo || !propuesta) return
+      if (!archivo || !propuesta || !codigo) return
 
       setUploading(true)
       setDocumentoSeleccionado(tipoDocId)
@@ -138,47 +138,41 @@ export default function ProponenteDocumentosPage() {
 
         const { url, pathname } = await uploadRes.json()
 
-        // 2. Crear registro de documento
-        const docRes = await fetch('/api/documentos', {
+        // 2. Crear registro de documento (endpoint público — usa código para autenticar)
+        const docRes = await fetch('/api/proponente/documentos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            propuesta_id: propuesta.id,
+            codigo,
             tipo_documento_id: tipoDocId,
             nombre: archivo.name,
             archivo_url: url,
             archivo_pathname: pathname,
-            estado: 'CARGADO',
           }),
         })
 
         if (!docRes.ok) throw new Error('Error al registrar documento')
 
-        // 3. Actualizar estado local
+        // 3. La respuesta ya incluye el estado actualizado de documentos
+        const { estadisticas, tipos_faltantes } = await docRes.json()
+
         toast({
           title: 'Documento cargado',
           description: 'Tu documento se subió correctamente',
         })
 
-        // Recargar estado de documentos
-        const statusRes = await fetch(
-          `/api/propuestas/${propuesta.id}/documentos-status`
-        )
-        if (statusRes.ok) {
-          const newStatus = await statusRes.json()
-          setEstadoDocumentos({
-            total: newStatus.estadisticas.total_obligatorios,
-            completados: newStatus.estadisticas.completados,
-            porcentaje: newStatus.estadisticas.porcentaje,
-            faltantes: newStatus.tipos_faltantes.map((tipo: any) => ({
-              id: tipo.id,
-              nombre: tipo.nombre,
-              descripcion: tipo.descripcion,
-              esObligatorio: tipo.es_obligatorio,
-            })),
-            vencidos: newStatus.estadisticas.vencidos,
-          })
-        }
+        setEstadoDocumentos({
+          total: estadisticas.total_obligatorios,
+          completados: estadisticas.completados,
+          porcentaje: estadisticas.porcentaje,
+          faltantes: tipos_faltantes.map((tipo: any) => ({
+            id: tipo.id,
+            nombre: tipo.nombre,
+            descripcion: tipo.descripcion,
+            esObligatorio: tipo.es_obligatorio,
+          })),
+          vencidos: estadisticas.vencidos,
+        })
 
         setDocumentoSeleccionado(null)
       } catch (err) {
@@ -191,7 +185,7 @@ export default function ProponenteDocumentosPage() {
         setUploading(false)
       }
     },
-    [propuesta, toast]
+    [propuesta, codigo, toast]
   )
 
   // ─── Pantalla de validación ───

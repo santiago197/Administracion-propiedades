@@ -9,6 +9,7 @@ export async function middleware(request: NextRequest) {
     '/',
     '/login',
     '/consejero',
+    '/proponente',
     '/consulta',
     '/api/procesos',
     '/api/auth/login',
@@ -16,6 +17,7 @@ export async function middleware(request: NextRequest) {
     '/api/auth/validate-code',
     '/api/evaluacion',
     '/api/consejero',
+    '/api/proponente',
   ]
   const isPublicRoute = publicRoutes.some(route =>
     pathname === route || pathname.startsWith(route + '/')

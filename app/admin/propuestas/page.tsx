@@ -127,10 +127,6 @@ const ESTADO_ACCESO_LABEL: Record<EstadoAcceso, string> = {
   expirado: 'Expirado',
 }
 
-function generarCodigo(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase()
-}
-
 function calcularEstadoAcceso(acceso: AccesoProponente): EstadoAcceso {
   if (!acceso.codigo) return 'inactivo'
   if (!acceso.activo) return 'inactivo'
@@ -174,6 +170,34 @@ export default function PropuestasPage() {
       if (!res.ok) throw new Error('Error al obtener propuestas')
       const data: Propuesta[] = await res.json()
       setPropuestas(data)
+
+      // Cargar accesos guardados en paralelo
+      const accesos = await Promise.all(
+        data.map(async (p) => {
+          try {
+            const r = await fetch(`/api/propuestas/${p.id}/acceso`)
+            if (!r.ok) return null
+            const a = await r.json()
+            if (!a?.codigo) return null
+            const acceso: AccesoProponente = {
+              propuestaId: a.propuesta_id,
+              codigo: a.codigo,
+              fechaLimite: a.fecha_limite ? new Date(a.fecha_limite) : null,
+              activo: a.activo,
+              estado: 'inactivo',
+            }
+            return { ...acceso, estado: calcularEstadoAcceso(acceso) }
+          } catch {
+            return null
+          }
+        })
+      )
+      setAccesosMap(() => {
+        const map = new Map<string, AccesoProponente>()
+        accesos.forEach((a) => { if (a) map.set(a.propuestaId, a) })
+        return map
+      })
+
       return data
     } catch {
       setPropuestas([])
@@ -240,20 +264,23 @@ export default function PropuestasPage() {
 
   async function handleGenerarCodigo(propuesta: Propuesta) {
     setGenerandoCodigo(propuesta.id)
-    // Simular llamada API
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    
-    const nuevoCodigo = generarCodigo()
-    const nuevoAcceso: AccesoProponente = {
-      propuestaId: propuesta.id,
-      codigo: nuevoCodigo,
-      estado: 'activo',
-      fechaLimite: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 días
-      activo: true,
+    try {
+      const res = await fetch(`/api/propuestas/${propuesta.id}/acceso`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error al generar código')
+      const data = await res.json()
+      const acceso: AccesoProponente = {
+        propuestaId: data.propuesta_id,
+        codigo: data.codigo,
+        fechaLimite: data.fecha_limite ? new Date(data.fecha_limite) : null,
+        activo: data.activo,
+        estado: 'inactivo',
+      }
+      setAccesosMap((prev) => new Map(prev).set(propuesta.id, { ...acceso, estado: calcularEstadoAcceso(acceso) }))
+    } catch (e) {
+      console.error('[handleGenerarCodigo]', e)
+    } finally {
+      setGenerandoCodigo(null)
     }
-    
-    setAccesosMap((prev) => new Map(prev).set(propuesta.id, nuevoAcceso))
-    setGenerandoCodigo(null)
   }
 
   async function handleCopiarLink(propuesta: Propuesta) {
@@ -267,25 +294,23 @@ export default function PropuestasPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  function handleGuardarConfig(propuestaId: string, activo: boolean, fechaLimite: Date | null) {
-    setAccesosMap((prev) => {
-      const acceso = prev.get(propuestaId) ?? {
-        propuestaId,
-        codigo: null,
-        estado: 'inactivo' as EstadoAcceso,
-        fechaLimite: null,
-        activo: false,
-      }
-      
-      const updated: AccesoProponente = {
-        ...acceso,
-        activo,
-        fechaLimite,
-        estado: calcularEstadoAcceso({ ...acceso, activo, fechaLimite }),
-      }
-      
-      return new Map(prev).set(propuestaId, updated)
+  async function handleGuardarConfig(propuestaId: string, activo: boolean, fechaLimite: Date | null) {
+    const res = await fetch(`/api/propuestas/${propuestaId}/acceso`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo, fechaLimite: fechaLimite?.toISOString() ?? null }),
     })
+    if (res.ok) {
+      const data = await res.json()
+      const acceso: AccesoProponente = {
+        propuestaId: data.propuesta_id,
+        codigo: data.codigo,
+        fechaLimite: data.fecha_limite ? new Date(data.fecha_limite) : null,
+        activo: data.activo,
+        estado: 'inactivo',
+      }
+      setAccesosMap((prev) => new Map(prev).set(propuestaId, { ...acceso, estado: calcularEstadoAcceso(acceso) }))
+    }
     setConfigTarget(null)
   }
 
@@ -652,7 +677,7 @@ function ConfiguracionAccesoDrawer({
 }: {
   propuesta: Propuesta
   acceso: AccesoProponente
-  onGuardar: (activo: boolean, fechaLimite: Date | null) => void
+  onGuardar: (activo: boolean, fechaLimite: Date | null) => Promise<void>
   onCerrar: () => void
 }) {
   const [activo, setActivo] = useState(acceso.activo)
@@ -661,10 +686,11 @@ function ConfiguracionAccesoDrawer({
 
   async function handleGuardar() {
     setGuardando(true)
-    // Simular llamada API
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    onGuardar(activo, fechaLimite ?? null)
-    setGuardando(false)
+    try {
+      await onGuardar(activo, fechaLimite ?? null)
+    } finally {
+      setGuardando(false)
+    }
   }
 
   return (
