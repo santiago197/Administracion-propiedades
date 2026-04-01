@@ -67,19 +67,23 @@ export default function VotacionPage() {
   const [datos, setDatos] = useState<DatosEvaluacion | null>(null)
   const [loadingDatos, setLoadingDatos] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [puedeVotar, setPuedeVotar] = useState(true)
 
   const [selected, setSelected] = useState<Propuesta | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [voting, setVoting] = useState(false)
   const [voteError, setVoteError] = useState<string | null>(null)
 
-  // 1. Obtener proceso_id
+  // 1. Obtener proceso_id y puede_votar
   useEffect(() => {
     fetch('/api/consejero/perfil')
       .then((r) => r.json())
       .then((d) => {
         if (d?.proceso?.id) setProcesoId(d.proceso.id)
         else setError('No hay proceso activo para votar.')
+        if (d?.consejero?.puede_votar !== undefined) {
+          setPuedeVotar(d.consejero.puede_votar)
+        }
       })
       .catch(() => setError('No se pudo obtener el proceso activo.'))
       .finally(() => setLoadingPerfil(false))
@@ -205,18 +209,31 @@ export default function VotacionPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Votación</h1>
         <p className="text-muted-foreground">
-          Selecciona el candidato de tu preferencia y confirma tu voto
+          {puedeVotar ? 'Selecciona el candidato de tu preferencia y confirma tu voto' : 'Vista de votos registrados'}
         </p>
       </div>
 
-      <Card className="border-blue-200 bg-blue-50">
-        <CardContent className="flex items-center gap-3 py-4">
-          <Vote className="h-5 w-5 text-blue-600 shrink-0" />
-          <p className="text-sm text-blue-800">
-            Solo puedes votar una vez. Tu voto es definitivo e irrevocable. Elige con cuidado.
-          </p>
-        </CardContent>
-      </Card>
+      {!puedeVotar && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="flex items-start gap-3 py-4">
+            <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-800">
+              No tienes permiso para emitir voto en este proceso, pero puedes consultar los candidatos y sus propuestas.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {puedeVotar && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="flex items-center gap-3 py-4">
+            <Vote className="h-5 w-5 text-blue-600 shrink-0" />
+            <p className="text-sm text-blue-800">
+              Solo puedes votar una vez. Tu voto es definitivo e irrevocable. Elige con cuidado.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tarjetas de candidatos */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -224,18 +241,19 @@ export default function VotacionPage() {
           <button
             key={p.id}
             type="button"
-            onClick={() => setSelected(p)}
+            disabled={!puedeVotar}
+            onClick={() => puedeVotar && setSelected(p)}
             className={`text-left rounded-xl border-2 p-4 transition-all ${
               selected?.id === p.id
                 ? 'border-primary bg-primary/5 shadow-md'
                 : 'border-border bg-card hover:border-primary/40 hover:shadow-sm'
-            }`}
+            } ${!puedeVotar ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <div className="flex items-start justify-between gap-2 mb-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold shrink-0">
                 <Building2 className="h-4 w-4" />
               </div>
-              {selected?.id === p.id && (
+              {selected?.id === p.id && puedeVotar && (
                 <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
               )}
             </div>
@@ -259,24 +277,26 @@ export default function VotacionPage() {
       </div>
 
       {/* Botón votar */}
-      <div className="flex justify-end">
-        <Button
-          size="lg"
-          disabled={!selected}
-          onClick={() => {
-            setVoteError(null)
-            setConfirmOpen(true)
-          }}
-        >
-          <Vote className="mr-2 h-5 w-5" />
-          Emitir voto
-          {selected && (
-            <span className="ml-2 max-w-[120px] truncate opacity-80 text-sm">
-              — {selected.razon_social}
-            </span>
-          )}
-        </Button>
-      </div>
+      {puedeVotar && (
+        <div className="flex justify-end">
+          <Button
+            size="lg"
+            disabled={!selected}
+            onClick={() => {
+              setVoteError(null)
+              setConfirmOpen(true)
+            }}
+          >
+            <Vote className="mr-2 h-5 w-5" />
+            Emitir voto
+            {selected && (
+              <span className="ml-2 max-w-[120px] truncate opacity-80 text-sm">
+                — {selected.razon_social}
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Dialog confirmación */}
       <Dialog open={confirmOpen} onOpenChange={(o) => !voting && setConfirmOpen(o)}>

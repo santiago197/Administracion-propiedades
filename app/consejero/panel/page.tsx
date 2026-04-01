@@ -28,6 +28,7 @@ interface Consejero {
   cargo: string
   torre?: string
   apartamento: string
+  puede_votar: boolean
 }
 
 interface Proceso {
@@ -112,11 +113,12 @@ export default function ConsejeroDashboardPage() {
     )
   }
 
-  const { proceso, progreso } = data
+  const { proceso, progreso, consejero } = data
 
   const totalCandidatos = progreso?.total_propuestas ?? 0
   const evaluadas = progreso?.evaluadas ?? 0
   const yaVoto = progreso?.voto_registrado ?? false
+  const puedeVotar = consejero?.puede_votar ?? false
   const todasEvaluadas = totalCandidatos > 0 && evaluadas >= totalCandidatos
   const evaluadasPct = totalCandidatos > 0 ? Math.round((evaluadas / totalCandidatos) * 100) : 0
 
@@ -278,7 +280,7 @@ export default function ConsejeroDashboardPage() {
                 </div>
               )}
               
-              {todasEvaluadas && !yaVoto && (
+              {todasEvaluadas && !yaVoto && puedeVotar && (
                 <div className="flex items-start gap-3 rounded-lg border border-purple-200 bg-purple-50 p-3">
                   <Vote className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
@@ -289,6 +291,21 @@ export default function ConsejeroDashboardPage() {
                   </div>
                   <Button size="sm" variant="outline" className="shrink-0" asChild>
                     <Link href="/consejero/panel/votacion">Votar</Link>
+                  </Button>
+                </div>
+              )}
+
+              {todasEvaluadas && !yaVoto && !puedeVotar && (
+                <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <Vote className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-blue-800">Ver votos</p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      Puedes ver los votos registrados pero no tienes permiso para votar
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" className="shrink-0" asChild>
+                    <Link href="/consejero/panel/votacion">Ver</Link>
                   </Button>
                 </div>
               )}
