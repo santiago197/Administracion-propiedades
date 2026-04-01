@@ -11,21 +11,27 @@ export function useFileUpload() {
     setError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', folder)
-
-      const response = await fetch('/api/upload', {
+      // 1. Obtener URL pre-firmada
+      const urlRes = await fetch('/api/upload-url', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: file.name, tipo_mime: file.type, tamanio: file.size, carpeta: folder }),
       })
-
-      if (!response.ok) {
-        throw new Error('Error al subir archivo')
+      if (!urlRes.ok) {
+        const body = await urlRes.json()
+        throw new Error(body.error || 'Error al obtener URL de subida')
       }
+      const { signed_url, path, url } = await urlRes.json()
 
-      const data = await response.json()
-      return data
+      // 2. Subir directamente a Storage (no pasa por Vercel)
+      const storageRes = await fetch(signed_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!storageRes.ok) throw new Error('Error al subir archivo al storage')
+
+      return { url, pathname: path }
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error desconocido'
