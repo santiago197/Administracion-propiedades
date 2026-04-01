@@ -1,6 +1,7 @@
 # PROJECT_STATUS.md
 
 > Documento de diagnóstico técnico actualizado el 2026-04-01.
+> **Última compilación:** ✅ Exitosa (9.2s, 68 páginas, sin errores)
 > Basado en análisis estático del código fuente. No supongas — verifica.
 
 ---
@@ -29,6 +30,10 @@
 - **Panel de votación admin** — `/admin/votacion` muestra quién votó y por quién ✅ *(nuevo)*
 - **Ranking admin** — `/admin/ranking` funcional con top 3 y tabla ponderada ✅ *(nuevo)*
 - **Configuración de Consulta Pública** — `/admin/configuracion/consulta-publica` toggle para habilitar/deshabilitar visibilidad de procesos ✅ *(nuevo)*
+- **Slug amigable para URLs públicas** — Columna `slug` agregada a `procesos` con generación automática, validación de unicidad por conjunto ✅ *(nuevo)*
+- **URLs basadas en slug** — `/consulta/[slug]` en lugar de UUID; endpoint público soporta búsqueda por slug o ID como fallback ✅ *(nuevo)*
+- **Visualización de URL lista para compartir** — Panel muestra URL slug-based tras activar consulta pública, con botón copy-to-clipboard ✅ *(nuevo)*
+- **Control granular de votación por consejero** — Campo `puede_votar` en consejeros permite deshabilitar voto individual sin desactivar. Toggle en panel admin `/admin/consejeros` ✅ *(nuevo)*
 
 ### Parcialmente implementado
 - Validación legal (checklist de 28 ítems, 100% manual — sin integración a Procuraduría, REDAM, etc.)

@@ -15,6 +15,7 @@ interface Proceso {
   nombre: string
   estado: string
   es_publica: boolean
+  slug?: string
 }
 
 export default function ConsultaPublicaPage() {
@@ -43,7 +44,7 @@ export default function ConsultaPublicaPage() {
     setLoading(false)
   }, [activeLoading, activeError, conjunto, activeProcesos, toast])
 
-  const togglePublic = async (procesId: string, currentValue: boolean) => {
+  const togglePublic = async (procesId: string, currentValue: boolean, slug?: string) => {
     try {
       setUpdating(procesId)
       const res = await fetch(`/api/procesos/${procesId}`, {
@@ -52,20 +53,34 @@ export default function ConsultaPublicaPage() {
         body: JSON.stringify({ es_publica: !currentValue }),
       })
 
-      if (!res.ok) throw new Error('Error al actualizar')
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Error al actualizar')
+      }
 
+      const updated = await res.json()
+      
       setProcesos((prev) =>
-        prev.map((p) => (p.id === procesId ? { ...p, es_publica: !currentValue } : p))
+        prev.map((p) => (p.id === procesId ? { ...p, es_publica: !currentValue, slug: updated.slug } : p))
       )
 
-      toast({
-        title: 'Éxito',
-        description: `Proceso ${!currentValue ? 'activado' : 'desactivado'} para consulta pública`,
-      })
+      // Si se hizo público, mostrar URL lista para compartir
+      if (!currentValue && !updated.es_publica === false) {
+        const publicUrl = `${window.location.origin}/consulta/${updated.slug || procesId}`
+        toast({
+          title: 'Proceso publicado',
+          description: `URL lista para compartir: ${publicUrl}`,
+        })
+      } else {
+        toast({
+          title: 'Éxito',
+          description: `Proceso ${!currentValue ? 'activado' : 'desactivado'} para consulta pública`,
+        })
+      }
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'No se pudo actualizar el proceso',
+        description: error instanceof Error ? error.message : 'No se pudo actualizar el proceso',
         variant: 'destructive',
       })
     } finally {
@@ -73,8 +88,8 @@ export default function ConsultaPublicaPage() {
     }
   }
 
-  const copyToClipboard = (procesId: string) => {
-    const url = `${window.location.origin}/consulta/${procesId}`
+  const copyToClipboard = (procesId: string, slug?: string) => {
+    const url = `${window.location.origin}/consulta/${slug || procesId}`
     navigator.clipboard.writeText(url)
     setCopiedUrl(procesId)
     setTimeout(() => setCopiedUrl(null), 2000)
@@ -137,7 +152,7 @@ export default function ConsultaPublicaPage() {
                   </div>
                   <Switch
                     checked={proceso.es_publica}
-                    onCheckedChange={() => togglePublic(proceso.id, proceso.es_publica)}
+                    onCheckedChange={() => togglePublic(proceso.id, proceso.es_publica, proceso.slug)}
                     disabled={updating === proceso.id}
                   />
                 </div>
@@ -151,13 +166,13 @@ export default function ConsultaPublicaPage() {
                       <div className="flex-1">
                         <p className="text-sm font-medium">URL de consulta pública:</p>
                         <code className="text-xs bg-background px-2 py-1 rounded block mt-1 break-all">
-                          {`${window.location.origin}/consulta/${proceso.id}`}
+                          {`${window.location.origin}/consulta/${proceso.slug || proceso.id}`}
                         </code>
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => copyToClipboard(proceso.id)}
+                        onClick={() => copyToClipboard(proceso.id, proceso.slug)}
                         className="shrink-0"
                       >
                         {copiedUrl === proceso.id ? (

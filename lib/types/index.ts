@@ -103,6 +103,7 @@ export interface Proceso {
   peso_votacion: number
   estado: EstadoProceso
   es_publica?: boolean
+  slug?: string
   created_at: string
   updated_at: string
 }
@@ -118,6 +119,7 @@ export interface Consejero {
   telefono?: string
   codigo_acceso: string
   activo: boolean
+  puede_votar: boolean
   created_at: string
   updated_at: string
 }
