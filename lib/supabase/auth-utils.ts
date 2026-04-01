@@ -53,7 +53,7 @@ export async function getCurrentUser(request: NextRequest) {
  */
 export async function requireAuth(
   request: NextRequest
-): Promise<{ authorized: boolean; response: NextResponse | null; user: User | null; conjuntoId: string | null }> {
+): Promise<{ authorized: boolean; response: NextResponse | null; user: User | null; conjuntoId: string | null; rol?: string | null }> {
   const { user, error } = await getCurrentUser(request)
 
   if (!user) {
@@ -70,7 +70,7 @@ export async function requireAuth(
 
   try {
     const supabase = await getSupabaseClient()
-    let perfil: { conjunto_id: string | null } | null = null
+    let perfil: { conjunto_id: string | null; rol?: string | null } | null = null
     let perfilError: unknown | null = null
 
     const { data: perfilData, error: perfilRpcError } = await supabase.rpc('get_current_user_profile')
@@ -78,7 +78,7 @@ export async function requireAuth(
     if (perfilRpcError) {
       const { data, error } = await supabase
         .from('usuarios')
-        .select('conjunto_id, activo')
+        .select('conjunto_id, activo, rol')
         .eq('id', user.id)
         .single()
 
@@ -130,6 +130,7 @@ export async function requireAuth(
       response: null,
       user,
       conjuntoId: perfil.conjunto_id as string,
+      rol: perfil.rol ?? null,
     }
   } catch (err) {
     console.error('[v0] Error validando conjunto de usuario:', err)
