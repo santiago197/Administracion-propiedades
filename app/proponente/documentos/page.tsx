@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -63,7 +63,7 @@ function estadoDocConfig(estado: string) {
 
 // ─────────────────────────────────────────────────────────────────────
 
-export default function ProponenteDocumentosPage() {
+function ProponenteDocumentosContent() {
   const searchParams = useSearchParams()
   const codigo = searchParams.get('codigo')
   const { toast } = useToast()
@@ -421,5 +421,17 @@ export default function ProponenteDocumentosPage() {
 
       </div>
     </div>
+  )
+}
+
+export default function ProponenteDocumentosPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
+        <div className="animate-pulse text-muted-foreground">Cargando...</div>
+      </div>
+    }>
+      <ProponenteDocumentosContent />
+    </Suspense>
   )
 }
