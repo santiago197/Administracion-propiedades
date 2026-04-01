@@ -28,6 +28,7 @@
 - **Página pública de consulta de proceso** — `/consulta/[procesoId]` sin autenticación ✅ *(nuevo)*
 - **Panel de votación admin** — `/admin/votacion` muestra quién votó y por quién ✅ *(nuevo)*
 - **Ranking admin** — `/admin/ranking` funcional con top 3 y tabla ponderada ✅ *(nuevo)*
+- **Configuración de Consulta Pública** — `/admin/configuracion/consulta-publica` toggle para habilitar/deshabilitar visibilidad de procesos ✅ *(nuevo)*
 
 ### Parcialmente implementado
 - Validación legal (checklist de 28 ítems, 100% manual — sin integración a Procuraduría, REDAM, etc.)
@@ -90,10 +91,10 @@
 ```
 app/
   api/              → 40+ rutas API (Next.js Route Handlers)
-    procesos/[id]/publico/  → ✓ NUEVA: consulta pública de proceso (sin auth)
+    procesos/[id]/publico/  → ✓ Consulta pública de proceso (sin auth, requiere es_publica=true)
   admin/            → Páginas protegidas (autenticadas)
     conjuntos/      → CRUD + nested: procesos, consejeros, criterios, propuestas
-    configuracion/  → criterios, documentos, roles, usuarios
+    configuracion/  → criterios, documentos, roles, usuarios, consulta-publica ✓ NUEVO
     propuestas/     → Listado global + detalle por ID
     evaluacion/     → Vista de evaluaciones en progreso
     votacion/       → Tabla de quién votó (seguimiento) ✓ NUEVO
@@ -434,6 +435,7 @@ La función `procesarValidacionLegal` actualiza `cumple_requisitos_legales` y `o
 | Configuración criterios | CRUD completo | Sí |
 | Configuración documentos | CRUD completo | Sí |
 | Configuración usuarios | CRUD completo | Sí |
+| **Configuración Consulta Pública** `/admin/configuracion/consulta-publica` | **Implementado** *(nuevo)* | Sí |
 | Acceso consejero `/consejero` | Completo | Sí |
 | Panel consejero `/consejero/panel` | **Completo** *(nuevo)* | Sí |
 | Candidatos `/consejero/panel/candidatos` | **Completo** *(nuevo)* | Sí |
