@@ -4,6 +4,10 @@
 -- el usuario que las creó en el campo created_by.
 -- ============================================================
 
+-- Asegurar que la columna created_by existe
+ALTER TABLE propuestas 
+ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES usuarios(id) ON DELETE SET NULL;
+
 -- Actualizar la política RLS para INSERT en propuestas
 -- para permitir: superadmin, admin, Y evaluador
 DROP POLICY IF EXISTS "propuestas_insert" ON propuestas;
