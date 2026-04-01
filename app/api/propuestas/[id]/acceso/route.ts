@@ -60,7 +60,10 @@ export async function POST(
 
     if (error) {
       console.error('[acceso POST]', error)
-      return NextResponse.json({ error: 'Error al generar código' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'Error al generar código', detail: (error as any)?.message ?? String(error) },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json(data)

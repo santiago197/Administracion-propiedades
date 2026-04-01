@@ -1458,7 +1458,7 @@ export async function validarCodigoProponente(codigo: string) {
     .select(`
       *,
       propuestas:propuesta_id(
-        id, razon_social, numero_documento, email, proceso_id
+        id, razon_social, nit_cedula, email, proceso_id
       )
     `)
     .eq('codigo', codigo)
@@ -1466,7 +1466,7 @@ export async function validarCodigoProponente(codigo: string) {
     .single()
 
   if (accesoError || !acceso) {
-    return { data: null, error: new Error('Código inválido o inactivo') }
+    return { data: null, error: new Error(accesoError?.message ?? 'Código inválido o inactivo') }
   }
 
   // Validar fecha límite
@@ -1496,7 +1496,7 @@ export async function validarCodigoProponente(codigo: string) {
     data: {
       propuesta_id: acceso.propuesta_id,
       razon_social: acceso.propuestas.razon_social,
-      numero_documento: acceso.propuestas.numero_documento,
+      nit_cedula: acceso.propuestas.nit_cedula,
       email: acceso.propuestas.email,
       estadisticas: {
         total_obligatorios: totalObligatorios,
@@ -1523,25 +1523,43 @@ export async function generarCodigoAccesoProponente(
 ) {
   const supabase = await createServerClient()
 
-  // Generar código único
-  const codigo = generarCodigoUnico()
-
-  // Fecha límite por defecto: 7 días
   const fechaLimite = fecha_limite || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
-  const { data, error } = await supabase
+  // Verificar si ya existe un acceso para esta propuesta
+  const { data: existing } = await supabase
     .from('acceso_proponentes')
-    .upsert(
-      {
-        propuesta_id,
+    .select('id')
+    .eq('propuesta_id', propuesta_id)
+    .maybeSingle()
+
+  if (existing) {
+    // Ya existe → regenerar código y reactivar
+    const codigo = generarCodigoUnico()
+    const { data, error } = await supabase
+      .from('acceso_proponentes')
+      .update({
         codigo,
         activo: true,
         fecha_limite: fechaLimite.toISOString(),
-        created_by: usuario_id,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'propuesta_id' }
-    )
+      })
+      .eq('propuesta_id', propuesta_id)
+      .select()
+      .single()
+    return { data, error }
+  }
+
+  // No existe → insertar
+  const codigo = generarCodigoUnico()
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .insert({
+      propuesta_id,
+      codigo,
+      activo: true,
+      fecha_limite: fechaLimite.toISOString(),
+      created_by: usuario_id,
+    })
     .select()
     .single()
 

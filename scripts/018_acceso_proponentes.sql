@@ -16,12 +16,18 @@ CREATE TABLE IF NOT EXISTS acceso_proponentes (
   CONSTRAINT codigo_format CHECK (codigo ~ '^[A-Z]{3}[0-9]{5}$')
 );
 
--- Solo puede existir un acceso por propuesta (upsert por propuesta_id)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_acceso_propuesta
-  ON acceso_proponentes(propuesta_id);
+-- Solo puede existir un acceso por propuesta
+-- IMPORTANTE: debe ser CONSTRAINT (no solo INDEX) para que el upsert de PostgREST funcione
+ALTER TABLE acceso_proponentes
+  ADD CONSTRAINT acceso_proponentes_propuesta_id_key UNIQUE (propuesta_id);
 
 CREATE INDEX IF NOT EXISTS idx_acceso_codigo
   ON acceso_proponentes(codigo);
+
+-- ── Permisos de rol ──────────────────────────────────────────
+-- anon necesita SELECT para que /api/proponente/validar funcione sin sesión
+GRANT SELECT ON acceso_proponentes TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON acceso_proponentes TO authenticated;
 
 -- ── RLS ──────────────────────────────────────────────────────
 ALTER TABLE acceso_proponentes ENABLE ROW LEVEL SECURITY;

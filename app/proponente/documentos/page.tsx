@@ -89,7 +89,7 @@ export default function ProponenteDocumentosPage() {
         setPropuesta({
           id: data.propuesta_id,
           razon_social: data.razon_social,
-          numero_documento: data.numero_documento,
+          nit_cedula: data.nit_cedula,
           email: data.email,
         } as Propuesta)
         setEstadoDocumentos({

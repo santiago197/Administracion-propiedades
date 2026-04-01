@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     if (error || !data) {
       return NextResponse.json(
-        { error: error?.message || 'Código inválido o expirado' },
+        { error: 'Código inválido o expirado', detail: error?.message },
         { status: 403 }
       )
     }
