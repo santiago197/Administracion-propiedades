@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useToast } from '@/hooks/use-toast'
+import { useActiveProceso } from '@/hooks/use-active-proceso'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { AlertCircle, Globe, Eye, Copy, CheckCircle } from 'lucide-react'
+import { AlertCircle, Globe, Eye, Copy, CheckCircle, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface Proceso {
@@ -18,32 +19,29 @@ interface Proceso {
 
 export default function ConsultaPublicaPage() {
   const { toast } = useToast()
+  const { conjunto, procesos: activeProcesos, loading: activeLoading, error: activeError } = useActiveProceso()
   const [procesos, setProcesos] = useState<Proceso[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    loadProcesos()
-  }, [])
+    if (activeLoading) return
 
-  const loadProcesos = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch(`/api/procesos`)
-      if (!res.ok) throw new Error('Error al cargar procesos')
-      const data = await res.json()
-      setProcesos(Array.isArray(data) ? data : [])
-    } catch (error) {
+    if (activeError || !conjunto) {
       toast({
         title: 'Error',
-        description: 'No se pudieron cargar los procesos',
+        description: activeError || 'No se pudo obtener el conjunto',
         variant: 'destructive',
       })
-    } finally {
       setLoading(false)
+      return
     }
-  }
+
+    // Usa los procesos del hook
+    setProcesos(activeProcesos || [])
+    setLoading(false)
+  }, [activeLoading, activeError, conjunto, activeProcesos, toast])
 
   const togglePublic = async (procesId: string, currentValue: boolean) => {
     try {
@@ -89,7 +87,7 @@ export default function ConsultaPublicaPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">Cargando procesos...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     )
   }
