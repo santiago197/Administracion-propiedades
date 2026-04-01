@@ -11,12 +11,17 @@ export async function GET(
   try {
     const { data: proceso, error } = await supabase
       .from('procesos')
-      .select('id, nombre, estado, fecha_inicio, fecha_fin, conjunto:conjuntos(nombre)')
+      .select('id, nombre, estado, fecha_inicio, fecha_fin, es_publica, conjunto:conjuntos(nombre)')
       .eq('id', id)
       .single()
 
     if (error || !proceso) {
       return NextResponse.json({ error: 'Proceso no encontrado' }, { status: 404 })
+    }
+
+    // Validar que el proceso sea público
+    if (!proceso.es_publica) {
+      return NextResponse.json({ error: 'Este proceso no es públicamente visible' }, { status: 403 })
     }
 
     const { count: total_candidatos } = await supabase

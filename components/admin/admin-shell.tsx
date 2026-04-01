@@ -20,6 +20,7 @@ import {
   Users,
   Layers,
   ClipboardList,
+  Globe,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +69,7 @@ const navItems: NavItem[] = [
       { title: 'Usuarios', href: '/admin/configuracion/usuarios', icon: Users },
       { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: CheckSquare },
       { title: 'Criterios de evaluación', href: '/admin/configuracion/criterios', icon: ClipboardList },
+      { title: 'Consulta Pública', href: '/admin/configuracion/consulta-publica', icon: Globe },
     ],
   },
 ]

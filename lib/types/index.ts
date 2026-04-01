@@ -102,6 +102,7 @@ export interface Proceso {
   peso_evaluacion: number
   peso_votacion: number
   estado: EstadoProceso
+  es_publica?: boolean
   created_at: string
   updated_at: string
 }
