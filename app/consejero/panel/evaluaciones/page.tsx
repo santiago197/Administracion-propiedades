@@ -86,6 +86,9 @@ export default function EvaluacionesPage() {
   // estado local de evaluaciones
   const [evaluaciones, setEvaluaciones] = useState<EvaluacionesState>({})
 
+  // track if there are unsaved changes
+  const [unsavedChanges, setUnsavedChanges] = useState(false)
+
   // saving state per propuesta
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saveError, setSaveError] = useState<Record<string, string>>({})
@@ -120,9 +123,15 @@ export default function EvaluacionesPage() {
         // Inicializar estado local con evaluaciones existentes
         const init: EvaluacionesState = {}
         for (const ev of d.evaluaciones ?? []) {
-          init[ev.propuesta_id] = {}
-          for (const item of ev.items ?? []) {
-            init[ev.propuesta_id][item.criterio_id] = item.valor
+          // Permitir tanto formato antiguo (array plana) como nuevo (items)
+          if (Array.isArray(ev.items)) {
+            init[ev.propuesta_id] = {}
+            for (const item of ev.items ?? []) {
+              init[ev.propuesta_id][item.criterio_id] = item.valor
+            }
+          } else {
+            // Compatibilidad: si viene como plano
+            init[ev.propuesta_id] = ev.items ?? {}
           }
         }
         setEvaluaciones(init)
@@ -132,10 +141,8 @@ export default function EvaluacionesPage() {
   }, [procesoId, router])
 
   const handleScore = useCallback(
-    async (propuestaId: string, criterioId: string, valor: number) => {
-      if (!procesoId) return
-
-      // Actualizar estado local inmediatamente
+    (propuestaId: string, criterioId: string, valor: number) => {
+      // Actualizar estado local sin guardar automáticamente
       setEvaluaciones((prev) => ({
         ...prev,
         [propuestaId]: {
@@ -143,17 +150,36 @@ export default function EvaluacionesPage() {
           [criterioId]: valor,
         },
       }))
+      setUnsavedChanges(true)
+    },
+    []
+  )
 
-      // Auto-save
-      setSaving((prev) => ({ ...prev, [propuestaId]: true }))
-      setSaveError((prev) => ({ ...prev, [propuestaId]: '' }))
+  // Guardar todas las evaluaciones de todas las propuestas
+  const handleSaveAll = useCallback(async () => {
+    if (!procesoId || !datos) return
 
-      try {
-        const currentItems = {
-          ...(evaluaciones[propuestaId] ?? {}),
-          [criterioId]: valor,
-        }
-        const items = Object.entries(currentItems).map(([cid, v]) => ({
+    setSaving({ all: true })
+    setSaveError({})
+
+    try {
+      const propuestasAGuardar = datos.propuestas
+        .filter((p) => {
+          const evs = evaluaciones[p.id] ?? {}
+          return datos.criterios.every((c) => evs[c.id] !== undefined)
+        })
+
+      if (propuestasAGuardar.length === 0) {
+        setSaveError({ all: 'No hay evaluaciones completas para guardar' })
+        setSaving({})
+        return
+      }
+
+      // Guardar cada propuesta completa
+      const errors: string[] = []
+      for (const propuesta of propuestasAGuardar) {
+        const evs = evaluaciones[propuesta.id] ?? {}
+        const items = Object.entries(evs).map(([cid, v]) => ({
           criterio_id: cid,
           valor: v,
         }))
@@ -161,21 +187,43 @@ export default function EvaluacionesPage() {
         const res = await fetch('/api/evaluacion/guardar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ proceso_id: procesoId, propuesta_id: propuestaId, items }),
+          body: JSON.stringify({ proceso_id: procesoId, propuesta_id: propuesta.id, items }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          throw new Error(data?.error ?? 'Error al guardar')
+          errors.push(`${propuesta.razon_social}: ${data?.error ?? 'Error'}`)
         }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Error al guardar'
-        setSaveError((prev) => ({ ...prev, [propuestaId]: msg }))
-      } finally {
-        setSaving((prev) => ({ ...prev, [propuestaId]: false }))
       }
-    },
-    [evaluaciones, procesoId]
-  )
+
+      if (errors.length > 0) {
+        setSaveError({ all: errors.join(' | ') })
+      } else {
+        setUnsavedChanges(false)
+        // Recargar datos para confirmar que se guardó
+        const perfil = await fetch('/api/consejero/perfil').then((r) => r.json())
+        if (perfil?.proceso?.id) {
+          const nuevosDatos = await fetch(`/api/evaluacion/datos?proceso_id=${perfil.proceso.id}`).then((r) => r.json())
+          setDatos(nuevosDatos)
+
+          // Actualizar estado local de evaluaciones con los datos guardados del servidor
+          const init: EvaluacionesState = {}
+          for (const ev of nuevosDatos.evaluaciones ?? []) {
+            init[ev.propuesta_id] = {}
+            for (const item of ev.items ?? []) {
+              init[ev.propuesta_id][item.criterio_id] = item.valor
+            }
+          }
+          setEvaluaciones(init)
+        }
+      }
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar'
+      setSaveError({ all: msg })
+    } finally {
+      setSaving({})
+    }
+  }, [evaluaciones, procesoId, datos])
 
   // ─── Loading / Error states ────────────────────────────────────────────────
 
@@ -269,11 +317,10 @@ export default function EvaluacionesPage() {
           <button
             key={p.id}
             onClick={() => setCurrentIdx(idx)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-              idx === currentIdx
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-card hover:bg-accent'
-            }`}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${idx === currentIdx
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-border bg-card hover:bg-accent'
+              }`}
           >
             {isComplete(p.id) && (
               <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
@@ -291,12 +338,16 @@ export default function EvaluacionesPage() {
               <div>
                 <CardTitle className="text-lg">{current.razon_social}</CardTitle>
                 <CardDescription>
-                  {current.tipo_persona === 'juridica' ? 'NIT' : 'C.C.'}: {current.nit_cedula}
-                  {' · '}
-                  {current.anios_experiencia} años exp.
-                  {current.unidades_administradas > 0 &&
-                    ` · ${current.unidades_administradas.toLocaleString('es-CO')} unidades`}
-                </CardDescription>
+  {current.tipo_persona === 'juridica' ? 'NIT' : 'C.C.'}: {current.nit_cedula}
+  {' · '}
+  {current.anios_experiencia} años exp.
+  {current.unidades_administradas > 0 &&
+    ` · ${current.unidades_administradas.toLocaleString('es-CO')} unidades`}
+  <br />
+  <span className="font-semibold text-green-700">
+    Puntaje asignado: {Object.values(evCurrent).reduce((a, b) => a + (b ?? 0), 0)}
+  </span>
+</CardDescription>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {isComplete(current.id) ? (
@@ -344,13 +395,12 @@ export default function EvaluacionesPage() {
                           <button
                             key={v}
                             onClick={() => handleScore(current.id, criterio.id, v)}
-                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[90px] ${
-                              score === v
-                                ? v === 1
-                                  ? 'border-green-500 bg-green-600 text-white shadow'
-                                  : 'border-destructive bg-destructive text-destructive-foreground shadow'
-                                : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
-                            }`}
+                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[90px] ${score === v
+                              ? v === 1
+                                ? 'border-green-500 bg-green-600 text-white shadow'
+                                : 'border-destructive bg-destructive text-destructive-foreground shadow'
+                              : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
+                              }`}
                           >
                             <span className="text-sm font-semibold leading-none">{v === 1 ? 'Cumple' : 'No cumple'}</span>
                           </button>
@@ -365,11 +415,10 @@ export default function EvaluacionesPage() {
                           <button
                             key={v}
                             onClick={() => handleScore(current.id, criterio.id, v)}
-                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[70px] ${
-                              score === v
-                                ? 'border-primary bg-primary text-primary-foreground shadow'
-                                : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
-                            }`}
+                            className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-w-[70px] ${score === v
+                              ? 'border-primary bg-primary text-primary-foreground shadow'
+                              : 'border-border bg-card hover:bg-accent hover:border-accent-foreground/20'
+                              }`}
                           >
                             <span className="text-lg font-bold leading-none">{v}</span>
                             <span className="mt-0.5">{SCORE_LABELS[v] ?? 'Valor'}</span>
@@ -406,6 +455,33 @@ export default function EvaluacionesPage() {
           <ChevronRight className="ml-1 h-4 w-4" />
         </Button>
       </div>
+
+      {/* Botón guardar si hay cambios sin guardar */}
+      {unsavedChanges && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex items-center justify-between py-4 gap-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+              <p className="text-sm text-amber-800 font-medium">
+                Tienes cambios sin guardar
+              </p>
+            </div>
+            <Button
+              onClick={handleSaveAll}
+              disabled={saving['all']}
+              className="shrink-0 gap-2"
+              variant="default"
+            >
+              {saving['all'] && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Save className="h-4 w-4" />
+              Guardar evaluaciones
+            </Button>
+          </CardContent>
+          {saveError['all'] && (
+            <div className="text-xs text-destructive px-6 pb-4">{saveError['all']}</div>
+          )}
+        </Card>
+      )}
 
       {/* CTA cuando todas evaluadas */}
       {totalEvaluadas === totalCandidatos && (

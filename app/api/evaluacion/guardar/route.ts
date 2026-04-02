@@ -101,24 +101,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El proceso no está en etapa de evaluación' }, { status: 409 })
     }
 
-    // 3. Validar propuesta pertenece al proceso y está en evaluación
+    // 3. Validar propuesta pertenece al proceso y está en evaluación o clasificación
     const { data: propuesta } = await supabase
       .from('propuestas')
       .select('proceso_id, estado, razon_social')
       .eq('id', propuesta_id)
       .single()
 
-    console.log('[evaluacion/guardar] Debug - propuesta:', { propuesta, estado_buscado: 'en_evaluacion' })
+    console.log('[evaluacion/guardar] Debug - propuesta:', { propuesta, estado_buscado: 'en_evaluacion o clasificacion' })
 
-    if (!propuesta || propuesta.proceso_id !== proceso_id || propuesta.estado !== 'en_evaluacion') {
+    // Estados permitidos para evaluar: en_evaluacion (durante evaluación) 
+    // o apto/destacado/condicionado/no_apto (después de pasar a votación)
+    const estadosPermitidos = ['en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto']
+    
+    if (!propuesta || propuesta.proceso_id !== proceso_id || !estadosPermitidos.includes(propuesta.estado)) {
       return NextResponse.json(
         { 
-          error: 'Propuesta no válida o no está en evaluación',
+          error: 'Propuesta no válida o no está disponible para evaluación',
           debug: { 
             propuesta_existe: !!propuesta,
             proceso_correcto: propuesta?.proceso_id === proceso_id,
             estado_actual: propuesta?.estado,
-            estado_requerido: 'en_evaluacion'
+            estados_permitidos: estadosPermitidos
           }
         }, 
         { status: 403 }
@@ -159,7 +163,7 @@ export async function POST(request: NextRequest) {
         .from('propuestas')
         .select('*', { count: 'exact', head: true })
         .eq('proceso_id', proceso_id)
-        .eq('estado', 'en_evaluacion'),
+        .in('estado', ['en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto']),
       supabase
         .from('evaluaciones')
         .select('propuesta_id')

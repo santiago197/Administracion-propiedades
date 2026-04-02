@@ -166,9 +166,9 @@ export default function VotacionPage() {
   // Verificar si todas las evaluaciones están completas
   function isComplete(propuestaId: string) {
     const ev = evaluaciones.find((e) => e.propuesta_id === propuestaId)
-    if (!ev) return false
+    if (!ev || !ev.items || !Array.isArray(ev.items)) return false
     return criterios.every((c) => {
-      const item = ev.items.find((i) => i.criterio_id === c.id)
+      const item = ev.items?.find((i) => i.criterio_id === c.id)
       return item && item.valor > 0
     })
   }
