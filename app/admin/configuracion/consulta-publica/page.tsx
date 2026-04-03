@@ -15,7 +15,6 @@ interface Proceso {
   nombre: string
   estado: string
   es_publica: boolean
-  slug?: string
 }
 
 export default function ConsultaPublicaPage() {
@@ -44,7 +43,7 @@ export default function ConsultaPublicaPage() {
     setLoading(false)
   }, [activeLoading, activeError, conjunto, activeProcesos, toast])
 
-  const togglePublic = async (procesId: string, currentValue: boolean, slug?: string) => {
+  const togglePublic = async (procesId: string, currentValue: boolean) => {
     try {
       setUpdating(procesId)
       const res = await fetch(`/api/procesos/${procesId}`, {
@@ -58,25 +57,14 @@ export default function ConsultaPublicaPage() {
         throw new Error(error.error || 'Error al actualizar')
       }
 
-      const updated = await res.json()
-      
       setProcesos((prev) =>
-        prev.map((p) => (p.id === procesId ? { ...p, es_publica: !currentValue, slug: updated.slug } : p))
+        prev.map((p) => (p.id === procesId ? { ...p, es_publica: !currentValue } : p))
       )
 
-      // Si se hizo público, mostrar URL lista para compartir
-      if (!currentValue && !updated.es_publica === false) {
-        const publicUrl = `${window.location.origin}/consulta/${updated.slug || procesId}`
-        toast({
-          title: 'Proceso publicado',
-          description: `URL lista para compartir: ${publicUrl}`,
-        })
-      } else {
-        toast({
-          title: 'Éxito',
-          description: `Proceso ${!currentValue ? 'activado' : 'desactivado'} para consulta pública`,
-        })
-      }
+      toast({
+        title: 'Éxito',
+        description: `Consulta pública ${!currentValue ? 'activada' : 'desactivada'}`,
+      })
     } catch (error) {
       toast({
         title: 'Error',
@@ -88,8 +76,8 @@ export default function ConsultaPublicaPage() {
     }
   }
 
-  const copyToClipboard = (procesId: string, slug?: string) => {
-    const url = `${window.location.origin}/consulta/${slug || procesId}`
+  const copyToClipboard = (procesId: string) => {
+    const url = `${window.location.origin}/consulta/${procesId}`
     navigator.clipboard.writeText(url)
     setCopiedUrl(procesId)
     setTimeout(() => setCopiedUrl(null), 2000)
@@ -152,43 +140,42 @@ export default function ConsultaPublicaPage() {
                   </div>
                   <Switch
                     checked={proceso.es_publica}
-                    onCheckedChange={() => togglePublic(proceso.id, proceso.es_publica, proceso.slug)}
+                    onCheckedChange={() => togglePublic(proceso.id, proceso.es_publica)}
                     disabled={updating === proceso.id}
                   />
                 </div>
               </CardHeader>
 
-              {proceso.es_publica && (
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                      <Eye className="h-4 w-4 text-green-600" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">URL de consulta pública:</p>
-                        <code className="text-xs bg-background px-2 py-1 rounded block mt-1 break-all">
-                          {`${window.location.origin}/consulta/${proceso.slug || proceso.id}`}
-                        </code>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyToClipboard(proceso.id, proceso.slug)}
-                        className="shrink-0"
-                      >
-                        {copiedUrl === proceso.id ? (
-                          <>
-                            <CheckCircle className="h-4 w-4" />
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-4 w-4" />
-                          </>
-                        )}
-                      </Button>
-                    </div>
+              <CardContent className="pt-0 space-y-2">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <Eye className="h-3.5 w-3.5 shrink-0" />
+                    URL de consulta pública:
+                  </p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <code className="flex-1 rounded-md border bg-muted px-3 py-2 text-sm break-all">
+                      {typeof window !== 'undefined'
+                        ? `${window.location.origin}/consulta/${proceso.id}`
+                        : `/consulta/${proceso.id}`}
+                    </code>
+                    <Button
+                      variant="outline"
+                      onClick={() => copyToClipboard(proceso.id)}
+                      className="shrink-0 gap-2"
+                      disabled={!proceso.es_publica}
+                    >
+                      {copiedUrl === proceso.id ? (
+                        <><CheckCircle className="h-4 w-4" /> Copiado</>
+                      ) : (
+                        <><Copy className="h-4 w-4" /> Copiar enlace</>
+                      )}
+                    </Button>
                   </div>
+                  {!proceso.es_publica && (
+                    <p className="text-xs text-muted-foreground">
+                      Activa la consulta pública para habilitar este enlace.
+                    </p>
+                  )}
                 </CardContent>
-              )}
             </Card>
           ))}
         </div>

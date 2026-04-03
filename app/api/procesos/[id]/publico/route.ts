@@ -9,11 +9,10 @@ export async function GET(
   const supabase = await createClient()
 
   try {
-    // Buscar por slug (que es más amigable para URLs) o por UUID como fallback
     const { data: proceso, error } = await supabase
       .from('procesos')
-      .select('id, nombre, estado, fecha_inicio, fecha_fin, es_publica, slug, conjunto:conjuntos(nombre)')
-      .or(`slug.eq.${id},id.eq.${id}`)
+      .select('id, nombre, estado, fecha_inicio, fecha_fin, es_publica, conjunto:conjuntos(nombre)')
+      .eq('id', id)
       .single()
 
     if (error || !proceso) {
