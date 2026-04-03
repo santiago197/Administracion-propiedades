@@ -69,6 +69,7 @@ const navItems: NavItem[] = [
       { title: 'Usuarios', href: '/admin/configuracion/usuarios', icon: Users },
       { title: 'Tipos de documentos', href: '/admin/configuracion/documentos', icon: CheckSquare },
       { title: 'Criterios de evaluación', href: '/admin/configuracion/criterios', icon: ClipboardList },
+      { title: 'Validación legal', href: '/admin/configuracion/validacion-legal', icon: ShieldCheck },
       { title: 'Consulta Pública', href: '/admin/configuracion/consulta-publica', icon: Globe },
     ],
   },

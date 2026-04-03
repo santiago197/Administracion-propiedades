@@ -22,6 +22,7 @@ import type {
   CriterioEvaluacion,
   TipoDocumentoConfig,
   TipoPersona,
+  ValidacionLegalItemConfig,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
 import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
@@ -883,6 +884,42 @@ export async function updateTipoDocumento(
 export async function deleteTipoDocumento(id: string) {
   const supabase = await createServerClient()
   return supabase.from('tipos_documento').delete().eq('id', id)
+}
+
+// VALIDACIÓN LEGAL ITEMS — CRUD
+export async function getValidacionLegalItems(onlyActive = false) {
+  const supabase = await createServerClient()
+  let query = supabase
+    .from('validacion_legal_items')
+    .select('*')
+    .order('seccion', { ascending: true })
+    .order('orden', { ascending: true })
+
+  if (onlyActive) {
+    query = query.eq('activo', true)
+  }
+
+  return query
+}
+
+export async function createValidacionLegalItem(
+  data: Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').insert([data]).select().single()
+}
+
+export async function updateValidacionLegalItem(
+  id: string,
+  data: Partial<Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').update(data).eq('id', id).select().single()
+}
+
+export async function deleteValidacionLegalItem(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').delete().eq('id', id)
 }
 
 /**

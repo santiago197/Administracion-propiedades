@@ -444,6 +444,7 @@ export interface PropuestaRutDatos {
 
 export type EstadoItemChecklist = 'pendiente' | 'cumple' | 'no_cumple'
 export type CriticidadItem = 'critico' | 'importante' | 'condicionante' | 'informativo'
+export type AplicaAItemChecklist = 'ambos' | 'juridica' | 'natural'
 
 export interface ItemChecklistLegal {
   id: string
@@ -461,7 +462,23 @@ export interface DefinicionItemChecklist {
   label: string
   descripcion: string
   criticidad: CriticidadItem
-  aplica_a: 'ambos' | 'juridica' | 'natural'
+  aplica_a: AplicaAItemChecklist
+  obligatorio?: boolean
+}
+
+export interface ValidacionLegalItemConfig {
+  id: string
+  codigo: string
+  seccion: string
+  nombre: string
+  categoria: CriticidadItem
+  descripcion: string
+  aplica_a: AplicaAItemChecklist
+  activo: boolean
+  obligatorio: boolean
+  orden: number
+  created_at: string
+  updated_at: string
 }
 
 export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [

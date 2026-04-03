@@ -34,6 +34,7 @@ import type {
   ChecklistLegal,
   EstadoItemChecklist,
   DefinicionItemChecklist,
+  ValidacionLegalItemConfig,
 } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
@@ -88,6 +89,18 @@ const ESTADOS_YA_VALIDADOS = ['habilitada', 'no_apto_legal', 'en_evaluacion']
 // Estados terminales que no pueden validarse
 const ESTADOS_TERMINALES = ['adjudicado', 'descalificada', 'retirada']
 
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
+}
+
 function getEstadoLegal(p: Propuesta): EstadoLegal {
   if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') return 'aprobado'
   if (p.estado === 'no_apto_legal') return 'rechazado'
@@ -109,9 +122,10 @@ function getOrdenEstado(p: Propuesta): number {
 /** Calcula si el checklist local permite confirmar */
 function calcularEstadoChecklist(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
+  tipoPersona: 'juridica' | 'natural',
+  definiciones: DefinicionItemChecklist[]
 ): { cumple: boolean; bloqueantes: string[]; pendientes: string[] } {
-  const items = ITEMS_VALIDACION_LEGAL.filter(
+  const items = definiciones.filter(
     (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
   )
   const criticos = items.filter((d) => d.criticidad === 'critico')
@@ -120,6 +134,7 @@ function calcularEstadoChecklist(
   const pendientes: string[] = []
 
   for (const def of criticos) {
+    if (def.obligatorio === false) continue
     const estado = checklist[def.id]?.estado ?? 'pendiente'
     if (estado === 'no_cumple') bloqueantes.push(def.label)
     else if (estado === 'pendiente') pendientes.push(def.label)
@@ -134,11 +149,12 @@ function calcularEstadoChecklist(
 
 function inicializarChecklist(
   propuesta: Propuesta,
-  checklistGuardado: ChecklistLegal | null
+  checklistGuardado: ChecklistLegal | null,
+  definiciones: DefinicionItemChecklist[]
 ): ChecklistLegal {
   const resultado: ChecklistLegal = {}
 
-  for (const def of ITEMS_VALIDACION_LEGAL) {
+  for (const def of definiciones) {
     if (def.aplica_a !== 'ambos' && def.aplica_a !== propuesta.tipo_persona) continue
 
     if (checklistGuardado?.[def.id]) {
@@ -501,30 +517,26 @@ function ValidacionLegalContent() {
   const [errorPorId, setErrorPorId] = useState<Record<string, string>>({})
   const [panelAbierto, setPanelAbierto] = useState<Record<string, boolean>>({})
   const [checklists, setChecklists] = useState<Record<string, ChecklistLegal>>({})
+  const [definiciones, setDefiniciones] = useState<DefinicionItemChecklist[]>(ITEMS_VALIDACION_LEGAL)
   const [docsRut, setDocsRut] = useState<Record<string, { nombre: string; archivo_url?: string | null }[]>>({})
   const [docsStatus, setDocsStatus] = useState<Record<string, { faltantes: number; nombres_faltantes: string[] }>>({})
   const [panelInicialAbierto, setPanelInicialAbierto] = useState(false)
 
-  // Función para abrir panel (extraída para reutilizar)
-  const abrirPanelPropuesta = useCallback((p: Propuesta, checklists: Record<string, ChecklistLegal>) => {
-    if (!checklists[p.id]) {
-      const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
-      setChecklists((prev) => ({
-        ...prev,
-        [p.id]: inicializarChecklist(p, checklistGuardado),
-      }))
-    }
-    setPanelAbierto((prev) => ({ ...prev, [p.id]: true }))
-    setErrorPorId((prev) => ({ ...prev, [p.id]: '' }))
-  }, [])
-
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [propRes, procRes] = await Promise.all([
+        let defsForInit = definiciones
+        const [propRes, procRes, defsRes] = await Promise.all([
           fetch(`/api/propuestas?proceso_id=${procesoId}`),
           fetch(`/api/procesos?conjunto_id=${conjuntoId}`),
+          fetch('/api/validacion-legal-items?activos=true'),
         ])
+
+        if (defsRes.ok) {
+          const defsData: ValidacionLegalItemConfig[] = await defsRes.json()
+          defsForInit = defsData.length > 0 ? defsData.map(mapItemConfigToDef) : ITEMS_VALIDACION_LEGAL
+          setDefiniciones(defsForInit)
+        }
 
         if (propRes.ok) {
           const data: Propuesta[] = await propRes.json()
@@ -571,7 +583,7 @@ function ValidacionLegalContent() {
                 const checklistGuardado = (propuestaSeleccionada as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
                 setChecklists((prev) => ({
                   ...prev,
-                  [propuestaSeleccionada.id]: inicializarChecklist(propuestaSeleccionada, checklistGuardado),
+                  [propuestaSeleccionada.id]: inicializarChecklist(propuestaSeleccionada, checklistGuardado, defsForInit),
                 }))
                 setPanelAbierto((prev) => ({ ...prev, [propuestaSeleccionada.id]: true }))
                 setPanelInicialAbierto(true)
@@ -606,7 +618,7 @@ function ValidacionLegalContent() {
       const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
       setChecklists((prev) => ({
         ...prev,
-        [p.id]: inicializarChecklist(p, checklistGuardado),
+        [p.id]: inicializarChecklist(p, checklistGuardado, definiciones),
       }))
     }
     setPanelAbierto((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
@@ -633,12 +645,12 @@ function ValidacionLegalContent() {
     if (!checklist) return
 
     const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
-    const { pendientes, bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona)
+    const { pendientes, bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona, definiciones)
 
     // Verificar que los no_cumple tienen observación
-    const itemsSinObs = ITEMS_VALIDACION_LEGAL.filter((def) => {
+    const itemsSinObs = definiciones.filter((def) => {
       if (def.aplica_a !== 'ambos' && def.aplica_a !== tipoPersona) return false
-      if (def.criticidad !== 'critico') return false
+      if (def.criticidad !== 'critico' || def.obligatorio === false) return false
       const item = checklist[def.id]
       return item?.estado === 'no_cumple' && !item.observacion.trim()
     })
@@ -834,7 +846,7 @@ function ValidacionLegalContent() {
               const rutDocs = docsRut[p.id] ?? []
               const errorLocal = errorPorId[p.id] ?? ''
               const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
-              const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
+              const itemsAplicables = definiciones.filter(
                 (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
               )
               const esValidable = estadoLegal !== 'no_disponible'
@@ -1019,7 +1031,7 @@ function ValidacionLegalContent() {
                       })}
 
                       {/* Estado calculado */}
-                      <EstadoCalculadoChecklist checklist={checklist} tipoPersona={tipoPersona} />
+                      <EstadoCalculadoChecklist checklist={checklist} tipoPersona={tipoPersona} definiciones={definiciones} />
 
                       {/* Error local */}
                       {errorLocal && (
@@ -1035,7 +1047,7 @@ function ValidacionLegalContent() {
                           size="sm"
                           disabled={processingId === p.id}
                           className={(() => {
-                            const { bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona)
+                            const { bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona, definiciones)
                             return bloqueantes.length > 0
                               ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
                               : 'bg-green-600 hover:bg-green-700 text-white'
@@ -1074,13 +1086,15 @@ function ValidacionLegalContent() {
 function EstadoCalculadoChecklist({
   checklist,
   tipoPersona,
+  definiciones,
 }: {
   checklist: ChecklistLegal
   tipoPersona: 'juridica' | 'natural'
+  definiciones: DefinicionItemChecklist[]
 }) {
   const { cumple, bloqueantes, pendientes } = useMemo(
-    () => calcularEstadoChecklist(checklist, tipoPersona),
-    [checklist, tipoPersona]
+    () => calcularEstadoChecklist(checklist, tipoPersona, definiciones),
+    [checklist, tipoPersona, definiciones]
   )
 
   if (bloqueantes.length === 0 && pendientes.length === 0) {

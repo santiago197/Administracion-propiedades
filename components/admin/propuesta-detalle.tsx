@@ -63,6 +63,8 @@ import type {
   EstadoPropuesta,
   ChecklistLegal,
   TipoDocumentoConfig,
+  DefinicionItemChecklist,
+  ValidacionLegalItemConfig,
 } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
@@ -102,6 +104,18 @@ function normalizeTipoPersona(value?: string | null): TipoPersona | 'ambos' {
   const raw = (value ?? '').toString().trim().toLowerCase()
   if (raw === 'juridica' || raw === 'natural' || raw === 'ambos') return raw
   return 'ambos'
+}
+
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +215,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
   const [tiposLoading, setTiposLoading] = useState(false)
   const [tiposError, setTiposError] = useState<string | null>(null)
+  const [validacionItems, setValidacionItems] = useState<DefinicionItemChecklist[]>([])
 
   // Direct upload
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -227,6 +242,10 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       .then((data: TipoDocumentoConfig[]) => setTiposDocumento(data))
       .catch((err) => setTiposError(err instanceof Error ? err.message : 'Error al cargar tipos de documento'))
       .finally(() => setTiposLoading(false))
+    fetch('/api/validacion-legal-items?activos=true', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar ítems legales'))))
+      .then((data: ValidacionLegalItemConfig[]) => setValidacionItems(data.length > 0 ? data.map(mapItemConfigToDef) : ITEMS_VALIDACION_LEGAL))
+      .catch(() => setValidacionItems(ITEMS_VALIDACION_LEGAL))
     fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar documentos'))))
       .then((data: Documento[]) => setDocs(
@@ -1173,7 +1192,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     const msg = mensajeContextual[estado] ?? { texto: `Estado actual: ${LABEL_ESTADO[estado]}`, color: 'text-muted-foreground' }
 
     // ── Items aplicables del checklist ──────────────────────────────────────
-    const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
+    const itemsAplicables = validacionItems.filter(
       (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
     )
     const secciones = Array.from(new Set(itemsAplicables.map((d) => d.seccion)))
