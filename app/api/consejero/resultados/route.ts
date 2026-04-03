@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       { data: propuestas },
       { data: votoConsejero },
       { data: todosVotos },
-      { data: totalConsejeros },
+      { count: totalConsejeroCount },
     ] = await Promise.all([
       supabase
         .from('propuestas')
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
       supabase
         .from('consejeros')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('conjunto_id', consejero.conjunto_id)
         .eq('activo', true),
     ])
@@ -103,12 +103,11 @@ export async function GET(request: NextRequest) {
       votos_recibidos: Number(p.votos_recibidos ?? 0),
       puntaje_final: Number(p.puntaje_final ?? 0),
       clasificacion: p.clasificacion ?? null,
-      // Votos contados en tiempo real desde la tabla votos
       votos_contados: votosPorPropuesta[p.id] ?? 0,
     }))
 
     const totalVotos = (todosVotos ?? []).length
-    const totalConsejeroCount = (totalConsejeros as unknown as { count: number })?.count ?? 0
+    const total = totalConsejeroCount ?? 0
 
     return NextResponse.json({
       ranking,
@@ -116,10 +115,8 @@ export async function GET(request: NextRequest) {
       voto_fecha: votoConsejero?.created_at ?? null,
       participacion: {
         votos_emitidos: totalVotos,
-        total_consejeros: totalConsejeroCount,
-        porcentaje: totalConsejeroCount > 0
-          ? Math.round((totalVotos / totalConsejeroCount) * 100)
-          : 0,
+        total_consejeros: total,
+        porcentaje: total > 0 ? Math.round((totalVotos / total) * 100) : 0,
       },
     })
   } catch (err) {
