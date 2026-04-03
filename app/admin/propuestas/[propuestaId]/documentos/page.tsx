@@ -97,25 +97,27 @@ export default function DocumentosPropuestaPage() {
         return
       }
 
-      // 1. Subir archivo a storage
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', 'documentos')
-      formData.append('type', 'documento')
-
-      const uploadRes = await fetch('/api/upload', {
+      // 1. Obtener URL pre-firmada (sin enviar el archivo a Vercel)
+      const urlRes = await fetch('/api/upload-url', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: file.name, tipo_mime: file.type, tamanio: file.size }),
       })
-
-      if (!uploadRes.ok) {
-        const uploadError = await uploadRes.json()
-        throw new Error(uploadError.error || 'Error al subir archivo')
+      if (!urlRes.ok) {
+        const uploadError = await urlRes.json()
+        throw new Error(uploadError.error || 'Error al obtener URL de subida')
       }
+      const { signed_url, path, url: archivoUrl } = await urlRes.json()
 
-      const uploadData = await uploadRes.json()
+      // 2. Subir directamente a Storage
+      const storageRes = await fetch(signed_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!storageRes.ok) throw new Error('Error al subir archivo al storage')
 
-      // 2. Crear registro en la tabla documentos
+      // 3. Crear registro en la tabla documentos
       const docRes = await fetch('/api/documentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -124,8 +126,8 @@ export default function DocumentosPropuestaPage() {
           tipo_documento_id: tipoDoc.id,
           tipo: esOtro ? 'otro' : tipoDoc.codigo,
           nombre: esOtro ? otroNombre.trim() : tipoDoc.nombre,
-          archivo_url: uploadData.url,
-          archivo_pathname: uploadData.pathname,
+          archivo_url: archivoUrl,
+          archivo_pathname: path,
           es_obligatorio: esOtro ? false : tipoDoc.es_obligatorio,
           estado: 'cargado',
           tipo_documento_id: esOtro ? null : tipoDoc.id,
@@ -159,17 +161,22 @@ export default function DocumentosPropuestaPage() {
 
     setUploadingTipoId(tipoId)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', 'documentos')
-      formData.append('type', 'documento')
-
-      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json()
-        throw new Error(err.error || 'Error al subir archivo')
+      const urlRes2 = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: file.name, tipo_mime: file.type, tamanio: file.size }),
+      })
+      if (!urlRes2.ok) {
+        const err = await urlRes2.json()
+        throw new Error(err.error || 'Error al obtener URL de subida')
       }
-      const uploadData = await uploadRes.json()
+      const { signed_url: signedUrl2, path: path2, url: archivoUrl2 } = await urlRes2.json()
+      const storageRes2 = await fetch(signedUrl2, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!storageRes2.ok) throw new Error('Error al subir archivo al storage')
 
       const docRes = await fetch('/api/documentos', {
         method: 'POST',
@@ -179,8 +186,8 @@ export default function DocumentosPropuestaPage() {
           tipo_documento_id: tipoDoc.id,
           tipo: tipoDoc.codigo,
           nombre: tipoDoc.nombre,
-          archivo_url: uploadData.url,
-          archivo_pathname: uploadData.pathname,
+          archivo_url: archivoUrl2,
+          archivo_pathname: path2,
           es_obligatorio: tipoDoc.es_obligatorio,
           estado: 'cargado',
           fecha_vencimiento: tipoDoc.dias_vigencia > 0

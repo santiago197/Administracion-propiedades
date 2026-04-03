@@ -61,9 +61,11 @@ import {
   RefreshCw, 
   Copy, 
   Key, 
-  CheckCircle2 
+  CheckCircle2,
+  Vote
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { Switch } from '@/components/ui/switch'
 import type { Consejero } from '@/lib/types'
 
 const CARGO_OPTIONS = [
@@ -85,6 +87,7 @@ export default function ConsejerosPage() {
   const [consejeros, setConsejeros] = useState<Consejero[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingVoteId, setSavingVoteId] = useState<string | null>(null)
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedConsejero, setSelectedConsejero] = useState<Consejero | null>(null)
   const [newCode, setNewCode] = useState<string>('')
@@ -337,6 +340,43 @@ export default function ConsejerosPage() {
     })
   }
 
+  async function handleToggleVote(consejero: Consejero) {
+    setSavingVoteId(consejero.id)
+    try {
+      const response = await fetch('/api/consejeros', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: consejero.id,
+          puede_votar: !consejero.puede_votar,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Error al actualizar permiso de votación')
+      }
+
+      setConsejeros(consejeros.map(c => 
+        c.id === consejero.id ? { ...c, puede_votar: !c.puede_votar } : c
+      ))
+
+      toast({
+        title: 'Permiso actualizado',
+        description: `${consejero.nombre_completo} ${!consejero.puede_votar ? 'puede' : 'no puede'} votar ahora`,
+      })
+    } catch (error) {
+      console.error('Error toggling vote permission:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Error al actualizar permiso de votación',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingVoteId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -479,6 +519,7 @@ export default function ConsejerosPage() {
                   <TableHead>Unidad</TableHead>
                   <TableHead>Código de acceso</TableHead>
                   <TableHead>Contacto</TableHead>
+                  <TableHead>Puede votar</TableHead>
                   <TableHead className="text-right">Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -521,6 +562,18 @@ export default function ConsejerosPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {c.email || '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={c.puede_votar}
+                          onCheckedChange={() => handleToggleVote(c)}
+                          disabled={savingVoteId === c.id}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {c.puede_votar ? 'Sí' : 'No'}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge variant={c.activo ? 'secondary' : 'outline'}>

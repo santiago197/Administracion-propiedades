@@ -95,12 +95,12 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
-  // "Activas" para estadísticas = candidatos en evaluación activa
+  // "Activas" para estadísticas = candidatos habilitados o en evaluación
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .or('estado.eq.habilitada,estado.eq.en_evaluacion')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,
@@ -649,24 +649,23 @@ export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta)
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
-  // Incluir en resultados: candidatos que llegaron al ranking (evaluados o clasificados)
+  // Leer directamente de propuestas para incluir clasificacion (la vista no la expone)
   const { data: propuestas } = await supabase
-    .from('vista_propuestas_resumen')
-    .select('*')
+    .from('propuestas')
+    .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
     .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
-    .order('puntaje_final', { ascending: false })
+    .order('puntaje_final', { ascending: false, nullsFirst: false })
 
   if (!propuestas) return []
 
-  // Clasificar por semáforo
   return propuestas.map((p, index) => {
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+    const pf = Number(p.puntaje_final ?? 0)
 
-    // Escala 0–100 (clasificar_candidato: destacado ≥85, apto ≥70, condicionado ≥55)
-    if (p.puntaje_final >= 70) {
+    if (pf >= 70) {
       estado_semaforo = 'verde'
-    } else if (p.puntaje_final >= 55) {
+    } else if (pf >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
@@ -675,11 +674,12 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     return {
       propuesta_id: p.id,
       razon_social: p.razon_social,
-      puntaje_evaluacion: p.puntaje_evaluacion,
-      votos_recibidos: p.votos_recibidos,
-      puntaje_final: p.puntaje_final,
+      puntaje_evaluacion: Number(p.puntaje_evaluacion ?? 0),
+      votos_recibidos: Number(p.votos_recibidos ?? 0),
+      puntaje_final: pf,
       posicion: index + 1,
       estado_semaforo,
+      clasificacion: p.clasificacion ?? null,
     }
   })
 }

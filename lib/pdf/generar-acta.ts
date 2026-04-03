@@ -311,7 +311,7 @@ export function generarActaPDF(datos: DatosActa): void {
   const firmas = [
     'Presidente del Consejo',
     'Secretario del Consejo',
-    'Delegado de Copropiedad',
+    // 'Delegado de Copropiedad',
   ]
 
   const anchoFirma = (pageW - 28) / firmas.length
@@ -485,7 +485,9 @@ export function previsualizarActaPDF(datos: DatosActa): string {
   doc.setTextColor(...COLOR_GRIS_MEDIO)
   doc.text('Firmas del Consejo de Administración', pageW / 2, y, { align: 'center' })
   y += 6
-  const firmas = ['Presidente del Consejo', 'Secretario del Consejo', 'Delegado de Copropiedad']
+  const firmas = ['Presidente del Consejo', 'Secretario del Consejo'
+    // , 'Delegado de Copropiedad'
+  ]
   const anchoFirma = (pageW - 28) / firmas.length
   firmas.forEach((cargo, i) => {
     const x = 14 + i * anchoFirma + anchoFirma / 2

@@ -54,7 +54,7 @@ export async function PUT(
   const { id } = await params
 
   let body: Partial<
-    Pick<Proceso, 'nombre' | 'descripcion' | 'fecha_inicio' | 'fecha_fin' | 'peso_evaluacion' | 'peso_votacion'>
+    Pick<Proceso, 'nombre' | 'descripcion' | 'fecha_inicio' | 'fecha_fin' | 'peso_evaluacion' | 'peso_votacion' | 'es_publica'>
   >
 
   try {
@@ -70,7 +70,12 @@ export async function PUT(
       return NextResponse.json({ error: 'Proceso no encontrado' }, { status: 404 })
     }
 
-    if (existing.estado !== 'configuracion') {
+    // Permitir cambios de es_publica en cualquier estado
+    // Permitir otros cambios solo en configuración
+    const isOnlyChangingVisibility = 
+      Object.keys(body).length === 1 && 'es_publica' in body
+
+    if (!isOnlyChangingVisibility && existing.estado !== 'configuracion') {
       return NextResponse.json(
         { error: 'Solo se pueden editar procesos en estado de configuración' },
         { status: 409 }
@@ -80,8 +85,11 @@ export async function PUT(
     const pesoEval = body.peso_evaluacion ?? existing.peso_evaluacion
     const pesoVot = body.peso_votacion ?? existing.peso_votacion
 
-    if (Math.round(pesoEval + pesoVot) !== 100) {
-      return NextResponse.json({ error: 'La suma de pesos debe ser 100%' }, { status: 400 })
+    // Solo validar pesos si se están cambiando
+    if (body.peso_evaluacion !== undefined || body.peso_votacion !== undefined) {
+      if (Math.round(pesoEval + pesoVot) !== 100) {
+        return NextResponse.json({ error: 'La suma de pesos debe ser 100%' }, { status: 400 })
+      }
     }
 
     const allowed: Partial<Proceso> = {}
@@ -91,6 +99,7 @@ export async function PUT(
     if (body.fecha_fin !== undefined) allowed.fecha_fin = body.fecha_fin
     if (body.peso_evaluacion !== undefined) allowed.peso_evaluacion = body.peso_evaluacion
     if (body.peso_votacion !== undefined) allowed.peso_votacion = body.peso_votacion
+    if (body.es_publica !== undefined) allowed.es_publica = body.es_publica
 
     const { data, error } = await updateProceso(id, allowed)
     if (error) throw error

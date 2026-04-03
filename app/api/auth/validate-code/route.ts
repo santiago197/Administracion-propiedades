@@ -10,8 +10,11 @@ export async function POST(request: NextRequest) {
   //   return NextResponse.json({ error: 'Demasiados intentos. Intenta más tarde.' }, { status: 429 })
   // }
 
+  let codigo_acceso: string | undefined
+
   try {
-    const { codigo_acceso } = await request.json()
+    const body = await request.json()
+    codigo_acceso = body.codigo_acceso
 
     if (!codigo_acceso) {
       return NextResponse.json(
@@ -65,7 +68,14 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error('[v0] Validation error:', error)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error('[validate-code] Error:', errorMsg)
+    
+    // Log específico para problemas de configuración
+    if (errorMsg.includes('CONSEJERO_SESSION_SECRET')) {
+      console.error('[validate-code] CONFIGURACIÓN FALTANTE EN PRODUCCIÓN - revisar variables de entorno en Vercel')
+    }
+    
     await logAuthEvent({
       request,
       accion: 'LOGIN_FAILED',

@@ -1,6 +1,7 @@
 # PROJECT_STATUS.md
 
-> Documento de diagnóstico técnico actualizado el 2026-03-31.
+> Documento de diagnóstico técnico actualizado el 2026-04-01.
+> **Última compilación:** ✅ Exitosa (9.2s, 68 páginas, sin errores)
 > Basado en análisis estático del código fuente. No supongas — verifica.
 
 ---
@@ -28,6 +29,11 @@
 - **Página pública de consulta de proceso** — `/consulta/[procesoId]` sin autenticación ✅ *(nuevo)*
 - **Panel de votación admin** — `/admin/votacion` muestra quién votó y por quién ✅ *(nuevo)*
 - **Ranking admin** — `/admin/ranking` funcional con top 3 y tabla ponderada ✅ *(nuevo)*
+- **Configuración de Consulta Pública** — `/admin/configuracion/consulta-publica` toggle para habilitar/deshabilitar visibilidad de procesos ✅ *(nuevo)*
+- **Slug amigable para URLs públicas** — Columna `slug` agregada a `procesos` con generación automática, validación de unicidad por conjunto ✅ *(nuevo)*
+- **URLs basadas en slug** — `/consulta/[slug]` en lugar de UUID; endpoint público soporta búsqueda por slug o ID como fallback ✅ *(nuevo)*
+- **Visualización de URL lista para compartir** — Panel muestra URL slug-based tras activar consulta pública, con botón copy-to-clipboard ✅ *(nuevo)*
+- **Control granular de votación por consejero** — Campo `puede_votar` en consejeros permite deshabilitar voto individual sin desactivar. Toggle en panel admin `/admin/consejeros` ✅ *(nuevo)*
 
 ### Parcialmente implementado
 - Validación legal (checklist de 28 ítems, 100% manual — sin integración a Procuraduría, REDAM, etc.)
@@ -63,10 +69,14 @@
 - **Problema conocido (no corregido):** El bloque para `/admin` sin `conjunto_id` tiene el cuerpo vacío.
 
 ### Sesión de consejeros
-- **Estado:** ✅ Corregido — ya no usa `sessionStorage`.
+- **Estado:** ✅ Corregido y validado en producción.
 - `lib/consejero-session.ts` implementa sesión HMAC-SHA256, cookie HttpOnly, 8 horas de duración.
 - `POST /api/auth/validate-code` genera el token firmado y lo establece como cookie.
 - Los endpoints `/api/evaluacion/*` y `/api/consejero/*` leen la cookie y validan el token.
+- **Requisito de configuración en Vercel:** Variable de entorno `CONSEJERO_SESSION_SECRET` debe estar presente (mínimo 32 caracteres aleatorios).
+  - Si falta en producción, retorna error 500 en `/api/auth/validate-code`
+  - Validación mejorada: rechaza secrets menores a 32 caracteres
+  - Logs detallados para debuggear problemas de configuración
 
 ### Validación contra tabla `usuarios`
 - `requireAuth()` en `auth-utils.ts`: si `conjunto_id = NULL` → 403.
@@ -86,10 +96,10 @@
 ```
 app/
   api/              → 40+ rutas API (Next.js Route Handlers)
-    procesos/[id]/publico/  → ✓ NUEVA: consulta pública de proceso (sin auth)
+    procesos/[id]/publico/  → ✓ Consulta pública de proceso (sin auth, requiere es_publica=true)
   admin/            → Páginas protegidas (autenticadas)
     conjuntos/      → CRUD + nested: procesos, consejeros, criterios, propuestas
-    configuracion/  → criterios, documentos, roles, usuarios
+    configuracion/  → criterios, documentos, roles, usuarios, consulta-publica ✓ NUEVO
     propuestas/     → Listado global + detalle por ID
     evaluacion/     → Vista de evaluaciones en progreso
     votacion/       → Tabla de quién votó (seguimiento) ✓ NUEVO
@@ -376,13 +386,22 @@ La función `procesarValidacionLegal` actualiza `cumple_requisitos_legales` y `o
 ## 7. Flujo de consejeros
 
 ### Validación de código
-- Funcional. `POST /api/auth/validate-code` busca por `codigo_acceso` (case-sensitive, uppercased en cliente), verifica `activo = true`.
+- **Estado:** ✅ Funcional en producción (error 500 corregido).
+- `POST /api/auth/validate-code` busca por `codigo_acceso` (case-insensitive, uppercased en cliente), verifica `activo = true`.
+- **Cambios recientes (2026-04-01):**
+  - Manejo seguro de excepciones: `codigo_acceso` declarado fuera del try-catch
+  - Prevención de ReferenceError si `request.json()` falla o variables de entorno faltan
+  - Logs detallados para debugging de errores de configuración
 - Genera cookie HMAC-signed con `consejero_id`, `conjunto_id`, `proceso_id`.
 - **Riesgo de suplantación: RESUELTO** — el backend ya no acepta `consejero_id` del body; lo lee de la cookie firmada.
 
 ### Persistencia de sesión
 - Cookie HttpOnly, SameSite=lax, 8 horas, firmada con HMAC-SHA256.
-- Requiere variable de entorno `CONSEJERO_SESSION_SECRET` (mínimo 32 caracteres).
+- **⚠️ REQUISITO CRÍTICO EN PRODUCCIÓN:** Variable de entorno `CONSEJERO_SESSION_SECRET` (mínimo 32 caracteres).
+  - En Vercel: **Settings → Environment Variables** → agregar `CONSEJERO_SESSION_SECRET=<valor>`
+  - Sin esta variable: endpoint retorna 500 `"Error en la validación"`
+  - Validación en `getSessionSecret()`: rechaza secrets menores a 32 caracteres con mensaje claro
+  - Ejemplo válido: `2f9855df9d6940fe2a31461a15ec0c1c` (32 hex chars) o similar
 
 ### Acciones disponibles
 - [x] Ingresar con código
@@ -421,6 +440,7 @@ La función `procesarValidacionLegal` actualiza `cumple_requisitos_legales` y `o
 | Configuración criterios | CRUD completo | Sí |
 | Configuración documentos | CRUD completo | Sí |
 | Configuración usuarios | CRUD completo | Sí |
+| **Configuración Consulta Pública** `/admin/configuracion/consulta-publica` | **Implementado** *(nuevo)* | Sí |
 | Acceso consejero `/consejero` | Completo | Sí |
 | Panel consejero `/consejero/panel` | **Completo** *(nuevo)* | Sí |
 | Candidatos `/consejero/panel/candidatos` | **Completo** *(nuevo)* | Sí |
@@ -456,6 +476,11 @@ La función `procesarValidacionLegal` actualiza `cumple_requisitos_legales` y `o
 **3. Estado `adjudicado` sin flujo de cierre en UI**
 - El estado existe en la máquina de estados y aparece en el PDF, pero no hay UI para hacer la transición formal con: quién aprueba, fecha, condiciones.
 - El acta sí se puede generar como PDF pero sin este paso el proceso no "termina" formalmente en el sistema.
+
+**4. ✅ RESUELTO: Error 500 en `/api/auth/validate-code` por CONSEJERO_SESSION_SECRET faltante**
+- **Causa:** Variable de entorno no configurada en Vercel.
+- **Solución:** Agregada validación mejorada, manejo seguro de excepciones, logs detallados para debugging.
+- **Acción requerida:** Agregar `CONSEJERO_SESSION_SECRET` en **Vercel Settings → Environment Variables**
 
 ### 🟠 Inconsistencias de arquitectura (sin resolver)
 

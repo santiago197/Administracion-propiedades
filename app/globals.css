@@ -124,6 +124,15 @@
   }
 }
 
+@layer utilities {
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+}
+
   .text-destructive-foreground {
     background: var(--destructive-foreground);
     color: white;

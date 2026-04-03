@@ -13,8 +13,11 @@ export interface ConsejeroSession {
 
 function getSessionSecret(): string {
   const secret = process.env.CONSEJERO_SESSION_SECRET
-  if (!secret) {
-    throw new Error('CONSEJERO_SESSION_SECRET no está definido en las variables de entorno')
+  if (!secret || secret.length < 32) {
+    const msg = !secret
+      ? 'CONSEJERO_SESSION_SECRET no está definido en las variables de entorno'
+      : 'CONSEJERO_SESSION_SECRET debe tener al menos 32 caracteres'
+    throw new Error(msg)
   }
   return secret
 }

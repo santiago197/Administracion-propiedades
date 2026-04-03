@@ -40,7 +40,14 @@ import {
   ShieldQuestion,
   Clock,
   Circle,
+  Link2,
+  Copy,
+  Check,
+  Calendar,
 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { PanelEvaluacion } from '@/components/admin/panel-evaluacion'
 import { TabRut } from '@/components/admin/tab-rut'
 import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
@@ -161,6 +168,16 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   const [historial, setHistorial]           = useState<HistorialEstado[]>([])
   const [historialLoading, setHistorialLoading] = useState(false)
 
+  // Acceso proponente
+  type AccesoData = { codigo: string | null; activo: boolean; fecha_limite: string | null }
+  const [acceso, setAcceso]                   = useState<AccesoData | null>(null)
+  const [accesoLoading, setAccesoLoading]     = useState(false)
+  const [accesoSaving, setAccesoSaving]       = useState(false)
+  const [accesoGenerando, setAccesoGenerando] = useState(false)
+  const [accesoCopied, setAccesoCopied]       = useState(false)
+  const [accesoFecha, setAccesoFecha]         = useState('')
+  const [accesoActivo, setAccesoActivo]       = useState(true)
+
   // Edit (Info tab)
   const [editMode, setEditMode]     = useState(false)
   const [editForm, setEditForm]     = useState<EditForm>(() => initEditForm(propuesta))
@@ -228,15 +245,30 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       .finally(() => setHistorialLoading(false))
   }, [propuesta.id])
 
+  const loadAcceso = useCallback(() => {
+    setAccesoLoading(true)
+    fetch(`/api/propuestas/${propuesta.id}/acceso`)
+      .then((r) => r.ok ? r.json() : { codigo: null, activo: false, fecha_limite: null })
+      .then((data) => {
+        setAcceso(data)
+        setAccesoActivo(data.activo ?? true)
+        setAccesoFecha(data.fecha_limite ? data.fecha_limite.split('T')[0] : '')
+      })
+      .catch(() => {})
+      .finally(() => setAccesoLoading(false))
+  }, [propuesta.id])
+
   useEffect(() => {
     setEditMode(false)
     setEditError(null)
     setEditForm(initEditForm(propuesta))
     setDocs([])
     setHistorial([])
+    setAcceso(null)
     loadDocs()
     loadHistorial()
-  }, [propuesta.id, loadDocs, loadHistorial])
+    loadAcceso()
+  }, [propuesta.id, loadDocs, loadHistorial, loadAcceso])
 
   // ---------------------------------------------------------------------------
   // Edit handlers
@@ -323,17 +355,28 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       let archivo_pathname: string | null = null
 
       if (docForm.file) {
-        const fd = new FormData()
-        fd.append('file', docForm.file)
-        fd.append('type', 'documento')
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (!uploadRes.ok) {
-          const body = await uploadRes.json()
-          throw new Error(body.error ?? 'Error al subir archivo')
+        const urlRes = await fetch('/api/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: docForm.file.name,
+            tipo_mime: docForm.file.type,
+            tamanio: docForm.file.size,
+          }),
+        })
+        if (!urlRes.ok) {
+          const body = await urlRes.json()
+          throw new Error(body.error ?? 'Error al obtener URL de subida')
         }
-        const uploadData = await uploadRes.json()
-        archivo_url = uploadData.url
-        archivo_pathname = uploadData.pathname
+        const { signed_url, path, url } = await urlRes.json()
+        const storageRes = await fetch(signed_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': docForm.file.type },
+          body: docForm.file,
+        })
+        if (!storageRes.ok) throw new Error('Error al subir archivo al storage')
+        archivo_url = url
+        archivo_pathname = path
       }
 
       const tipoFinal = docForm.tipo_documento_id ? 'otro' : docForm.tipo
@@ -399,29 +442,42 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     setDocsError(null)
 
     try {
-      // 1. Upload
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('type', 'documento')
-      const uploadRes = await fetch('/api/upload', { method: 'POST', body: fd })
-      if (!uploadRes.ok) {
-        const body = await uploadRes.json()
-        throw new Error(body.error ?? 'Error al subir archivo')
+      // 1. Obtener URL pre-firmada (sin enviar el archivo a Vercel)
+      const urlRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: file.name,
+          tipo_mime: file.type,
+          tamanio: file.size,
+        }),
+      })
+      if (!urlRes.ok) {
+        const body = await urlRes.json()
+        throw new Error(body.error ?? 'Error al obtener URL de subida')
       }
-      const uploadData = await uploadRes.json()
+      const { signed_url, path, url: archivoUrl } = await urlRes.json()
 
-      // 2. Crear documento
+      // 2. Subir directamente a Storage (no pasa por Vercel)
+      const storageRes = await fetch(signed_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      })
+      if (!storageRes.ok) throw new Error('Error al subir archivo al storage')
+
+      // 3. Crear documento
       const res = await fetch('/api/documentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propuesta_id:      propuesta.id,
-          tipo:              tipoConfig.categoria === 'legal' ? 'camara_comercio' : 'otro', // Mapeo simple o usar 'otro'
+          tipo:              tipoConfig.categoria === 'legal' ? 'camara_comercio' : 'otro',
           tipo_documento_id: tipoConfig.id,
           nombre:            tipoConfig.nombre,
           es_obligatorio:    tipoConfig.es_obligatorio,
-          archivo_url:       uploadData.url,
-          archivo_pathname:  uploadData.pathname,
+          archivo_url:       archivoUrl,
+          archivo_pathname:  path,
           estado:           'completo',
         }),
       })
@@ -1275,6 +1331,189 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     )
   }
 
+  // ----- ACCESO PROPONENTE -----
+  function renderAcceso() {
+    if (accesoLoading) {
+      return (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      )
+    }
+
+    const estadoAcceso: 'activo' | 'inactivo' | 'expirado' = !acceso?.codigo
+      ? 'inactivo'
+      : !accesoActivo
+        ? 'inactivo'
+        : acceso.fecha_limite && new Date() > new Date(acceso.fecha_limite)
+          ? 'expirado'
+          : 'activo'
+
+    const ESTADO_CLS = {
+      activo:   'bg-emerald-500/10 text-emerald-700 border-emerald-200',
+      inactivo: 'bg-muted text-muted-foreground',
+      expirado: 'bg-destructive/10 text-destructive border-destructive/20',
+    }
+    const ESTADO_LBL = { activo: 'Activo', inactivo: 'Inactivo', expirado: 'Expirado' }
+
+    const handleGenerar = async () => {
+      setAccesoGenerando(true)
+      try {
+        const res = await fetch(`/api/propuestas/${propuesta.id}/acceso`, { method: 'POST' })
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        setAcceso(data)
+        setAccesoActivo(data.activo ?? true)
+        setAccesoFecha(data.fecha_limite ? data.fecha_limite.split('T')[0] : '')
+      } catch {
+        /* toast opcional */
+      } finally {
+        setAccesoGenerando(false)
+      }
+    }
+
+    const handleCopiar = async () => {
+      if (!acceso?.codigo) return
+      const url = `${window.location.origin}/proponente/documentos?codigo=${acceso.codigo}`
+      await navigator.clipboard.writeText(url).catch(() => {})
+      setAccesoCopied(true)
+      setTimeout(() => setAccesoCopied(false), 2000)
+    }
+
+    const handleGuardar = async () => {
+      setAccesoSaving(true)
+      try {
+        const res = await fetch(`/api/propuestas/${propuesta.id}/acceso`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activo: accesoActivo,
+            fechaLimite: accesoFecha ? new Date(accesoFecha).toISOString() : null,
+          }),
+        })
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        setAcceso(data)
+      } catch {
+        /* toast opcional */
+      } finally {
+        setAccesoSaving(false)
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Estado y código */}
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Estado del acceso</span>
+            <Badge variant="outline" className={`text-xs ${ESTADO_CLS[estadoAcceso]}`}>
+              {ESTADO_LBL[estadoAcceso]}
+            </Badge>
+          </div>
+
+          {!acceso?.codigo ? (
+            <Button
+              className="w-full gap-2"
+              onClick={handleGenerar}
+              disabled={accesoGenerando}
+            >
+              {accesoGenerando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Link2 className="h-4 w-4" />
+              )}
+              {accesoGenerando ? 'Generando...' : 'Generar código de acceso'}
+            </Button>
+          ) : (
+            <div className="space-y-2">
+              <span className="text-xs text-muted-foreground font-medium">Código</span>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-background border px-3 py-2 font-mono text-sm font-semibold tracking-widest">
+                  {acceso.codigo}
+                </code>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9 shrink-0"
+                  onClick={handleCopiar}
+                  title="Copiar link para compartir"
+                >
+                  {accesoCopied ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {accesoCopied && (
+                <p className="text-xs text-emerald-600">Link copiado — compártelo con el proponente</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Configuración (solo si hay código) */}
+        {acceso?.codigo && (
+          <div className="space-y-4">
+            {/* Toggle activo */}
+            <div className="flex items-center justify-between rounded-lg border bg-muted/10 p-4">
+              <div className="space-y-0.5">
+                <span className="text-sm font-medium">Acceso activo</span>
+                <p className="text-xs text-muted-foreground">
+                  {accesoActivo
+                    ? 'El proponente puede cargar documentos'
+                    : 'El proponente NO puede cargar documentos'}
+                </p>
+              </div>
+              <Switch
+                checked={accesoActivo}
+                onCheckedChange={setAccesoActivo}
+                disabled={accesoSaving}
+              />
+            </div>
+
+            {/* Fecha límite */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Fecha límite de acceso</Label>
+              <p className="text-xs text-muted-foreground">
+                Después de esta fecha el proponente no podrá cargar documentos
+              </p>
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                <Input
+                  type="date"
+                  value={accesoFecha}
+                  onChange={(e) => setAccesoFecha(e.target.value)}
+                  className="h-9 text-sm"
+                  disabled={accesoSaving}
+                />
+              </div>
+              {accesoFecha && new Date(accesoFecha) < new Date() && (
+                <div className="flex items-start gap-2 rounded bg-destructive/10 p-2 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>Esta fecha ya pasó — el acceso está expirado</span>
+                </div>
+              )}
+            </div>
+
+            <Button
+              className="w-full"
+              onClick={handleGuardar}
+              disabled={accesoSaving}
+            >
+              {accesoSaving ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Guardando...</>
+              ) : (
+                'Guardar cambios'
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ----- HISTORIAL -----
   function renderHistorial() {
     return (
@@ -1360,6 +1599,16 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
             </TabsTrigger>
             <TabsTrigger value="evaluacion">Evaluación</TabsTrigger>
             <TabsTrigger value="rut">RUT</TabsTrigger>
+            <TabsTrigger value="acceso" className="gap-1.5">
+              Acceso
+              {acceso?.codigo && (
+                <span className={`h-2 w-2 rounded-full inline-block ${
+                  !accesoActivo ? 'bg-muted-foreground' :
+                  acceso.fecha_limite && new Date() > new Date(acceso.fecha_limite) ? 'bg-destructive' :
+                  'bg-emerald-500'
+                }`} />
+              )}
+            </TabsTrigger>
             <TabsTrigger value="historial">Historial</TabsTrigger>
           </TabsList>
           <TabsContent value="info">{renderInfo()}</TabsContent>
@@ -1369,6 +1618,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
           <TabsContent value="rut">
             <TabRut propuestaId={propuesta.id} nitPropuesta={propuesta.nit_cedula} />
           </TabsContent>
+          <TabsContent value="acceso">{renderAcceso()}</TabsContent>
           <TabsContent value="historial">{renderHistorial()}</TabsContent>
         </Tabs>
 

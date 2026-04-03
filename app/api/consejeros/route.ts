@@ -202,6 +202,7 @@ export async function PATCH(request: NextRequest) {
       'apartamento',
       'email',
       'telefono',
+      'puede_votar',
     ]
 
     const filteredUpdates: Record<string, any> = {}

@@ -102,6 +102,8 @@ export interface Proceso {
   peso_evaluacion: number
   peso_votacion: number
   estado: EstadoProceso
+  es_publica?: boolean
+  slug?: string
   created_at: string
   updated_at: string
 }
@@ -117,6 +119,7 @@ export interface Consejero {
   telefono?: string
   codigo_acceso: string
   activo: boolean
+  puede_votar: boolean
   created_at: string
   updated_at: string
 }
@@ -264,6 +267,7 @@ export interface ResultadoFinal {
   puntaje_final: number
   posicion: number
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+  clasificacion?: string | null
 }
 
 /** Detalle de un criterio de la matriz de evaluación para una propuesta */
