@@ -1,26 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Trophy, AlertCircle } from 'lucide-react'
+import { Loader2, Trophy, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
-import type { ResultadoFinal, Proceso } from '@/lib/types/index'
-
-const SEMAFORO_CLS: Record<string, string> = {
-  verde:   'bg-green-500/10 text-green-700',
-  amarillo: 'bg-amber-500/10 text-amber-700',
-  rojo:    'bg-destructive/10 text-destructive',
-}
+import type { ResultadoFinal } from '@/lib/types/index'
 
 const CLAS_CLS: Record<string, string> = {
-  destacado:  'bg-green-500/10 text-green-700 border-green-200',
-  apto:       'bg-yellow-500/10 text-yellow-700 border-yellow-200',
+  destacado:    'bg-green-500/10 text-green-700 border-green-200',
+  apto:         'bg-yellow-500/10 text-yellow-700 border-yellow-200',
   condicionado: 'bg-orange-500/10 text-orange-700 border-orange-200',
-  no_apto:    'bg-red-500/10 text-red-700 border-red-200',
+  no_apto:      'bg-red-500/10 text-red-700 border-red-200',
+}
+
+const CLAS_LABEL: Record<string, string> = {
+  destacado:    'Destacado',
+  apto:         'Apto',
+  condicionado: 'Condicionado',
+  no_apto:      'No apto',
 }
 
 export default function RankingPage() {
@@ -28,7 +30,9 @@ export default function RankingPage() {
   const [selectedProcesoId, setSelectedProcesoId] = useState<string>('')
   const [resultados, setResultados] = useState<ResultadoFinal[]>([])
   const [loading, setLoading] = useState(false)
+  const [recalculando, setRecalculando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ultimoCalculo, setUltimoCalculo] = useState<Date | null>(null)
 
   // Seleccionar proceso activo al cargar
   useEffect(() => {
@@ -40,29 +44,52 @@ export default function RankingPage() {
     }
   }, [procesos, selectedProcesoId])
 
-  // Cargar ranking cuando cambia el proceso
+  const cargarResultados = useCallback(async (procesoId: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/resultados?proceso_id=${procesoId}`)
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al cargar resultados')
+      }
+      setResultados(await res.json())
+      setUltimoCalculo(new Date())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const recalcularYCargar = useCallback(async (procesoId: string) => {
+    setRecalculando(true)
+    setError(null)
+    try {
+      // 1. Recalcular puntajes en la BD
+      const res = await fetch(`/api/resultados?proceso_id=${procesoId}`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Error al recalcular')
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al recalcular')
+      setRecalculando(false)
+      return
+    } finally {
+      setRecalculando(false)
+    }
+    // 2. Leer resultados frescos
+    await cargarResultados(procesoId)
+  }, [cargarResultados])
+
+  // Recalcular automáticamente cuando cambia el proceso
   useEffect(() => {
     if (!selectedProcesoId) return
-    const fetchResultados = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`/api/resultados?proceso_id=${selectedProcesoId}`)
-        if (!res.ok) {
-          const body = await res.json()
-          throw new Error(body.error ?? 'Error al cargar resultados')
-        }
-        setResultados(await res.json())
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error desconocido')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchResultados()
-  }, [selectedProcesoId])
+    recalcularYCargar(selectedProcesoId)
+  }, [selectedProcesoId, recalcularYCargar])
 
-  const maxPuntaje = resultados.length > 0 ? Math.max(...resultados.map((r) => r.puntaje_final)) : 100
+  const maxPuntaje = resultados.length > 0 ? Math.max(...resultados.map((r) => r.puntaje_final), 1) : 100
 
   if (loadingProceso) {
     return (
@@ -81,28 +108,52 @@ export default function RankingPage() {
     )
   }
 
+  const ocupado = recalculando || loading
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted-foreground">Resultado ponderado</p>
           <h1 className="text-2xl tracking-tight">Ranking</h1>
           <p className="text-sm text-muted-foreground">
             Clasificación automática por puntaje de evaluación + votos del consejo.
           </p>
+          {ultimoCalculo && !ocupado && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <CheckCircle2 className="h-3 w-3 text-green-600" />
+              Actualizado {ultimoCalculo.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
-        {procesos.length > 1 && (
-          <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Selecciona proceso" />
-            </SelectTrigger>
-            <SelectContent>
-              {procesos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-3">
+          {procesos.length > 1 && (
+            <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Selecciona proceso" />
+              </SelectTrigger>
+              <SelectContent>
+                {procesos.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={ocupado || !selectedProcesoId}
+            onClick={() => recalcularYCargar(selectedProcesoId)}
+            className="gap-2"
+          >
+            {ocupado ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {recalculando ? 'Recalculando…' : 'Recalcular'}
+          </Button>
+        </div>
       </div>
 
       {/* Top 3 */}
@@ -119,12 +170,23 @@ export default function RankingPage() {
                   }`}>
                     {i === 0 ? <Trophy className="h-5 w-5" /> : `#${i + 1}`}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold truncate">{r.razon_social}</p>
-                    <p className="text-2xl font-black text-primary tabular-nums">{r.puntaje_final.toFixed(1)}</p>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <p className="text-2xl font-black text-primary tabular-nums">{r.puntaje_final.toFixed(1)}</p>
+                      {r.clasificacion && (
+                        <Badge className={CLAS_CLS[r.clasificacion] ?? ''} variant="outline">
+                          {CLAS_LABEL[r.clasificacion] ?? r.clasificacion}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <Progress value={(r.puntaje_final / maxPuntaje) * 100} className="mt-3 h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  <span>Eval: {r.puntaje_evaluacion.toFixed(1)}</span>
+                  <span>Votos: {r.votos_recibidos}</span>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -135,12 +197,15 @@ export default function RankingPage() {
       <Card>
         <CardHeader>
           <CardTitle>Tabla ordenada por puntaje final</CardTitle>
-          <CardDescription>Incluye puntaje de evaluación, votos recibidos y clasificación.</CardDescription>
+          <CardDescription>
+            Puntaje final = evaluación técnica × peso_eval + (votos / total_consejeros × 100) × peso_voto
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          {ocupado ? (
+            <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span className="text-sm">{recalculando ? 'Recalculando puntajes…' : 'Cargando resultados…'}</span>
             </div>
           ) : error ? (
             <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
@@ -157,11 +222,11 @@ export default function RankingPage() {
                 <TableRow>
                   <TableHead className="w-10">#</TableHead>
                   <TableHead>Candidato</TableHead>
-                  <TableHead className="text-right">Eval.</TableHead>
+                  <TableHead className="text-right">Eval. (0–100)</TableHead>
                   <TableHead className="text-right">Votos</TableHead>
                   <TableHead className="text-right">Puntaje final</TableHead>
                   <TableHead>Clasificación</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead className="w-24">Barra</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,16 +240,20 @@ export default function RankingPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{r.razon_social}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.puntaje_evaluacion.toFixed(1)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.puntaje_evaluacion.toFixed(1)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{r.votos_recibidos}</TableCell>
                     <TableCell className="text-right">
                       <span className="font-bold text-primary tabular-nums">{r.puntaje_final.toFixed(2)}</span>
                     </TableCell>
                     <TableCell>
-                      {r.estado_semaforo && (
-                        <Badge className={SEMAFORO_CLS[r.estado_semaforo] ?? ''} variant="outline">
-                          {r.estado_semaforo.toUpperCase()}
+                      {r.clasificacion ? (
+                        <Badge className={CLAS_CLS[r.clasificacion] ?? ''} variant="outline">
+                          {CLAS_LABEL[r.clasificacion] ?? r.clasificacion}
                         </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -196,7 +265,7 @@ export default function RankingPage() {
             </Table>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Puntaje final = evaluación técnica ponderada + votos del consejo. Clasificación según umbrales: Destacado ≥85, Apto ≥70, Condicionado ≥55.
+            Umbrales de clasificación: Destacado ≥85 · Apto ≥70 · Condicionado ≥55 · No apto &lt;55
           </p>
         </CardContent>
       </Card>

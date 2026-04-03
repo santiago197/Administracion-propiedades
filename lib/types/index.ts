@@ -267,6 +267,7 @@ export interface ResultadoFinal {
   puntaje_final: number
   posicion: number
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+  clasificacion?: string | null
 }
 
 /** Detalle de un criterio de la matriz de evaluación para una propuesta */

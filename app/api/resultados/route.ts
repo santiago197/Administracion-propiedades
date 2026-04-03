@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createAdminClient()
-    const { data: resultados, error } = await supabase
+    // recalcular_resultados retorna VOID — solo verificamos que no haya error
+    const { error } = await supabase
       .rpc('recalcular_resultados', { p_proceso_id: procesoId })
 
     if (error) {
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, resultados: resultados ?? [] })
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[resultados/calcular] error:', error)
     return NextResponse.json({ error: 'Error en el servidor' }, { status: 500 })

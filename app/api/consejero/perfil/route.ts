@@ -39,12 +39,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (!proceso) {
-      // Buscar el proceso activo del conjunto (evaluacion o votacion)
+      // Buscar el proceso activo o finalizado más reciente del conjunto
       const { data } = await supabase
         .from('procesos')
         .select('id, conjunto_id, nombre, estado')
         .eq('conjunto_id', consejero.conjunto_id)
-        .in('estado', ['evaluacion', 'votacion'])
+        .in('estado', ['evaluacion', 'votacion', 'finalizado'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
