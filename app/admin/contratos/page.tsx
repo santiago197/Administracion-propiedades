@@ -27,6 +27,7 @@ import { useToast } from '@/hooks/use-toast'
 import { ContratosTable } from '@/components/admin/contratos/contratos-table'
 import { ContratoFormDialog } from '@/components/admin/contratos/contrato-form-dialog'
 import { ContratosStatsCards } from '@/components/admin/contratos/contratos-stats'
+import { ContratoDetailsDialog } from '@/components/admin/contratos/contrato-details-dialog'
 import type { ContratoConEstado } from '@/lib/types/index'
 
 // ─────────────────────────────────────────────────────────────────────
@@ -47,6 +48,8 @@ export default function ContratosPage() {
   // Estado del formulario
   const [formOpen, setFormOpen] = useState(false)
   const [editingContrato, setEditingContrato] = useState<ContratoConEstado | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [detailsContrato, setDetailsContrato] = useState<ContratoConEstado | null>(null)
 
   // Estado de eliminación
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -209,6 +212,10 @@ export default function ContratosPage() {
               onEdit={handleOpenEdit}
               onDelete={handleOpenDelete}
               onViewFile={handleViewFile}
+              onViewDetails={(contrato) => {
+                setDetailsContrato(contrato)
+                setDetailsOpen(true)
+              }}
               isDeleting={isDeleting}
             />
           )}
@@ -221,6 +228,13 @@ export default function ContratosPage() {
         onOpenChange={setFormOpen}
         contrato={editingContrato}
         onSubmit={handleSubmit}
+      />
+
+      {/* Details Dialog */}
+      <ContratoDetailsDialog
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        contrato={detailsContrato}
       />
 
       {/* Delete Confirmation */}

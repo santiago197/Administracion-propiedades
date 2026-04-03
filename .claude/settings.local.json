@@ -34,7 +34,10 @@
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades -type f \\\\\\(-name *propuesta* -o -name *rut* \\\\\\))",
       "Bash(find /c/Users/santiago.rodriguez/Desktop/DESARROLLO/Administracion-propiedades/app/admin -type f -name *.tsx -o -name *.ts)",
       "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedades -name *.sql -type f)",
-      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -name *cambiar* -o -name *estado*)"
+      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -name *cambiar* -o -name *estado*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -r \"generarActaPDF\\\\|previsualizarActaPDF\" C:UserssantiDesktopDESARROLLOSAdministracion-propiedades --include=*.tsx --include=*.ts)",
+      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -type f -name *.ts -o -name *.tsx)"
     ]
   },
   "enableAllProjectMcpServers": true,

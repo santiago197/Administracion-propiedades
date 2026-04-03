@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -78,9 +78,13 @@ export function ContratoFormDialog({
   const { toast } = useToast()
   const isEditing = !!contrato
 
-  const [formData, setFormData] = useState<ContratoFormData>(() => {
+  const [formData, setFormData] = useState<ContratoFormData>(initialFormData)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
     if (contrato) {
-      return {
+      setFormData({
         nombre: contrato.nombre,
         responsable: contrato.responsable || '',
         descripcion: contrato.descripcion || '',
@@ -91,11 +95,11 @@ export function ContratoFormDialog({
         moneda: contrato.moneda || 'COP',
         observaciones: contrato.observaciones || '',
         archivo: null,
-      }
+      })
+    } else {
+      setFormData(initialFormData)
     }
-    return initialFormData
-  })
-  const [saving, setSaving] = useState(false)
+  }, [open, contrato])
   const [dragActive, setDragActive] = useState(false)
 
   const handleChange = (
@@ -217,19 +221,6 @@ export function ContratoFormDialog({
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setFormData(initialFormData)
-    } else if (contrato) {
-      setFormData({
-        nombre: contrato.nombre,
-        responsable: contrato.responsable || '',
-        descripcion: contrato.descripcion || '',
-        fecha_inicio: contrato.fecha_inicio ? new Date(contrato.fecha_inicio) : undefined,
-        fecha_fin: contrato.fecha_fin ? new Date(contrato.fecha_fin) : undefined,
-        dias_preaviso: contrato.dias_preaviso,
-        valor: contrato.valor ? String(contrato.valor) : '',
-        moneda: contrato.moneda || 'COP',
-        observaciones: contrato.observaciones || '',
-        archivo: null,
-      })
     }
     onOpenChange(newOpen)
   }

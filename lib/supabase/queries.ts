@@ -769,12 +769,13 @@ export interface VotoDetallado {
 
 export interface DatosActa {
   proceso: { nombre: string; fecha_inicio: string; fecha_fin?: string; peso_evaluacion: number; peso_votacion: number }
-  conjunto: { nombre: string; direccion: string; ciudad: string }
+  conjunto: { nombre: string; direccion: string; ciudad: string; logo_url?: string }
   candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null }>
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
   fecha_generacion: string
+  numero_acta?: string
 }
 
 export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
@@ -783,7 +784,7 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
   // Proceso + conjunto
   const { data: proceso } = await supabase
     .from('procesos')
-    .select('nombre, fecha_inicio, fecha_fin, peso_evaluacion, peso_votacion, conjunto_id, conjuntos(nombre, direccion, ciudad)')
+    .select('nombre, fecha_inicio, fecha_fin, peso_evaluacion, peso_votacion, conjunto_id, conjuntos(nombre, direccion, ciudad, logo_url)')
     .eq('id', proceso_id)
     .single()
 
@@ -827,6 +828,7 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
       nombre: conjunto?.nombre ?? '',
       direccion: conjunto?.direccion ?? '',
       ciudad: conjunto?.ciudad ?? '',
+      logo_url: (conjunto as any)?.logo_url ?? undefined,
     },
     candidatos: (propuestas ?? []).map((p: any) => ({
       razon_social: p.razon_social,

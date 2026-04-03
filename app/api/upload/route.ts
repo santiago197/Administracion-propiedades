@@ -51,41 +51,51 @@ export async function POST(request: NextRequest) {
       const buffer = new Uint8Array(arrayBuffer)
 
       // Subir a Supabase Storage (upsert sobrescribe si ya existe)
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      let { data: uploadData, error: uploadError } = await supabase.storage
         .from('conjuntos-logos')
         .upload(fileName, buffer, {
           contentType: file.type,
           upsert: true,
         })
 
+      // Fallback: si falla por RLS, reintentar con service role key
       if (uploadError) {
-        console.error('Error uploading to storage:', uploadError)
-        
-        // Mensajes de error más específicos
+        const isRlsError =
+          uploadError.message?.toLowerCase().includes('row-level security') ||
+          uploadError.message?.toLowerCase().includes('policy') ||
+          uploadError.message?.toLowerCase().includes('permission')
+
+        if (isRlsError) {
+          try {
+            const adminClient = createAdminClient()
+            const adminUpload = await adminClient.storage
+              .from('conjuntos-logos')
+              .upload(fileName, buffer, { contentType: file.type, upsert: true })
+            uploadData = adminUpload.data
+            uploadError = adminUpload.error
+          } catch (adminError) {
+            console.error('[upload/logo] Error con admin client:', adminError)
+          }
+        }
+      }
+
+      if (uploadError) {
+        console.error('Error uploading logo to storage:', uploadError)
+
         if (uploadError.message?.includes('not found') || uploadError.message?.includes('does not exist')) {
           return NextResponse.json(
-            { 
-              error: 'El bucket "conjuntos-logos" no existe. Por favor configura Supabase Storage.',
-              details: uploadError.message 
+            {
+              error: 'El bucket "conjuntos-logos" no existe. Ejecuta el script 026_storage_logos_policies.sql en Supabase.',
+              details: uploadError.message,
             },
             { status: 500 }
           )
         }
-        
-        if (uploadError.message?.includes('permission') || uploadError.message?.includes('policy')) {
-          return NextResponse.json(
-            { 
-              error: 'Sin permisos para subir archivos. Verifica las políticas RLS del bucket.',
-              details: uploadError.message 
-            },
-            { status: 403 }
-          )
-        }
-        
+
         return NextResponse.json(
-          { 
-            error: 'Error al subir archivo al storage',
-            details: uploadError.message 
+          {
+            error: 'Error al subir el logo. Verifica que SUPABASE_SERVICE_ROLE_KEY esté configurada o ejecuta 026_storage_logos_policies.sql.',
+            details: uploadError.message,
           },
           { status: 500 }
         )

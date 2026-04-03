@@ -61,6 +61,7 @@ interface ContratosTableProps {
   onEdit: (contrato: ContratoConEstado) => void
   onDelete: (contrato: ContratoConEstado) => void
   onViewFile: (contrato: ContratoConEstado) => void
+  onViewDetails?: (contrato: ContratoConEstado) => void
   isDeleting?: boolean
 }
 
@@ -87,8 +88,9 @@ export function ContratosTable({
 
   return (
     <TooltipProvider>
-      <Table>
-        <TableHeader>
+      <div className="w-full overflow-x-auto">
+        <Table className="min-w-[700px]">
+          <TableHeader>
           <TableRow>
             <TableHead>Nombre</TableHead>
             <TableHead>Responsable</TableHead>
@@ -101,10 +103,10 @@ export function ContratosTable({
         </TableHeader>
         <TableBody>
           {contratos.map((contrato) => (
-            <TableRow key={contrato.id}>
+            <TableRow key={contrato.id} className="cursor-pointer" onClick={() => (typeof onViewDetails === 'function' ? onViewDetails(contrato) : undefined)}>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{contrato.nombre}</span>
+                  <span className="font-medium truncate max-w-[180px] block" title={contrato.nombre}>{contrato.nombre}</span>
                   {contrato.archivo_principal_pathname && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -122,7 +124,7 @@ export function ContratosTable({
                   )}
                 </div>
                 {contrato.descripcion && (
-                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5 break-words max-w-[220px]" title={contrato.descripcion}>
                     {contrato.descripcion}
                   </p>
                 )}
@@ -228,6 +230,7 @@ export function ContratosTable({
           ))}
         </TableBody>
       </Table>
-    </TooltipProvider>
+    </div>
+  </TooltipProvider>
   )
 }

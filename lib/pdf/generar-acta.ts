@@ -40,35 +40,102 @@ function labelEstado(estado: string): string {
   return map[estado] ?? estado
 }
 
-function encabezado(doc: jsPDF, datos: DatosActa) {
-  const { conjunto, proceso } = datos
+async function loadLogoDataUrl(url: string): Promise<string | null> {
+  try {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('load'))
+      img.src = url
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
+}
+
+async function encabezado(doc: jsPDF, datos: DatosActa) {
+  const { conjunto, proceso, fecha_generacion, numero_acta } = datos
   const pageW = doc.internal.pageSize.getWidth()
 
-  // Barra superior azul
-  doc.setFillColor(...COLOR_PRIMARIO)
-  doc.rect(0, 0, pageW, 28, 'F')
+  // Dimensiones de la tabla de encabezado
+  const margin = 14
+  const tableW = pageW - 2 * margin
+  const tableY = 8
+  const tableH = 28
+  const col1W = tableW * 0.28   // logo
+  const col2W = tableW * 0.44   // nombre conjunto
+  const col3W = tableW - col1W - col2W  // meta (versión / fecha / acta)
+  const subRowH = tableH / 3
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.text('ACTA DE SELECCIÓN DE ADMINISTRADOR', pageW / 2, 11, { align: 'center' })
+  // Borde exterior + divisores verticales
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.4)
+  doc.rect(margin, tableY, tableW, tableH)
+  doc.line(margin + col1W, tableY, margin + col1W, tableY + tableH)
+  doc.line(margin + col1W + col2W, tableY, margin + col1W + col2W, tableY + tableH)
 
+  // Divisores horizontales en la columna derecha
+  doc.line(margin + col1W + col2W, tableY + subRowH,     pageW - margin, tableY + subRowH)
+  doc.line(margin + col1W + col2W, tableY + 2 * subRowH, pageW - margin, tableY + 2 * subRowH)
+
+  // ── Columna 1: logo ──────────────────────────────────────────────────────
+  if (conjunto.logo_url) {
+    const dataUrl = await loadLogoDataUrl(conjunto.logo_url)
+    if (dataUrl) {
+      const maxW = col1W - 4
+      const maxH = tableH - 4
+      // Obtener dimensiones originales desde el dataUrl
+      const tmpImg = new Image()
+      tmpImg.src = dataUrl
+      const scale = Math.min(maxW / (tmpImg.naturalWidth || maxW), maxH / (tmpImg.naturalHeight || maxH))
+      const imgW = (tmpImg.naturalWidth || maxW) * scale
+      const imgH = (tmpImg.naturalHeight || maxH) * scale
+      doc.addImage(dataUrl, 'PNG', margin + (col1W - imgW) / 2, tableY + (tableH - imgH) / 2, imgW, imgH)
+    }
+  }
+
+  // ── Columna 2: nombre del conjunto ───────────────────────────────────────
+  doc.setTextColor(0, 0, 0)
   doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.text(conjunto.nombre.toUpperCase(), pageW / 2, 18, { align: 'center' })
-  doc.text(`${conjunto.direccion} — ${conjunto.ciudad}`, pageW / 2, 24, { align: 'center' })
+  doc.setFont('helvetica', 'bold')
+  const centerX = margin + col1W + col2W / 2
+  const lines = doc.splitTextToSize(conjunto.nombre.toUpperCase(), col2W - 6) as string[]
+  const lineH = 5
+  const blockH = lines.length * lineH
+  const textStartY = tableY + (tableH - blockH) / 2 + lineH * 0.75
+  doc.text(lines, centerX, textStartY, { align: 'center' })
 
-  // Línea de datos del proceso
+  // ── Columna 3: meta ───────────────────────────────────────────────────────
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  const col3TextX = margin + col1W + col2W + 3
+  const year = new Date(fecha_generacion).getFullYear()
+  const actaNum = numero_acta ?? `001-${year}`
+  const fechaFmt = new Date(proceso.fecha_inicio + 'T12:00:00').toLocaleDateString('es-CO', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+  doc.text(`Versión: 001`,        col3TextX, tableY + subRowH * 0.5,  { baseline: 'middle' })
+  doc.text(`Fecha: ${fechaFmt}`,  col3TextX, tableY + subRowH * 1.5,  { baseline: 'middle' })
+  doc.text(`Acta No. ${actaNum}`, col3TextX, tableY + subRowH * 2.5,  { baseline: 'middle' })
+
+  // Nombre del proceso debajo de la tabla
   doc.setTextColor(60, 60, 60)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
-  const fechaGen = fechaColombia(datos.fecha_generacion)
-  const fechaInicio = fechaColombia(proceso.fecha_inicio)
-  doc.text(`Proceso: ${proceso.nombre}   |   Inicio: ${fechaInicio}   |   Generado: ${fechaGen}`, pageW / 2, 34, { align: 'center' })
-
-  doc.setDrawColor(...COLOR_PRIMARIO)
-  doc.setLineWidth(0.4)
-  doc.line(14, 37, pageW - 14, 37)
+  doc.text(
+    `Proceso: ${proceso.nombre}   |   Generado: ${fechaColombia(fecha_generacion)}`,
+    pageW / 2,
+    tableY + tableH + 5,
+    { align: 'center' },
+  )
 }
 
 function titulo(doc: jsPDF, texto: string, y: number): number {
@@ -96,12 +163,12 @@ function piePagina(doc: jsPDF) {
   }
 }
 
-export function generarActaPDF(datos: DatosActa): void {
+export async function generarActaPDF(datos: DatosActa): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
-  let y = 42
+  let y = 48
 
-  encabezado(doc, datos)
+  await encabezado(doc, datos)
 
   // ── 1. CANDIDATOS EVALUADOS ───────────────────────────────────────────────
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
@@ -331,12 +398,12 @@ export function generarActaPDF(datos: DatosActa): void {
   doc.save(nombreArchivo)
 }
 
-export function previsualizarActaPDF(datos: DatosActa): string {
+export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
-  let y = 42
+  let y = 48
 
-  encabezado(doc, datos)
+  await encabezado(doc, datos)
 
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
   autoTable(doc, {
