@@ -1631,3 +1631,180 @@ function generarCodigoUnico(): string {
   const codigoNumeros = Math.floor(10000 + Math.random() * 90000).toString()
   return codigoLetras + codigoNumeros
 }
+
+// ---------------------------------------------------------------------------
+// CONTRATOS
+// ---------------------------------------------------------------------------
+
+import type { Contrato, ContratoConEstado, ContratoAnexo } from '../types/index'
+
+export type CreateContratoInput = Omit<
+  Contrato,
+  'id' | 'estado' | 'fecha_max_notificacion' | 'created_at' | 'updated_at'
+>
+
+export type UpdateContratoInput = Partial<Omit<Contrato, 'id' | 'conjunto_id' | 'created_at' | 'updated_at'>>
+
+/**
+ * Obtiene todos los contratos de un conjunto con estado calculado
+ */
+export async function getContratosConEstado(conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase.rpc('get_contratos_con_estado', {
+    p_conjunto_id: conjunto_id,
+  }) as Promise<{ data: ContratoConEstado[] | null; error: { message: string } | null }>
+}
+
+/**
+ * Obtiene todos los contratos de un conjunto (simple)
+ */
+export async function getContratos(conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('contratos')
+    .select('*')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+    .order('fecha_fin', { ascending: true })
+}
+
+/**
+ * Obtiene un contrato por ID
+ */
+export async function getContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').select('*').eq('id', id).single()
+}
+
+/**
+ * Crea un nuevo contrato
+ */
+export async function createContrato(data: CreateContratoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').insert([data]).select().single()
+}
+
+/**
+ * Actualiza un contrato existente
+ */
+export async function updateContrato(id: string, data: UpdateContratoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').update(data).eq('id', id).select().single()
+}
+
+/**
+ * Elimina (soft delete) un contrato
+ */
+export async function deleteContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').update({ activo: false }).eq('id', id).select().single()
+}
+
+/**
+ * Elimina permanentemente un contrato (hard delete)
+ */
+export async function hardDeleteContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').delete().eq('id', id)
+}
+
+// ---------------------------------------------------------------------------
+// CONTRATO ANEXOS (Otrosíes)
+// ---------------------------------------------------------------------------
+
+export type CreateContratoAnexoInput = Omit<ContratoAnexo, 'id' | 'created_at' | 'updated_at'>
+
+/**
+ * Obtiene todos los anexos de un contrato
+ */
+export async function getContratoAnexos(contrato_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('contrato_anexos')
+    .select('*')
+    .eq('contrato_id', contrato_id)
+    .order('fecha_documento', { ascending: false })
+}
+
+/**
+ * Crea un nuevo anexo de contrato
+ */
+export async function createContratoAnexo(data: CreateContratoAnexoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').insert([data]).select().single()
+}
+
+/**
+ * Actualiza un anexo de contrato
+ */
+export async function updateContratoAnexo(id: string, data: Partial<ContratoAnexo>) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').update(data).eq('id', id).select().single()
+}
+
+/**
+ * Elimina un anexo de contrato
+ */
+export async function deleteContratoAnexo(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').delete().eq('id', id)
+}
+
+/**
+ * Obtiene contratos próximos a vencer (para alertas)
+ */
+export async function getContratosProximosAVencer(conjunto_id: string, dias: number = 30) {
+  const supabase = await createServerClient()
+  const fechaLimite = new Date()
+  fechaLimite.setDate(fechaLimite.getDate() + dias)
+  
+  return supabase
+    .from('contratos')
+    .select('*')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+    .lte('fecha_fin', fechaLimite.toISOString().split('T')[0])
+    .gte('fecha_fin', new Date().toISOString().split('T')[0])
+    .order('fecha_fin', { ascending: true })
+}
+
+/**
+ * Obtiene estadísticas de contratos de un conjunto
+ */
+export async function getContratosStats(conjunto_id: string) {
+  const supabase = await createServerClient()
+  
+  const { data: contratos, error } = await supabase
+    .from('contratos')
+    .select('id, fecha_fin, estado')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+
+  if (error || !contratos) {
+    return { data: null, error }
+  }
+
+  const hoy = new Date()
+  const en30Dias = new Date()
+  en30Dias.setDate(en30Dias.getDate() + 30)
+
+  const stats = {
+    total: contratos.length,
+    vigentes: 0,
+    proximos_a_vencer: 0,
+    vencidos: 0,
+  }
+
+  for (const contrato of contratos) {
+    const fechaFin = new Date(contrato.fecha_fin)
+    if (fechaFin < hoy) {
+      stats.vencidos++
+    } else if (fechaFin <= en30Dias) {
+      stats.proximos_a_vencer++
+    } else {
+      stats.vigentes++
+    }
+  }
+
+  return { data: stats, error: null }
+}

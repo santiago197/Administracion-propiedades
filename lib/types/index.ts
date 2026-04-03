@@ -1,4 +1,56 @@
 export type TipoPersona = 'juridica' | 'natural'
+
+// ---------------------------------------------------------------------------
+// Contratos
+// ---------------------------------------------------------------------------
+
+export type EstadoContrato = 'vigente' | 'proximo_a_vencer' | 'vencido'
+
+export interface Contrato {
+  id: string
+  conjunto_id: string
+  nombre: string
+  responsable?: string
+  descripcion?: string
+  fecha_inicio: string
+  fecha_fin: string
+  dias_preaviso: number
+  fecha_max_notificacion?: string
+  valor?: number
+  moneda: string
+  archivo_principal_url?: string
+  archivo_principal_pathname?: string
+  observaciones?: string
+  estado: EstadoContrato
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ContratoConEstado extends Contrato {
+  estado_calculado: EstadoContrato
+  dias_para_vencer: number
+  dias_para_notificar: number
+  notificacion_vencida: boolean
+}
+
+export interface ContratoAnexo {
+  id: string
+  contrato_id: string
+  nombre: string
+  descripcion?: string
+  archivo_url?: string
+  archivo_pathname?: string
+  fecha_documento?: string
+  created_at: string
+  updated_at: string
+}
+
+export const LABEL_ESTADO_CONTRATO: Record<EstadoContrato, string> = {
+  vigente: 'Vigente',
+  proximo_a_vencer: 'Próximo a vencer',
+  vencido: 'Vencido',
+}
 export type CargoCohnsejero =
   | 'presidente'
   | 'vicepresidente'
