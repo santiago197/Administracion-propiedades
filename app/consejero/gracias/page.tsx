@@ -21,7 +21,6 @@ export default function GraciasPagina() {
           </p>
 
           <p className="text-sm text-muted-foreground mb-8">
-            El administrador del conjunto notificará los resultados finales una vez que todos los consejeros hayan completado sus evaluaciones y votos.
           </p>
 
           <Card className="border-dashed border border-primary/20 bg-primary/5 p-4 mb-8">

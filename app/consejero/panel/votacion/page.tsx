@@ -34,7 +34,8 @@ interface Propuesta {
   valor_honorarios?: number | null
 }
 
-interface EvaluacionItem {
+interface EvaluacionFlat {
+  propuesta_id: string
   criterio_id: string
   valor: number
 }
@@ -42,7 +43,7 @@ interface EvaluacionItem {
 interface DatosEvaluacion {
   propuestas: Propuesta[]
   criterios: Array<{ id: string; nombre: string; peso: number }>
-  evaluaciones: Array<{ propuesta_id: string; items: EvaluacionItem[] }>
+  evaluaciones: EvaluacionFlat[]
   ya_voto: boolean
 }
 
@@ -164,12 +165,13 @@ export default function VotacionPage() {
   const { propuestas, evaluaciones, criterios } = datos
 
   // Verificar si todas las evaluaciones están completas
+  // La API devuelve filas planas: [{ propuesta_id, criterio_id, valor }]
   function isComplete(propuestaId: string) {
-    const ev = evaluaciones.find((e) => e.propuesta_id === propuestaId)
-    if (!ev || !ev.items || !Array.isArray(ev.items)) return false
+    const evsPropuesta = evaluaciones.filter((e) => e.propuesta_id === propuestaId)
+    if (evsPropuesta.length === 0) return false
     return criterios.every((c) => {
-      const item = ev.items?.find((i) => i.criterio_id === c.id)
-      return item && item.valor > 0
+      const ev = evsPropuesta.find((e) => e.criterio_id === c.id)
+      return ev !== undefined && ev.valor !== undefined && ev.valor !== null
     })
   }
 
