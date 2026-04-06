@@ -37,7 +37,12 @@
       "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -name *cambiar* -o -name *estado*)",
       "Bash(xargs grep:*)",
       "Bash(grep -r \"generarActaPDF\\\\|previsualizarActaPDF\" C:UserssantiDesktopDESARROLLOSAdministracion-propiedades --include=*.tsx --include=*.ts)",
-      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -type f -name *.ts -o -name *.tsx)"
+      "Bash(find C:UserssantiDesktopDESARROLLOSAdministracion-propiedadesappapi -type f -name *.ts -o -name *.tsx)",
+      "Bash(find /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/components/admin -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(grep -r w-[.*px] /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
+      "Bash(grep -r min-w-[.*px] /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
+      "Bash(grep -r 'hidden sm:' /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
+      "Bash(grep -r 'hidden md:' /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -153,10 +153,10 @@ export default function VotacionConsejoPage() {
             Resultado de votos y seguimiento de participación. Auditable bajo Ley 675.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {procesos.length > 1 && (
             <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-44 sm:w-56">
                 <SelectValue placeholder="Selecciona proceso" />
               </SelectTrigger>
               <SelectContent>
@@ -312,7 +312,8 @@ export default function VotacionConsejoPage() {
               No hay consejeros activos para este proceso.
             </p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto -mx-6 px-6">
+            <Table className="min-w-[480px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Consejero</TableHead>
@@ -357,6 +358,7 @@ export default function VotacionConsejoPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
             Registra quién falta por votar. Requisito de trazabilidad Ley 675.

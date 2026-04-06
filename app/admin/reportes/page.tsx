@@ -92,7 +92,7 @@ export default function ReportesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Exportable / Auditoría</p>
           <h1 className="text-2xl tracking-tight">Informes y Auditoría</h1>

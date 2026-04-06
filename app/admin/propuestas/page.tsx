@@ -378,7 +378,7 @@ export default function PropuestasPage() {
   return (
     <div className="space-y-6">
       {/* Encabezado */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Candidatos</p>
           <h1 className="text-2xl tracking-tight">Propuestas</h1>
@@ -412,10 +412,10 @@ export default function PropuestasPage() {
 
       {/* Selector de proceso */}
       {procesos.length > 0 && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <Label>Proceso:</Label>
           <Select value={selectedProceso} onValueChange={handleProcesoChange}>
-            <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
             <SelectContent>
               {procesos.map((p) => (
                 <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
@@ -443,7 +443,7 @@ export default function PropuestasPage() {
           ) : (
             <>
               <div className="overflow-x-auto -mx-6 px-6">
-                <Table>
+                <Table className="min-w-[580px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Empresa / persona</TableHead>

@@ -190,13 +190,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Abrir menú"
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm overflow-hidden">
               {userData.logoUrl ? (
                 <Image
@@ -256,7 +256,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-screen-2xl">
-        <aside className="hidden w-64 shrink-0 border-r lg:w-72 md:block">{SidebarContent}</aside>
+        <aside className="hidden w-64 shrink-0 border-r lg:w-72 lg:block">{SidebarContent}</aside>
 
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-72 p-0">

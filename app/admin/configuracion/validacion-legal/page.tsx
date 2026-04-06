@@ -290,7 +290,7 @@ export default function ValidacionLegalItemsPage() {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px]">
+              <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="text-left text-xs uppercase text-muted-foreground">
                     <th className="py-3 pr-4">Sección</th>
