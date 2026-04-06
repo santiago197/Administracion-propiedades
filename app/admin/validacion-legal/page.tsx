@@ -88,7 +88,7 @@ export default function ValidacionLegalAdmin() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted-foreground">Control legal</p>
           <h1 className="text-2xl tracking-tight">Validación Legal</h1>
@@ -98,7 +98,7 @@ export default function ValidacionLegalAdmin() {
         </div>
         {procesos.length > 1 && (
           <Select value={selectedProcesoId} onValueChange={handleProcesosChange}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full sm:w-56">
               <SelectValue placeholder="Selecciona proceso" />
             </SelectTrigger>
             <SelectContent>
@@ -134,11 +134,11 @@ export default function ValidacionLegalAdmin() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Propuesta</TableHead>
-                  <TableHead>NIT / Cédula</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Cumple requisitos</TableHead>
+                  <TableHead className="hidden sm:table-cell">NIT / Cédula</TableHead>
+                  <TableHead className="hidden sm:table-cell">Tipo</TableHead>
+                  <TableHead>Cumple</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Observaciones</TableHead>
+                  <TableHead className="hidden md:table-cell">Observaciones</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -149,8 +149,8 @@ export default function ValidacionLegalAdmin() {
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-semibold">{p.razon_social}</TableCell>
-                      <TableCell className="text-muted-foreground tabular-nums">{p.nit_cedula}</TableCell>
-                      <TableCell className="capitalize">{p.tipo_persona}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground tabular-nums">{p.nit_cedula}</TableCell>
+                      <TableCell className="hidden sm:table-cell capitalize">{p.tipo_persona}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -168,7 +168,7 @@ export default function ValidacionLegalAdmin() {
                           {badge.label}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
+                      <TableCell className="hidden md:table-cell text-muted-foreground text-sm max-w-xs truncate">
                         {p.observaciones_legales ?? '—'}
                       </TableCell>
                       <TableCell className="text-right">

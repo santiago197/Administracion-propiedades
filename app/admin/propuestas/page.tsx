@@ -443,7 +443,7 @@ export default function PropuestasPage() {
           ) : (
             <>
               <div className="overflow-x-auto -mx-6 px-6">
-                <Table className="min-w-[580px]">
+                <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Empresa / persona</TableHead>
