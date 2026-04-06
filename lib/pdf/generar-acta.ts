@@ -149,7 +149,7 @@ function titulo(doc: jsPDF, texto: string, y: number): number {
   return y + 10
 }
 
-function piePagina(doc: jsPDF) {
+function piePagina(doc: jsPDF, generadoPor?: string) {
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
   const total = (doc as any).internal.getNumberOfPages()
@@ -158,8 +158,14 @@ function piePagina(doc: jsPDF) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(...COLOR_GRIS_MEDIO)
-    doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 6, { align: 'center' })
-    doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 3, { align: 'center' })
+    if (generadoPor) {
+      doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 9, { align: 'center' })
+      doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 6, { align: 'center' })
+      doc.text(`Generado por: ${generadoPor}`, pageW / 2, pageH - 3, { align: 'center' })
+    } else {
+      doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 6, { align: 'center' })
+      doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 3, { align: 'center' })
+    }
   }
 }
 
@@ -178,7 +184,7 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
     body: datos.candidatos.map((c, i) => [
       i + 1,
-      c.razon_social,
+      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
       labelTipoPersona(c.tipo_persona),
       labelEstado(c.estado),
       labelClasificacion(c.clasificacion),
@@ -188,6 +194,13 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
     margin: { left: 14, right: 14 },
     didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const candidato = datos.candidatos[hookData.row.index]
+        if (candidato?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        }
+      }
       if (hookData.section === 'body' && hookData.column.index === 4) {
         const val = String(hookData.cell.text)
         if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
@@ -366,7 +379,36 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     y = (doc as any).lastAutoTable.finalY + 12
   }
 
-  // ── 6. FIRMAS ─────────────────────────────────────────────────────────────
+  // ── 6. PARTICIPACIÓN DEL CONSEJO ─────────────────────────────────────────
+  const participacion = datos.participacion ?? { total_consejeros: 0, votaron: 0, porcentaje: 0 }
+  if (participacion.total_consejeros > 0) {
+    if (y > 230) { doc.addPage(); y = 16 }
+    y = titulo(doc, '6. PARTICIPACIÓN DEL CONSEJO', y)
+
+    const colorPart: [number, number, number] = participacion.porcentaje >= 70
+      ? COLOR_VERDE : participacion.porcentaje >= 50 ? COLOR_AMARILLO : COLOR_ROJO
+
+    autoTable(doc, {
+      startY: y,
+      body: [
+        ['Total consejeros activos', `${participacion.total_consejeros}`],
+        ['Consejeros que votaron', `${participacion.votaron}`],
+        ['Porcentaje de participación', `${participacion.porcentaje}%`],
+      ],
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 50, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.row.index === 2 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = colorPart
+          hookData.cell.styles.fontSize = 9
+        }
+      },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  // ── 7. FIRMAS ─────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
 
   doc.setFontSize(8)
@@ -392,7 +434,7 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     doc.text(cargo, x, y + 17, { align: 'center' })
   })
 
-  piePagina(doc)
+  piePagina(doc, datos.generado_por)
 
   const nombreArchivo = `Acta_Seleccion_${datos.conjunto.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
   doc.save(nombreArchivo)
@@ -411,7 +453,7 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
     body: datos.candidatos.map((c, i) => [
       i + 1,
-      c.razon_social,
+      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
       labelTipoPersona(c.tipo_persona),
       labelEstado(c.estado),
       labelClasificacion(c.clasificacion),
@@ -421,6 +463,13 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
     margin: { left: 14, right: 14 },
     didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const candidato = datos.candidatos[hookData.row.index]
+        if (candidato?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        }
+      }
       if (hookData.section === 'body' && hookData.column.index === 4) {
         const val = String(hookData.cell.text)
         if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
@@ -546,18 +595,47 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     y = (doc as any).lastAutoTable.finalY + 12
   }
 
+  // ── 6. PARTICIPACIÓN DEL CONSEJO ─────────────────────────────────────────
+  const participacion2 = datos.participacion ?? { total_consejeros: 0, votaron: 0, porcentaje: 0 }
+  if (participacion2.total_consejeros > 0) {
+    if (y > 230) { doc.addPage(); y = 16 }
+    y = titulo(doc, '6. PARTICIPACIÓN DEL CONSEJO', y)
+
+    const colorPart2: [number, number, number] = participacion2.porcentaje >= 70
+      ? COLOR_VERDE : participacion2.porcentaje >= 50 ? COLOR_AMARILLO : COLOR_ROJO
+
+    autoTable(doc, {
+      startY: y,
+      body: [
+        ['Total consejeros activos', `${participacion2.total_consejeros}`],
+        ['Consejeros que votaron', `${participacion2.votaron}`],
+        ['Porcentaje de participación', `${participacion2.porcentaje}%`],
+      ],
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 50, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.row.index === 2 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = colorPart2
+          hookData.cell.styles.fontSize = 9
+        }
+      },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
   if (y > 230) { doc.addPage(); y = 16 }
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.setTextColor(...COLOR_GRIS_MEDIO)
   doc.text('Firmas del Consejo de Administración', pageW / 2, y, { align: 'center' })
   y += 6
-  const firmas = ['Presidente del Consejo', 'Secretario del Consejo'
+  const firmas2 = ['Presidente del Consejo', 'Secretario del Consejo'
     // , 'Delegado de Copropiedad'
   ]
-  const anchoFirma = (pageW - 28) / firmas.length
-  firmas.forEach((cargo, i) => {
-    const x = 14 + i * anchoFirma + anchoFirma / 2
+  const anchoFirma2 = (pageW - 28) / firmas2.length
+  firmas2.forEach((cargo, i) => {
+    const x = 14 + i * anchoFirma2 + anchoFirma2 / 2
     doc.setDrawColor(150, 150, 150)
     doc.setLineWidth(0.3)
     doc.line(x - 30, y + 12, x + 30, y + 12)
@@ -566,7 +644,7 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     doc.text(cargo, x, y + 17, { align: 'center' })
   })
 
-  piePagina(doc)
+  piePagina(doc, datos.generado_por)
 
   return doc.output('bloburl') as unknown as string
 }

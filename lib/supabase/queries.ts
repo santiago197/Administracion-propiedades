@@ -775,11 +775,13 @@ export interface DatosActa {
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
+  participacion: { total_consejeros: number; votaron: number; porcentaje: number }
+  generado_por?: string
   fecha_generacion: string
   numero_acta?: string
 }
 
-export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
+export async function getDatosActa(proceso_id: string, generado_por?: string): Promise<DatosActa> {
   const supabase = await createServerClient()
 
   // Proceso + conjunto
@@ -810,12 +812,25 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     puntaje_final_propuesta: Number(v.propuestas?.puntaje_final ?? 0),
   })).sort((a, b) => b.puntaje_final_propuesta - a.puntaje_final_propuesta)
 
-  const [matriz, ranking] = await Promise.all([
+  const conjuntoId = (proceso as any)?.conjunto_id
+
+  const [matriz, ranking, { count: totalConsejeros }, { count: votaron }] = await Promise.all([
     getMatrizEvaluacionAdmin(proceso_id),
     getResultadosFinales(proceso_id),
+    supabase
+      .from('consejeros')
+      .select('id', { count: 'exact', head: true })
+      .eq('conjunto_id', conjuntoId)
+      .eq('activo', true),
+    supabase
+      .from('votos')
+      .select('id', { count: 'exact', head: true })
+      .eq('proceso_id', proceso_id),
   ])
 
   const conjunto = (proceso as any)?.conjuntos
+  const total = totalConsejeros ?? 0
+  const votaronCount = votaron ?? 0
 
   return {
     proceso: {
@@ -840,6 +855,12 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     matriz,
     ranking,
     votos,
+    participacion: {
+      total_consejeros: total,
+      votaron: votaronCount,
+      porcentaje: total > 0 ? Math.round((votaronCount / total) * 100) : 0,
+    },
+    generado_por,
     fecha_generacion: new Date().toISOString(),
   }
 }
