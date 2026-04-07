@@ -55,8 +55,8 @@ import { es } from 'date-fns/locale'
 import { Spinner } from '@/components/ui/spinner'
 import { PropuestaDetalle } from '@/components/admin/propuesta-detalle'
 import { FormPropuesta } from '@/components/admin/form-propuesta'
-import { LABEL_ESTADO, ESTADOS_TERMINALES } from '@/lib/types/index'
-import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona } from '@/lib/types/index'
+import { LABEL_ESTADO, ESTADOS_TERMINALES, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
+import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona, ChecklistLegal } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
 // Constantes de presentación
@@ -132,6 +132,20 @@ function calcularEstadoAcceso(acceso: AccesoProponente): EstadoAcceso {
   if (!acceso.activo) return 'inactivo'
   if (acceso.fechaLimite && new Date() > acceso.fechaLimite) return 'expirado'
   return 'activo'
+}
+
+// ---------------------------------------------------------------------------
+// Helper: % cumplimiento legal para la tabla
+// ---------------------------------------------------------------------------
+
+function pctCumplimientoLegal(p: Propuesta): number | null {
+  const ckl = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal
+  if (!ckl || Object.keys(ckl).length === 0) return null
+  const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
+  const items = ITEMS_VALIDACION_LEGAL.filter((d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona)
+  if (items.length === 0) return null
+  const cumplidos = items.filter((d) => ckl[d.id]?.estado === 'cumple').length
+  return Math.round((cumplidos / items.length) * 100)
 }
 
 // ---------------------------------------------------------------------------
@@ -473,6 +487,16 @@ export default function PropuestasPage() {
                           <Badge variant="outline" className={`text-xs whitespace-nowrap ${ESTADO_CLS[p.estado]}`}>
                             {LABEL_ESTADO[p.estado]}
                           </Badge>
+                          {(() => {
+                            const pct = pctCumplimientoLegal(p)
+                            if (pct === null) return null
+                            const color = pct === 100 ? 'text-green-600' : pct >= 70 ? 'text-orange-600' : 'text-destructive'
+                            return (
+                              <p className={`text-[10px] tabular-nums mt-0.5 ${color}`}>
+                                {pct}% legal
+                              </p>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right">
                           <span className="font-semibold tabular-nums text-sm">

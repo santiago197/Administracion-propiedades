@@ -1031,13 +1031,28 @@ function ValidacionLegalContent() {
                           </div>
                         )}
 
-                        {/* Resumen de ítems rechazados — solo cuando está cerrado */}
-                        {!abierto && estadoLegal === 'rechazado' && p.observaciones_legales && (
-                          <div className="mt-3 p-3 bg-destructive/5 rounded-md border border-destructive/20 text-sm">
-                            <p className="text-xs font-semibold mb-1 text-destructive/70 uppercase tracking-wide">
-                              Motivo de rechazo
+                        {/* Resumen de ítems rechazados u observaciones — solo cuando está cerrado */}
+                        {!abierto && (estadoLegal === 'rechazado' || estadoLegal === 'apto_con_obs') && p.observaciones_legales && (
+                          <div className={`mt-3 p-3 rounded-md border overflow-hidden ${
+                            estadoLegal === 'rechazado'
+                              ? 'bg-destructive/5 border-destructive/20'
+                              : 'bg-orange-500/5 border-orange-500/20'
+                          }`}>
+                            <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${
+                              estadoLegal === 'rechazado' ? 'text-destructive/70' : 'text-orange-700/70'
+                            }`}>
+                              {estadoLegal === 'rechazado' ? 'Motivo de rechazo' : 'Observaciones legales'}
                             </p>
-                            <p className="text-destructive/90 text-xs">{p.observaciones_legales}</p>
+                            <ul className="space-y-1">
+                              {p.observaciones_legales.split(' | ').map((item, i) => (
+                                <li key={i} className={`text-xs flex gap-1.5 min-w-0 ${
+                                  estadoLegal === 'rechazado' ? 'text-destructive/90' : 'text-orange-800/90'
+                                }`}>
+                                  <span className="shrink-0 mt-0.5">·</span>
+                                  <span className="break-words min-w-0">{item.trim()}</span>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
 

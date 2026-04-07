@@ -264,8 +264,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </SheetContent>
         </Sheet>
 
-        <main className="flex-1 px-4 py-6 md:px-6 lg:px-10">
-          <div className="rounded-2xl border bg-card/80 p-4 shadow-sm md:p-6">{children}</div>
+        <main className="flex-1 min-w-0 px-4 py-6 md:px-6 lg:px-10">
+          <div className="rounded-2xl border bg-card/80 p-4 shadow-sm md:p-6 overflow-x-hidden">{children}</div>
         </main>
       </div>
       <Toaster />
