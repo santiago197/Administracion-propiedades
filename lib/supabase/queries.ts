@@ -237,9 +237,32 @@ export async function existePropuestaPorDocumento(proceso_id: string, nit_cedula
   return { existe: !!data, error }
 }
 
-export async function getPropuestas(proceso_id: string) {
+export async function getPropuestas(proceso_id: string, created_by?: string) {
   const supabase = await createServerClient()
-  return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
+  
+  // Query con join a usuarios para obtener el nombre de quien creó la propuesta
+  let query = supabase
+    .from('propuestas')
+    .select('*, usuarios:created_by(nombre)')
+    .eq('proceso_id', proceso_id)
+  
+  // Filtrar por created_by si se proporciona
+  if (created_by) {
+    query = query.eq('created_by', created_by)
+  }
+  
+  const { data, error } = await query
+  
+  if (error) return { data: null, error }
+  
+  // Aplanar el resultado para incluir created_by_nombre
+  const propuestas = data?.map((p) => ({
+    ...p,
+    created_by_nombre: (p.usuarios as { nombre: string } | null)?.nombre ?? null,
+    usuarios: undefined,
+  })) ?? []
+  
+  return { data: propuestas, error: null }
 }
 
 export async function getPropuestaConjunto(id: string, conjunto_id: string) {

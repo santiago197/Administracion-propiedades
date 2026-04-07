@@ -5,15 +5,17 @@ import { createClient } from '@/lib/supabase/server'
 import { getRequestMeta } from '@/lib/supabase/audit'
 
 // ---------------------------------------------------------------------------
-// GET /api/propuestas?proceso_id=<uuid>
+// GET /api/propuestas?proceso_id=<uuid>&created_by=<uuid>
 // Lista todas las propuestas de un proceso
+// created_by es opcional: si se proporciona, filtra por el usuario que las creó
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user, rol } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   const { searchParams } = new URL(request.url)
   const proceso_id = searchParams.get('proceso_id')
+  const filterMine = searchParams.get('filter') === 'mine'
 
   if (!proceso_id) {
     return NextResponse.json(
@@ -27,7 +29,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Proceso no encontrado para el usuario' }, { status: 404 })
   }
 
-  const { data, error } = await getPropuestas(proceso_id)
+  // Si filter=mine, filtrar por el usuario actual
+  const createdByFilter = filterMine && user ? user.id : undefined
+
+  const { data, error } = await getPropuestas(proceso_id, createdByFilter)
 
   if (error) {
     console.error('[propuestas] GET error:', error)

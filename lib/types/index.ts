@@ -203,6 +203,8 @@ export interface Propuesta {
   puntaje_evaluacion: number
   votos_recibidos: number
   puntaje_final: number
+  created_by?: string
+  created_by_nombre?: string
   created_at: string
   updated_at: string
 }

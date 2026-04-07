@@ -162,6 +162,10 @@ export default function PropuestasPage() {
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
 
+  // Usuario actual y rol
+  const [userInfo, setUserInfo] = useState<{ id?: string; rol?: string; nombre?: string } | null>(null)
+  const [filterMode, setFilterMode] = useState<'todas' | 'mias'>('todas')
+
   // Retiro
   const [retiroTarget, setRetiroTarget]   = useState<Propuesta | null>(null)
   const [retiroObs, setRetiroObs]         = useState('')
@@ -178,9 +182,10 @@ export default function PropuestasPage() {
   // Data fetching
   // ---------------------------------------------------------------------------
 
-  const loadPropuestas = useCallback(async (procesoId: string): Promise<Propuesta[]> => {
+  const loadPropuestas = useCallback(async (procesoId: string, filter: 'todas' | 'mias' = 'todas'): Promise<Propuesta[]> => {
     try {
-      const res = await fetch(`/api/propuestas?proceso_id=${procesoId}`)
+      const filterParam = filter === 'mias' ? '&filter=mine' : ''
+      const res = await fetch(`/api/propuestas?proceso_id=${procesoId}${filterParam}`)
       if (!res.ok) throw new Error('Error al obtener propuestas')
       const data: Propuesta[] = await res.json()
       setPropuestas(data)
@@ -223,6 +228,13 @@ export default function PropuestasPage() {
     const init = async () => {
       setLoading(true)
       try {
+        // Obtener información del usuario actual
+        const meRes = await fetch('/api/me')
+        if (meRes.ok) {
+          const meData = await meRes.json()
+          setUserInfo({ id: meData.id, rol: meData.rol, nombre: meData.nombre })
+        }
+
         const conjRes = await fetch('/api/conjuntos')
         if (!conjRes.ok) throw new Error('Error al obtener conjunto')
         const conjunto = await conjRes.json()
@@ -236,7 +248,7 @@ export default function PropuestasPage() {
         if (procesosData.length > 0) {
           const primerProceso = procesosData[0].id
           setSelectedProceso(primerProceso)
-          await loadPropuestas(primerProceso)
+          await loadPropuestas(primerProceso, filterMode)
         }
       } catch (e) {
         console.error('Error fetching data:', e)
@@ -245,22 +257,29 @@ export default function PropuestasPage() {
       }
     }
     init()
-  }, [loadPropuestas])
+  }, [loadPropuestas, filterMode])
 
   async function handleProcesoChange(procesoId: string) {
     setSelectedProceso(procesoId)
     setSelectedPropuesta(null)
-    await loadPropuestas(procesoId)
+    await loadPropuestas(procesoId, filterMode)
+  }
+
+  async function handleFilterChange(filter: 'todas' | 'mias') {
+    setFilterMode(filter)
+    if (selectedProceso) {
+      await loadPropuestas(selectedProceso, filter)
+    }
   }
 
   // Refresca la lista y mantiene la selección actualizada
   const handlePropuestaChanged = useCallback(async () => {
-    const data = await loadPropuestas(selectedProceso)
+    const data = await loadPropuestas(selectedProceso, filterMode)
     if (selectedPropuesta) {
       const fresh = data.find((p) => p.id === selectedPropuesta.id)
       setSelectedPropuesta(fresh ?? null)
     }
-  }, [loadPropuestas, selectedProceso, selectedPropuesta])
+  }, [loadPropuestas, selectedProceso, selectedPropuesta, filterMode])
 
   // ---------------------------------------------------------------------------
   // Funciones de Acceso Proponente
@@ -377,7 +396,7 @@ export default function PropuestasPage() {
       if (selectedPropuesta?.id === retiroTarget.id) setSelectedPropuesta(null)
       setRetiroTarget(null)
       setRetiroObs('')
-      await loadPropuestas(selectedProceso)
+      await loadPropuestas(selectedProceso, filterMode)
     } catch (e) {
       setRetiroError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
@@ -413,7 +432,7 @@ export default function PropuestasPage() {
               <FormPropuesta
                 procesoId={selectedProceso}
                 onSuccess={() => {
-                  loadPropuestas(selectedProceso)
+                  loadPropuestas(selectedProceso, filterMode)
                   handleCloseDialog(false)
                 }}
                 onCancel={() => handleCloseDialog(false)}
@@ -424,18 +443,32 @@ export default function PropuestasPage() {
         </Dialog>
       </div>
 
-      {/* Selector de proceso */}
+      {/* Selector de proceso y filtro */}
       {procesos.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-          <Label>Proceso:</Label>
-          <Select value={selectedProceso} onValueChange={handleProcesoChange}>
-            <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {procesos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label>Proceso:</Label>
+            <Select value={selectedProceso} onValueChange={handleProcesoChange}>
+              <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {procesos.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Filtro de propuestas */}
+          <div className="flex items-center gap-2">
+            <Label>Mostrar:</Label>
+            <Select value={filterMode} onValueChange={(v) => handleFilterChange(v as 'todas' | 'mias')}>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las propuestas</SelectItem>
+                <SelectItem value="mias">Cargadas por mí</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -466,6 +499,7 @@ export default function PropuestasPage() {
                       <TableHead className="hidden md:table-cell text-right">Puntaje</TableHead>
                       <TableHead className="hidden md:table-cell">Clasificación</TableHead>
                       <TableHead className="hidden lg:table-cell">Acceso Proponente</TableHead>
+                      <TableHead className="hidden lg:table-cell">Cargado por</TableHead>
                       <TableHead className="hidden lg:table-cell">Contacto</TableHead>
                       <TableHead className="text-right w-20">Acciones</TableHead>
                     </TableRow>
@@ -574,6 +608,10 @@ export default function PropuestasPage() {
                               </div>
                             )
                           })()}
+                        </TableCell>
+                        {/* Cargado por */}
+                        <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                          {p.created_by_nombre ?? '—'}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{p.email ?? '—'}</TableCell>
                         <TableCell>
