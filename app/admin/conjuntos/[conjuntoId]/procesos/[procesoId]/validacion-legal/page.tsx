@@ -39,7 +39,7 @@ import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
-type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente' | 'no_disponible'
+type EstadoLegal = 'aprobado' | 'apto_con_obs' | 'rechazado' | 'pendiente' | 'no_disponible'
 
 // ─── Flujo de estados ─────────────────────────────────────────────────────────
 
@@ -89,21 +89,22 @@ const ESTADOS_YA_VALIDADOS = ['habilitada', 'no_apto_legal', 'en_evaluacion']
 const ESTADOS_TERMINALES = ['adjudicado', 'descalificada', 'retirada']
 
 function getEstadoLegal(p: Propuesta): EstadoLegal {
-  if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') return 'aprobado'
+  if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') {
+    if (p.observaciones_legales) return 'apto_con_obs'
+    return 'aprobado'
+  }
   if (p.estado === 'no_apto_legal') return 'rechazado'
-  // Permitir validar cualquier propuesta que no esté en estado terminal
   if (ESTADOS_TERMINALES.includes(p.estado)) return 'no_disponible'
-  // Todos los demás (registro, en_revision, incompleto, en_subsanacion, en_validacion) son pendientes
   return 'pendiente'
 }
 
 function getOrdenEstado(p: Propuesta): number {
   const estado = getEstadoLegal(p)
-  // Orden: pendientes primero, luego aprobados, luego rechazados, luego no disponibles
   if (estado === 'pendiente') return 0
   if (estado === 'aprobado') return 1
-  if (estado === 'rechazado') return 2
-  return 3
+  if (estado === 'apto_con_obs') return 2
+  if (estado === 'rechazado') return 3
+  return 4
 }
 
 /** Calcula si el checklist local permite confirmar */
@@ -129,6 +130,29 @@ function calcularEstadoChecklist(
     cumple: bloqueantes.length === 0 && pendientes.length === 0,
     bloqueantes,
     pendientes,
+  }
+}
+
+function calcularCumplimientoLegal(
+  checklist: ChecklistLegal,
+  tipoPersona: 'juridica' | 'natural'
+): { pct: number; cumplidos: number; total: number; criticosFallidos: number; importantesFallidos: number } {
+  const items = ITEMS_VALIDACION_LEGAL.filter(
+    (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+  )
+  const cumplidos = items.filter((d) => checklist[d.id]?.estado === 'cumple').length
+  const criticosFallidos = items.filter(
+    (d) => d.criticidad === 'critico' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  const importantesFallidos = items.filter(
+    (d) => d.criticidad === 'importante' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  return {
+    pct: items.length > 0 ? Math.round((cumplidos / items.length) * 100) : 0,
+    cumplidos,
+    total: items.length,
+    criticosFallidos,
+    importantesFallidos,
   }
 }
 
@@ -168,6 +192,14 @@ function BadgeEstado({ estado, estadoPropuesta }: { estado: EstadoLegal; estadoP
       </Badge>
     )
   }
+  if (estado === 'apto_con_obs') {
+    return (
+      <Badge variant="outline" className="border-orange-500/30 bg-orange-500/10 text-orange-700 gap-1.5">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        Apto legal con observaciones
+      </Badge>
+    )
+  }
   if (estado === 'rechazado') {
     return (
       <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive gap-1.5">
@@ -202,6 +234,55 @@ function BadgeEstado({ estado, estadoPropuesta }: { estado: EstadoLegal; estadoP
       <Clock className="h-3.5 w-3.5" />
       {labelEstadoPendiente[estadoPropuesta ?? ''] ?? 'Pendiente de validación'}
     </Badge>
+  )
+}
+
+function BarraCumplimiento({
+  pct,
+  cumplidos,
+  total,
+  criticosFallidos,
+  importantesFallidos,
+}: {
+  pct: number
+  cumplidos: number
+  total: number
+  criticosFallidos: number
+  importantesFallidos: number
+}) {
+  const barColor =
+    criticosFallidos > 0 ? 'bg-destructive' : importantesFallidos > 0 ? 'bg-orange-500' : pct === 100 ? 'bg-green-500' : 'bg-primary'
+  const pctColor =
+    criticosFallidos > 0 ? 'text-destructive' : importantesFallidos > 0 ? 'text-orange-700' : 'text-green-700'
+
+  return (
+    <div className="mt-2.5 space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{cumplidos} de {total} ítems cumplen</span>
+        <span className={`font-semibold tabular-nums ${pctColor}`}>{pct}% cumplimiento</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {(criticosFallidos > 0 || importantesFallidos > 0) && (
+        <p className="text-[11px] text-muted-foreground">
+          {criticosFallidos > 0 && (
+            <span className="text-destructive">
+              {criticosFallidos} crítico{criticosFallidos > 1 ? 's' : ''} no cumple
+            </span>
+          )}
+          {criticosFallidos > 0 && importantesFallidos > 0 && ' · '}
+          {importantesFallidos > 0 && (
+            <span className="text-orange-700">
+              {importantesFallidos} importante{importantesFallidos > 1 ? 's' : ''} con observación
+            </span>
+          )}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -582,13 +663,27 @@ function ValidacionLegalContent() {
 
       if (response.ok) {
         const cumpleFinal = bloqueantes.length === 0
+        const observacionesLegalesLocal: string | undefined = (() => {
+          const fallidos = ITEMS_VALIDACION_LEGAL.filter((d) => {
+            if (d.aplica_a !== 'ambos' && d.aplica_a !== tipoPersona) return false
+            return checklist[d.id]?.estado === 'no_cumple'
+          })
+          if (fallidos.length === 0) return undefined
+          return fallidos
+            .map((d) => {
+              const obs = checklist[d.id]?.observacion?.trim()
+              return obs ? `${d.label}: ${obs}` : `${d.label}: No cumple`
+            })
+            .join(' | ')
+        })()
         setPropuestas((prev) =>
-          prev.map((p) =>
+          prev.map((p): Propuesta =>
             p.id === propuesta.id
               ? {
                   ...p,
-                  estado: data.estado ?? (cumpleFinal ? 'habilitada' : 'no_apto_legal'),
+                  estado: (data.estado ?? (cumpleFinal ? 'habilitada' : 'no_apto_legal')) as Propuesta['estado'],
                   cumple_requisitos_legales: cumpleFinal,
+                  observaciones_legales: cumpleFinal ? observacionesLegalesLocal : p.observaciones_legales,
                 }
               : p
           )
@@ -627,9 +722,9 @@ function ValidacionLegalContent() {
       if (response.ok) {
         // Actualizar el estado local
         setPropuestas((prev) =>
-          prev.map((p) =>
+          prev.map((p): Propuesta =>
             p.id === propuesta.id
-              ? { ...p, estado: nuevoEstado }
+              ? { ...p, estado: nuevoEstado as Propuesta['estado'] }
               : p
           )
         )
@@ -654,6 +749,7 @@ function ValidacionLegalContent() {
   // ─── Contadores ─────────────────────────────────────────────────────────────
 
   const aprobadas = propuestas.filter((p) => getEstadoLegal(p) === 'aprobado').length
+  const aptaConObs = propuestas.filter((p) => getEstadoLegal(p) === 'apto_con_obs').length
   const rechazadas = propuestas.filter((p) => getEstadoLegal(p) === 'rechazado').length
   const pendientesValidacion = propuestas.filter((p) => getEstadoLegal(p) === 'pendiente').length
   const noDisponibles = propuestas.filter((p) => getEstadoLegal(p) === 'no_disponible').length
@@ -701,7 +797,7 @@ function ValidacionLegalContent() {
 
         {/* Resumen de estado */}
         {propuestas.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <Card className="p-3 text-center border border-amber-500/20 bg-amber-500/5">
               <p className="text-2xl font-bold text-amber-700">{pendientesValidacion}</p>
               <p className="text-xs text-amber-700 mt-0.5">Pendientes</p>
@@ -709,6 +805,10 @@ function ValidacionLegalContent() {
             <Card className="p-3 text-center border border-green-500/20 bg-green-500/5">
               <p className="text-2xl font-bold text-green-700">{aprobadas}</p>
               <p className="text-xs text-green-700 mt-0.5">Habilitados</p>
+            </Card>
+            <Card className="p-3 text-center border border-orange-500/20 bg-orange-500/5">
+              <p className="text-2xl font-bold text-orange-700">{aptaConObs}</p>
+              <p className="text-xs text-orange-700 mt-0.5">Con observaciones</p>
             </Card>
             <Card className="p-3 text-center border border-destructive/20 bg-destructive/5">
               <p className="text-2xl font-bold text-destructive">{rechazadas}</p>
@@ -762,6 +862,8 @@ function ValidacionLegalContent() {
                   className={`border transition-all ${
                     estadoLegal === 'aprobado'
                       ? 'border-green-500/20 bg-green-500/5'
+                      : estadoLegal === 'apto_con_obs'
+                      ? 'border-orange-500/20 bg-orange-500/5'
                       : estadoLegal === 'rechazado'
                       ? 'border-destructive/20 bg-destructive/5'
                       : estadoLegal === 'no_disponible'
@@ -775,6 +877,7 @@ function ValidacionLegalContent() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start gap-2 flex-wrap mb-2">
                           {estadoLegal === 'aprobado' && <ShieldCheck className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />}
+                          {estadoLegal === 'apto_con_obs' && <ShieldCheck className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />}
                           {estadoLegal === 'rechazado' && <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />}
                           {estadoLegal === 'pendiente' && <ShieldQuestion className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />}
                           {estadoLegal === 'no_disponible' && <Circle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />}
@@ -785,6 +888,13 @@ function ValidacionLegalContent() {
                         </div>
 
                         <BadgeEstado estado={estadoLegal} estadoPropuesta={p.estado} />
+
+                        {/* Barra de cumplimiento legal */}
+                        {(() => {
+                          const ckl = checklists[p.id] ?? (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
+                          if (!ckl || Object.keys(ckl).length === 0) return null
+                          return <BarraCumplimiento {...calcularCumplimientoLegal(ckl, tipoPersona)} />
+                        })()}
 
                         <p className="text-sm text-muted-foreground mt-2">
                           {p.tipo_persona === 'juridica' ? 'NIT' : 'CC'}: {p.nit_cedula}
@@ -989,10 +1099,29 @@ function EstadoCalculadoChecklist({
   )
 
   if (bloqueantes.length === 0 && pendientes.length === 0) {
+    const importantesFallidos = ITEMS_VALIDACION_LEGAL.filter(
+      (d) =>
+        (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) &&
+        d.criticidad === 'importante' &&
+        checklist[d.id]?.estado === 'no_cumple'
+    ).length
+
+    if (importantesFallidos > 0) {
+      return (
+        <div className="flex items-start gap-2 rounded-md border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700">
+          <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Ítems críticos OK — el candidato puede ser <strong>habilitado con observaciones</strong>.{' '}
+            {importantesFallidos} ítem{importantesFallidos > 1 ? 's' : ''} importante{importantesFallidos > 1 ? 's' : ''} sin cumplir (no bloquean habilitación).
+          </span>
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center gap-2 rounded-md border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-700">
         <ShieldCheck className="h-4 w-4 shrink-0" />
-        <span>Todos los ítems críticos revisados — el candidato puede ser <strong>habilitado</strong>.</span>
+        <span>Todos los ítems revisados — el candidato puede ser <strong>habilitado</strong>.</span>
       </div>
     )
   }

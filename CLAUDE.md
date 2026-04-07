@@ -200,6 +200,40 @@ La tabla `usuarios_permisos` (migración `011`) es infraestructura para asignaci
 
 Componentes de Radix UI / shadcn. No usar MUI. Importaciones de componentes UI desde `@/components/ui/`. Recharts se usa para gráficos (`recharts`). Formularios con `react-hook-form` + `zod`.
 
+### Estados de documentos — sistema dual
+
+Los documentos tienen **dos representaciones de estado distintas** que se convierten entre sí en `lib/supabase/documentos.ts`:
+
+- **DB (UPPERCASE)**: `PENDIENTE` | `CARGADO` | `EN_REVISION` | `APROBADO` | `RECHAZADO` | `VENCIDO`
+- **App (lowercase)**: `pendiente` | `completo` | `incompleto` | `vencido`  (tipo `EstadoDocumento` en `lib/types/index.ts`)
+
+Usar `normalizeEstadoDocumentoDb()` al escribir a la BD y `normalizeEstadoDocumentoApp()` al leer. Nunca construir strings de estado inline.
+
+### Generación de PDF
+
+`lib/pdf/generar-acta.ts` implementa la generación del acta de selección usando `jsPDF` + `jspdf-autotable`. Recibe un objeto `DatosActa` (tipo exportado desde `queries.ts`) y retorna un `Blob`. El endpoint que lo invoca está en `app/admin/conjuntos/[conjuntoId]/procesos/[procesoId]/resultados/`.
+
+### Ruta pública de consulta
+
+`/consulta/[procesoId]` es un dashboard público de resultados (sin autenticación). No está declarada en `middleware.ts` como ruta pública explícita — el middleware la permite implícitamente porque no está bajo `/admin/*` y no existe sesión activa que verificar. Al agregar lógica de auth a esta ruta, tener cuidado de no romper el acceso público.
+
+### Redirección post-login por rol
+
+En `middleware.ts`, tras login exitoso el `superadmin` es redirigido a `/admin/conjuntos` (no a `/admin`). Los demás roles van a `/admin`.
+
+### Utilidades adicionales en `lib/`
+
+- `lib/supabase/audit.ts` — helpers para registrar eventos en `audit_log`
+- `lib/supabase/user.ts` — helpers para obtener el perfil del usuario actual
+- `lib/rate-limit.ts` — limitador de velocidad por IP para API routes
+- `lib/mock/admin-data.ts` — datos mock usados en páginas de finanzas y contratos (aún sin implementación real)
+
+### Variable de entorno adicional requerida
+
+```
+BLOB_READ_WRITE_TOKEN=   # Token de Vercel Blob para subida de documentos
+```
+
   Fecha: 29 marzo 2026 | Conjunto objetivo: Barlovento Reservado Club Residencial P.H.
 
   ---
