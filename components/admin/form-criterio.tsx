@@ -49,7 +49,8 @@ export function FormCriterio({ procesoId, onSuccess, loading = false }: FormCrit
         const res = await fetch('/api/criterios?activos=true')
         if (!res.ok) throw new Error('Error al cargar criterios base')
         const data = await res.json()
-        setCatalogo(data.criterios ?? [])
+        const criterios = Array.isArray(data) ? data : data.criterios
+        setCatalogo(criterios ?? [])
       } catch (err) {
         setCatalogoError(err instanceof Error ? err.message : 'Error al cargar criterios base')
       } finally {
@@ -68,6 +69,11 @@ export function FormCriterio({ procesoId, onSuccess, loading = false }: FormCrit
     try {
       if (!formData.criterio_evaluacion_id) {
         setError('Selecciona un criterio del catálogo')
+        setIsSubmitting(false)
+        return
+      }
+      if (formData.valor_minimo > formData.valor_maximo) {
+        setError('El valor mínimo no puede ser mayor al máximo')
         setIsSubmitting(false)
         return
       }

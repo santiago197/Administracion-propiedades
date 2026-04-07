@@ -21,10 +21,11 @@ import {
   Settings2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { CriterioEvaluacion } from '@/lib/types'
+import type { Criterio, CriterioEvaluacion } from '@/lib/types'
 
 type CriterioConfig = {
-  id: string
+  criterioId?: string
+  criterio_evaluacion_id: string
   peso: number
   valorMin: number
   valorMax: number
@@ -38,6 +39,10 @@ export default function ConfigurarCriteriosProceso() {
   const [catalogo, setCatalogo] = useState<CriterioEvaluacion[]>([])
   const [catalogoLoading, setCatalogoLoading] = useState(true)
   const [catalogoError, setCatalogoError] = useState<string | null>(null)
+  const [criteriosProceso, setCriteriosProceso] = useState<Criterio[]>([])
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   // Estado de criterios seleccionados (checkbox del catálogo)
   const [seleccionados, setSeleccionados] = useState<Set<string>>(
@@ -48,17 +53,51 @@ export default function ConfigurarCriteriosProceso() {
   const [configuracion, setConfiguracion] = useState<Record<string, CriterioConfig>>({})
 
   useEffect(() => {
-    const fetchCatalogo = async () => {
+    const fetchData = async () => {
       try {
         setCatalogoLoading(true)
         setCatalogoError(null)
-        const res = await fetch('/api/criterios?activos=true')
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
+        const [catalogoRes, procesoRes] = await Promise.all([
+          fetch('/api/criterios'),
+          fetch(`/api/criterios?proceso_id=${procesoId}`),
+        ])
+
+        if (!catalogoRes.ok) {
+          const body = await catalogoRes.json().catch(() => ({}))
           throw new Error(body.error ?? 'No se pudo cargar el catálogo de criterios')
         }
-        const body = await res.json()
-        setCatalogo(body.criterios ?? [])
+        if (!procesoRes.ok) {
+          const body = await procesoRes.json().catch(() => ({}))
+          throw new Error(body.error ?? 'No se pudo cargar la configuración del proceso')
+        }
+
+        const catalogoBody = await catalogoRes.json()
+        const procesoBody = await procesoRes.json()
+        const criteriosCatalogo = catalogoBody.criterios ?? []
+        const criteriosActuales = Array.isArray(procesoBody) ? procesoBody : (procesoBody?.criterios ?? [])
+
+        setCatalogo(criteriosCatalogo)
+        setCriteriosProceso(criteriosActuales)
+
+        const seleccion = new Set<string>()
+        const config: Record<string, CriterioConfig> = {}
+
+        criteriosActuales.forEach((criterio: Criterio) => {
+          const key = criterio.criterio_evaluacion_id || criterio.id
+          seleccion.add(key)
+          config[key] = {
+            criterioId: criterio.id,
+            criterio_evaluacion_id: key,
+            peso: criterio.peso,
+            valorMin: criterio.valor_minimo,
+            valorMax: criterio.valor_maximo,
+            orden: criterio.orden,
+            activo: criterio.activo,
+          }
+        })
+
+        setSeleccionados(seleccion)
+        setConfiguracion(config)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Error al cargar el catálogo'
         setCatalogoError(message)
@@ -67,8 +106,8 @@ export default function ConfigurarCriteriosProceso() {
       }
     }
 
-    fetchCatalogo()
-  }, [])
+    fetchData()
+  }, [procesoId])
 
   // Toggle selección de criterio del catálogo
   const toggleSeleccion = (id: string) => {
@@ -79,13 +118,14 @@ export default function ConfigurarCriteriosProceso() {
       const newConfig = { ...configuracion }
       delete newConfig[id]
       setConfiguracion(newConfig)
+      setSaveSuccess(false)
     } else {
       newSeleccionados.add(id)
       // Agregar configuración por defecto
       setConfiguracion((prev) => ({
         ...prev,
         [id]: {
-          id,
+          criterio_evaluacion_id: id,
           peso: 0,
           valorMin: 1,
           valorMax: 5,
@@ -93,6 +133,7 @@ export default function ConfigurarCriteriosProceso() {
           activo: true,
         },
       }))
+      setSaveSuccess(false)
     }
     setSeleccionados(newSeleccionados)
   }
@@ -103,6 +144,7 @@ export default function ConfigurarCriteriosProceso() {
       ...prev,
       [id]: { ...prev[id], [field]: value },
     }))
+    setSaveSuccess(false)
   }
 
   // Calcular suma de pesos
@@ -116,12 +158,123 @@ export default function ConfigurarCriteriosProceso() {
   // Ordenar criterios configurados
   const criteriosOrdenados = Object.values(configuracion).sort((a, b) => a.orden - b.orden)
 
+  const handleSave = async () => {
+    if (!pesoValido) {
+      setSaveError('La suma de pesos debe ser 100%')
+      return
+    }
+
+    setSaving(true)
+    setSaveError(null)
+    setSaveSuccess(false)
+
+    try {
+      const seleccionadosIds = new Set(seleccionados)
+      const criteriosSeleccionados = Object.values(configuracion)
+
+      const eliminados = criteriosProceso.filter(
+        (criterio) => !seleccionadosIds.has(criterio.criterio_evaluacion_id)
+      )
+
+      const deletes = eliminados.map((criterio) =>
+        fetch(`/api/criterios/${criterio.id}?proceso_id=${procesoId}`, {
+          method: 'DELETE',
+        }).then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}))
+            throw new Error(body.error ?? 'No se pudo eliminar un criterio')
+          }
+        })
+      )
+
+      const updates = criteriosSeleccionados
+        .filter((criterio) => criterio.criterioId)
+        .map((criterio) =>
+          fetch(`/api/criterios/${criterio.criterioId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              proceso_id: procesoId,
+              peso: criterio.peso,
+              valor_minimo: criterio.valorMin,
+              valor_maximo: criterio.valorMax,
+              orden: criterio.orden,
+              activo: criterio.activo,
+            }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}))
+              throw new Error(body.error ?? 'No se pudo actualizar un criterio')
+            }
+          })
+        )
+
+      const creates = criteriosSeleccionados
+        .filter((criterio) => !criterio.criterioId)
+        .map((criterio) =>
+          fetch('/api/criterios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              proceso_id: procesoId,
+              criterio_evaluacion_id: criterio.criterio_evaluacion_id,
+              peso: criterio.peso,
+              valor_minimo: criterio.valorMin,
+              valor_maximo: criterio.valorMax,
+              orden: criterio.orden,
+              activo: criterio.activo,
+            }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}))
+              throw new Error(body.error ?? 'No se pudo crear un criterio')
+            }
+          })
+        )
+
+      await Promise.all([...deletes, ...updates, ...creates])
+
+      const refreshRes = await fetch(`/api/criterios?proceso_id=${procesoId}`)
+      if (!refreshRes.ok) {
+        const body = await refreshRes.json().catch(() => ({}))
+        throw new Error(body.error ?? 'No se pudo refrescar la configuración')
+      }
+      const refreshed = await refreshRes.json()
+      const criteriosActuales = Array.isArray(refreshed) ? refreshed : (refreshed?.criterios ?? [])
+      setCriteriosProceso(criteriosActuales)
+
+      const seleccion = new Set<string>()
+      const config: Record<string, CriterioConfig> = {}
+      criteriosActuales.forEach((criterio: Criterio) => {
+        const key = criterio.criterio_evaluacion_id || criterio.id
+        seleccion.add(key)
+        config[key] = {
+          criterioId: criterio.id,
+          criterio_evaluacion_id: key,
+          peso: criterio.peso,
+          valorMin: criterio.valor_minimo,
+          valorMax: criterio.valor_maximo,
+          orden: criterio.orden,
+          activo: criterio.activo,
+        }
+      })
+      setSeleccionados(seleccion)
+      setConfiguracion(config)
+      setSaveSuccess(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error al guardar la configuración'
+      setSaveError(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link href={`/admin/procesos/${procesoId}`}>
+          <Link href={`/admin/procesos/`}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -132,15 +285,25 @@ export default function ConfigurarCriteriosProceso() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Link href={`/admin/procesos/${procesoId}`}>
+          <Link href={`/admin/procesos`}>
             <Button variant="outline">Cancelar</Button>
           </Link>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={handleSave} disabled={!pesoValido || saving}>
             <Save className="h-4 w-4" />
-            Guardar cambios
+            {saving ? 'Guardando...' : 'Guardar cambios'}
           </Button>
         </div>
       </div>
+      {saveError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {saveError}
+        </div>
+      )}
+      {saveSuccess && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700">
+          Configuración guardada correctamente.
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Panel izquierdo: Catálogo de criterios */}
@@ -258,22 +421,22 @@ export default function ConfigurarCriteriosProceso() {
               ) : (
                 <div className="space-y-4">
                   {criteriosOrdenados.map((config) => {
-                    const criterio = catalogo.find((c) => c.id === config.id)
+                    const criterio = catalogo.find((c) => c.id === config.criterio_evaluacion_id)
                     if (!criterio) return null
 
                     return (
                       <div
-                        key={config.id}
+                        key={config.criterio_evaluacion_id}
                         className={cn(
                           'rounded-lg border p-4 transition-opacity',
                           !config.activo && 'opacity-50'
                         )}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="flex items-center gap-2 text-muted-foreground cursor-grab">
-                            <GripVertical className="h-5 w-5" />
-                            <span className="text-sm font-medium w-6">{config.orden}</span>
-                          </div>
+                            <div className="flex items-center gap-2 text-muted-foreground cursor-grab">
+                              <GripVertical className="h-5 w-5" />
+                              <span className="text-sm font-medium w-6">{config.orden}</span>
+                            </div>
 
                           <div className="flex-1 space-y-4">
                             <div className="flex items-start justify-between gap-4">
@@ -298,67 +461,67 @@ export default function ConfigurarCriteriosProceso() {
 
                             <div className="grid gap-4 sm:grid-cols-4">
                               <div className="space-y-2">
-                                <Label htmlFor={`peso-${config.id}`} className="text-xs">
-                                  Peso (%)
-                                </Label>
-                                <Input
-                                  id={`peso-${config.id}`}
-                                  type="number"
-                                  min={0}
-                                  max={100}
-                                  value={config.peso}
-                                  onChange={(e) =>
-                                    updateConfig(config.id, 'peso', Number(e.target.value))
-                                  }
-                                  className="h-9"
-                                />
+                                  <Label htmlFor={`peso-${config.criterio_evaluacion_id}`} className="text-xs">
+                                    Peso (%)
+                                  </Label>
+                                  <Input
+                                    id={`peso-${config.criterio_evaluacion_id}`}
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    value={config.peso}
+                                    onChange={(e) =>
+                                      updateConfig(config.criterio_evaluacion_id, 'peso', Number(e.target.value))
+                                    }
+                                    className="h-9"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`min-${config.criterio_evaluacion_id}`} className="text-xs">
+                                    Valor mínimo
+                                  </Label>
+                                  <Input
+                                    id={`min-${config.criterio_evaluacion_id}`}
+                                    type="number"
+                                    min={0}
+                                    value={config.valorMin}
+                                    onChange={(e) =>
+                                      updateConfig(config.criterio_evaluacion_id, 'valorMin', Number(e.target.value))
+                                    }
+                                    className="h-9"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`max-${config.criterio_evaluacion_id}`} className="text-xs">
+                                    Valor máximo
+                                  </Label>
+                                  <Input
+                                    id={`max-${config.criterio_evaluacion_id}`}
+                                    type="number"
+                                    min={0}
+                                    value={config.valorMax}
+                                    onChange={(e) =>
+                                      updateConfig(config.criterio_evaluacion_id, 'valorMax', Number(e.target.value))
+                                    }
+                                    className="h-9"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`orden-${config.criterio_evaluacion_id}`} className="text-xs">
+                                    Orden
+                                  </Label>
+                                  <Input
+                                    id={`orden-${config.criterio_evaluacion_id}`}
+                                    type="number"
+                                    min={1}
+                                    value={config.orden}
+                                    onChange={(e) =>
+                                      updateConfig(config.criterio_evaluacion_id, 'orden', Number(e.target.value))
+                                    }
+                                    className="h-9"
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`min-${config.id}`} className="text-xs">
-                                  Valor mínimo
-                                </Label>
-                                <Input
-                                  id={`min-${config.id}`}
-                                  type="number"
-                                  min={0}
-                                  value={config.valorMin}
-                                  onChange={(e) =>
-                                    updateConfig(config.id, 'valorMin', Number(e.target.value))
-                                  }
-                                  className="h-9"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`max-${config.id}`} className="text-xs">
-                                  Valor máximo
-                                </Label>
-                                <Input
-                                  id={`max-${config.id}`}
-                                  type="number"
-                                  min={0}
-                                  value={config.valorMax}
-                                  onChange={(e) =>
-                                    updateConfig(config.id, 'valorMax', Number(e.target.value))
-                                  }
-                                  className="h-9"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor={`orden-${config.id}`} className="text-xs">
-                                  Orden
-                                </Label>
-                                <Input
-                                  id={`orden-${config.id}`}
-                                  type="number"
-                                  min={1}
-                                  value={config.orden}
-                                  onChange={(e) =>
-                                    updateConfig(config.id, 'orden', Number(e.target.value))
-                                  }
-                                  className="h-9"
-                                />
-                              </div>
-                            </div>
                           </div>
                         </div>
                       </div>
@@ -388,9 +551,9 @@ export default function ConfigurarCriteriosProceso() {
               <Link href={`/admin/procesos/${procesoId}`}>
                 <Button variant="outline">Volver</Button>
               </Link>
-              <Button disabled={!pesoValido} className="gap-2">
+              <Button disabled={!pesoValido || saving} className="gap-2" onClick={handleSave}>
                 <Save className="h-4 w-4" />
-                Guardar
+                {saving ? 'Guardando...' : 'Guardar'}
               </Button>
             </div>
           </div>

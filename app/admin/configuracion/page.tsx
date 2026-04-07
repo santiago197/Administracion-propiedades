@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { Button } from '@/components/ui/button'
@@ -89,6 +91,18 @@ export default function ConfiguracionPage() {
             <div className="text-sm text-muted-foreground">Pesos y criterios configurables.</div>
             <Button variant="outline" asChild>
               <Link href="/admin/configuracion/criterios">Ver criterios</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Validación legal</CardTitle>
+            <CardDescription>Ítems del checklist legal (activo y obligatorio).</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-between">
+            <div className="text-sm text-muted-foreground">Antecedentes, SARLAFT, operativos y pólizas.</div>
+            <Button variant="outline" asChild>
+              <Link href="/admin/configuracion/validacion-legal">Ver ítems</Link>
             </Button>
           </CardContent>
         </Card>

@@ -51,6 +51,11 @@ interface PropuestaResumen {
   observaciones?: string
 }
 
+interface CriterioConfig extends Criterio {
+  valor_minimo?: number
+  valor_maximo?: number
+}
+
 interface DocumentoResumen {
   id: string
   propuesta_id: string
@@ -87,7 +92,7 @@ function buildEvaluacionesState(rows: EvaluacionDB[]): EvaluacionesState {
 
 function isPropuestaCompleta(
   propuestaId: string,
-  criterios: Criterio[],
+  criterios: CriterioConfig[],
   evaluaciones: EvaluacionesState
 ): boolean {
   return criterios.every((c) => evaluaciones[propuestaId]?.[c.id] !== undefined)
@@ -138,7 +143,7 @@ export default function PaginaEvaluacion() {
   const procesoId = params.procesoId as string
 
   const [propuestas, setPropuestas] = useState<PropuestaResumen[]>([])
-  const [criterios, setCriterios] = useState<Criterio[]>([])
+  const [criterios, setCriterios] = useState<CriterioConfig[]>([])
   const [evaluaciones, setEvaluaciones] = useState<EvaluacionesState>({})
   const [currentIndex, setCurrentIndex] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -553,8 +558,8 @@ export default function PaginaEvaluacion() {
                         <div className="space-y-3">
                           <div className="flex gap-2">
                             {Array.from(
-                              { length: criterio.valor_maximo - criterio.valor_minimo + 1 },
-                              (_, i) => criterio.valor_minimo + i
+                              { length: (criterio.valor_maximo ?? 5) - (criterio.valor_minimo ?? 1) + 1 },
+                              (_, i) => (criterio.valor_minimo ?? 1) + i
                             ).map((val) => (
                               <button
                                 key={val}

@@ -18,8 +18,11 @@ import type {
   FilaMatrizEvaluacion,
   DetallesCriterio,
   ClasificacionPropuesta,
+  Criterio,
+  CriterioEvaluacion,
   TipoDocumentoConfig,
   TipoPersona,
+  ValidacionLegalItemConfig,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
 import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
@@ -93,12 +96,12 @@ export async function getProcesoStats(proceso_id: string): Promise<ProcesoStats 
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
 
-  // "Activas" para estadísticas = candidatos en evaluación activa
+  // "Activas" para estadísticas = candidatos habilitados o en evaluación
   const { count: propuestas_activas } = await supabase
     .from('propuestas')
     .select('*', { count: 'exact', head: true })
     .eq('proceso_id', proceso_id)
-    .eq('estado', 'en_evaluacion')
+    .or('estado.eq.habilitada,estado.eq.en_evaluacion')
 
   const { data: evaluaciones } = await supabase.rpc('get_evaluaciones_count', {
     p_proceso_id: proceso_id,
@@ -647,24 +650,23 @@ export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta)
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
-  // Incluir en resultados: candidatos que llegaron al ranking (evaluados o clasificados)
+  // Leer directamente de propuestas para incluir clasificacion (la vista no la expone)
   const { data: propuestas } = await supabase
-    .from('vista_propuestas_resumen')
-    .select('*')
+    .from('propuestas')
+    .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
     .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
-    .order('puntaje_final', { ascending: false })
+    .order('puntaje_final', { ascending: false, nullsFirst: false })
 
   if (!propuestas) return []
 
-  // Clasificar por semáforo
   return propuestas.map((p, index) => {
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+    const pf = Number(p.puntaje_final ?? 0)
 
-    // Escala 0–100 (clasificar_candidato: destacado ≥85, apto ≥70, condicionado ≥55)
-    if (p.puntaje_final >= 70) {
+    if (pf >= 70) {
       estado_semaforo = 'verde'
-    } else if (p.puntaje_final >= 55) {
+    } else if (pf >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
@@ -673,11 +675,12 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     return {
       propuesta_id: p.id,
       razon_social: p.razon_social,
-      puntaje_evaluacion: p.puntaje_evaluacion,
-      votos_recibidos: p.votos_recibidos,
-      puntaje_final: p.puntaje_final,
+      puntaje_evaluacion: Number(p.puntaje_evaluacion ?? 0),
+      votos_recibidos: Number(p.votos_recibidos ?? 0),
+      puntaje_final: pf,
       posicion: index + 1,
       estado_semaforo,
+      clasificacion: p.clasificacion ?? null,
     }
   })
 }
@@ -767,21 +770,24 @@ export interface VotoDetallado {
 
 export interface DatosActa {
   proceso: { nombre: string; fecha_inicio: string; fecha_fin?: string; peso_evaluacion: number; peso_votacion: number }
-  conjunto: { nombre: string; direccion: string; ciudad: string }
+  conjunto: { nombre: string; direccion: string; ciudad: string; logo_url?: string }
   candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null }>
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
+  participacion: { total_consejeros: number; votaron: number; porcentaje: number }
+  generado_por?: string
   fecha_generacion: string
+  numero_acta?: string
 }
 
-export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
+export async function getDatosActa(proceso_id: string, generado_por?: string): Promise<DatosActa> {
   const supabase = await createServerClient()
 
   // Proceso + conjunto
   const { data: proceso } = await supabase
     .from('procesos')
-    .select('nombre, fecha_inicio, fecha_fin, peso_evaluacion, peso_votacion, conjunto_id, conjuntos(nombre, direccion, ciudad)')
+    .select('nombre, fecha_inicio, fecha_fin, peso_evaluacion, peso_votacion, conjunto_id, conjuntos(nombre, direccion, ciudad, logo_url)')
     .eq('id', proceso_id)
     .single()
 
@@ -806,12 +812,25 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     puntaje_final_propuesta: Number(v.propuestas?.puntaje_final ?? 0),
   })).sort((a, b) => b.puntaje_final_propuesta - a.puntaje_final_propuesta)
 
-  const [matriz, ranking] = await Promise.all([
+  const conjuntoId = (proceso as any)?.conjunto_id
+
+  const [matriz, ranking, { count: totalConsejeros }, { count: votaron }] = await Promise.all([
     getMatrizEvaluacionAdmin(proceso_id),
     getResultadosFinales(proceso_id),
+    supabase
+      .from('consejeros')
+      .select('id', { count: 'exact', head: true })
+      .eq('conjunto_id', conjuntoId)
+      .eq('activo', true),
+    supabase
+      .from('votos')
+      .select('id', { count: 'exact', head: true })
+      .eq('proceso_id', proceso_id),
   ])
 
   const conjunto = (proceso as any)?.conjuntos
+  const total = totalConsejeros ?? 0
+  const votaronCount = votaron ?? 0
 
   return {
     proceso: {
@@ -825,6 +844,7 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
       nombre: conjunto?.nombre ?? '',
       direccion: conjunto?.direccion ?? '',
       ciudad: conjunto?.ciudad ?? '',
+      logo_url: (conjunto as any)?.logo_url ?? undefined,
     },
     candidatos: (propuestas ?? []).map((p: any) => ({
       razon_social: p.razon_social,
@@ -835,6 +855,12 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     matriz,
     ranking,
     votos,
+    participacion: {
+      total_consejeros: total,
+      votaron: votaronCount,
+      porcentaje: total > 0 ? Math.round((votaronCount / total) * 100) : 0,
+    },
+    generado_por,
     fecha_generacion: new Date().toISOString(),
   }
 }
@@ -879,6 +905,42 @@ export async function updateTipoDocumento(
 export async function deleteTipoDocumento(id: string) {
   const supabase = await createServerClient()
   return supabase.from('tipos_documento').delete().eq('id', id)
+}
+
+// VALIDACIÓN LEGAL ITEMS — CRUD
+export async function getValidacionLegalItems(onlyActive = false) {
+  const supabase = await createServerClient()
+  let query = supabase
+    .from('validacion_legal_items')
+    .select('*')
+    .order('seccion', { ascending: true })
+    .order('orden', { ascending: true })
+
+  if (onlyActive) {
+    query = query.eq('activo', true)
+  }
+
+  return query
+}
+
+export async function createValidacionLegalItem(
+  data: Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').insert([data]).select().single()
+}
+
+export async function updateValidacionLegalItem(
+  id: string,
+  data: Partial<Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').update(data).eq('id', id).select().single()
+}
+
+export async function deleteValidacionLegalItem(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').delete().eq('id', id)
 }
 
 /**
@@ -1224,8 +1286,6 @@ export async function deleteUsuario(id: string) {
 }
 
 // CRITERIOS DE EVALUACIÓN — CRUD
-import type { Criterio, CriterioEvaluacion } from '../types/index'
-
 export async function getCriterios(soloActivos = false): Promise<CriterioEvaluacion[]> {
   const supabase = await createServerClient()
 
@@ -1273,6 +1333,115 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
       activo: row.activo ?? true,
     }
   })
+}
+
+export async function createCriterioProceso(data: {
+  proceso_id: string
+  criterio_evaluacion_id: string
+  peso: number
+  valor_minimo: number
+  valor_maximo: number
+  orden?: number
+  activo?: boolean
+}): Promise<Criterio> {
+  const supabase = await createServerClient()
+
+  const { data: catalogoData } = await supabase
+    .from('criterios_evaluacion')
+    .select('nombre, descripcion, tipo')
+    .eq('id', data.criterio_evaluacion_id)
+    .maybeSingle()
+
+  try {
+    const insertPayload = {
+      proceso_id: data.proceso_id,
+      criterio_evaluacion_id: data.criterio_evaluacion_id,
+      peso: data.peso,
+      valor_minimo: data.valor_minimo,
+      valor_maximo: data.valor_maximo,
+      orden: data.orden ?? 0,
+      activo: data.activo ?? true,
+    }
+
+    const { data: created, error } = await supabase
+      .from('criterios')
+      .insert([insertPayload])
+      .select('id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo')
+      .single()
+
+    if (error) throw error
+
+    return {
+      id: created.id,
+      proceso_id: created.proceso_id,
+      criterio_evaluacion_id: created.criterio_evaluacion_id,
+      nombre: catalogoData?.nombre ?? 'Criterio',
+      descripcion: catalogoData?.descripcion ?? null,
+      tipo: catalogoData?.tipo ?? 'escala',
+      peso: created.peso,
+      valor_minimo: created.valor_minimo,
+      valor_maximo: created.valor_maximo,
+      orden: created.orden ?? 0,
+      activo: created.activo ?? true,
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+          ? String((error as { message?: unknown }).message)
+          : ''
+    const details =
+      typeof error === 'object' && error && 'details' in error
+        ? String((error as { details?: unknown }).details)
+        : ''
+    const code =
+      typeof error === 'object' && error && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : ''
+    const lowerMessage = `${message} ${details}`.toLowerCase()
+    const missingColumn =
+      code === 'PGRST204' ||
+      lowerMessage.includes('criterio_evaluacion_id') ||
+      lowerMessage.includes('column') ||
+      lowerMessage.includes('does not exist')
+
+    if (!missingColumn) throw error
+
+    const legacyPayload = {
+      proceso_id: data.proceso_id,
+      nombre: catalogoData?.nombre ?? 'Criterio',
+      descripcion: catalogoData?.descripcion ?? null,
+      tipo: catalogoData?.tipo ?? 'escala',
+      peso: data.peso,
+      valor_minimo: data.valor_minimo,
+      valor_maximo: data.valor_maximo,
+      orden: data.orden ?? 0,
+      activo: data.activo ?? true,
+    }
+
+    const { data: createdLegacy, error: legacyError } = await supabase
+      .from('criterios')
+      .insert([legacyPayload])
+      .select('id, proceso_id, nombre, descripcion, tipo, peso, valor_minimo, valor_maximo, orden, activo')
+      .single()
+
+    if (legacyError) throw legacyError
+
+    return {
+      id: createdLegacy.id,
+      proceso_id: createdLegacy.proceso_id,
+      criterio_evaluacion_id: data.criterio_evaluacion_id,
+      nombre: createdLegacy.nombre ?? 'Criterio',
+      descripcion: createdLegacy.descripcion ?? null,
+      tipo: createdLegacy.tipo ?? 'escala',
+      peso: createdLegacy.peso,
+      valor_minimo: createdLegacy.valor_minimo,
+      valor_maximo: createdLegacy.valor_maximo,
+      orden: createdLegacy.orden ?? 0,
+      activo: createdLegacy.activo ?? true,
+    }
+  }
 }
 
 export async function getCriterio(id: string): Promise<CriterioEvaluacion | null> {
@@ -1330,4 +1499,372 @@ export async function deleteCriterio(id: string): Promise<{ success: boolean }> 
 
   if (error) throw error
   return { success: true }
+}
+
+// ============================================================
+// ACCESO PROPONENTES
+// ============================================================
+
+/**
+ * Valida un código de acceso de proponente
+ * Retorna la propuesta y el estado de documentación
+ */
+export async function validarCodigoProponente(codigo: string) {
+  const supabase = await createServerClient()
+
+  // Obtener acceso
+  const { data: acceso, error: accesoError } = await supabase
+    .from('acceso_proponentes')
+    .select(`
+      *,
+      propuestas:propuesta_id(
+        id, razon_social, nit_cedula, email, proceso_id
+      )
+    `)
+    .eq('codigo', codigo)
+    .eq('activo', true)
+    .single()
+
+  if (accesoError || !acceso) {
+    return { data: null, error: new Error(accesoError?.message ?? 'Código inválido o inactivo') }
+  }
+
+  // Validar fecha límite
+  if (acceso.fecha_limite && new Date() > new Date(acceso.fecha_limite)) {
+    return { data: null, error: new Error('Código expirado') }
+  }
+
+  // Obtener documentos y tipos faltantes
+  const { faltantes, cubiertos } = await getDocumentosFaltantes(acceso.propuesta_id)
+  const { data: documentos } = await getDocumentos(acceso.propuesta_id)
+
+  // Calcular estadísticas
+  const totalObligatorios = faltantes.length + cubiertos.filter(t => t.es_obligatorio).length
+  const completados = cubiertos.filter(t => t.es_obligatorio).length
+  const porcentaje = totalObligatorios > 0 
+    ? Math.round((completados / totalObligatorios) * 100)
+    : 100
+
+  // Verificar documentos vencidos
+  const hoy = new Date()
+  const vencidos = (documentos ?? []).filter(d => {
+    if (!d.fecha_vencimiento) return false
+    return new Date(d.fecha_vencimiento) < hoy
+  }).length
+
+  return {
+    data: {
+      propuesta_id: acceso.propuesta_id,
+      razon_social: acceso.propuestas.razon_social,
+      nit_cedula: acceso.propuestas.nit_cedula,
+      email: acceso.propuestas.email,
+      estadisticas: {
+        total_obligatorios: totalObligatorios,
+        completados,
+        faltantes: faltantes.length,
+        porcentaje,
+        vencidos,
+      },
+      tipos_faltantes: faltantes,
+      tipos_cubiertos: cubiertos,
+      documentos: documentos ?? [],
+    },
+    error: null,
+  }
+}
+
+/**
+ * Genera un nuevo código de acceso para una propuesta
+ */
+export async function generarCodigoAccesoProponente(
+  propuesta_id: string,
+  usuario_id: string,
+  fecha_limite?: Date
+) {
+  const supabase = await createServerClient()
+
+  const fechaLimite = fecha_limite || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+
+  // Verificar si ya existe un acceso para esta propuesta
+  const { data: existing } = await supabase
+    .from('acceso_proponentes')
+    .select('id')
+    .eq('propuesta_id', propuesta_id)
+    .maybeSingle()
+
+  if (existing) {
+    // Ya existe → regenerar código y reactivar
+    const codigo = generarCodigoUnico()
+    const { data, error } = await supabase
+      .from('acceso_proponentes')
+      .update({
+        codigo,
+        activo: true,
+        fecha_limite: fechaLimite.toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('propuesta_id', propuesta_id)
+      .select()
+      .single()
+    return { data, error }
+  }
+
+  // No existe → insertar
+  const codigo = generarCodigoUnico()
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .insert({
+      propuesta_id,
+      codigo,
+      activo: true,
+      fecha_limite: fechaLimite.toISOString(),
+      created_by: usuario_id,
+    })
+    .select()
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Actualiza configuración de acceso de proponente
+ */
+export async function actualizarAccesoProponente(
+  propuesta_id: string,
+  activo: boolean,
+  fecha_limite: Date | null
+) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .update({
+      activo,
+      fecha_limite: fecha_limite?.toISOString() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('propuesta_id', propuesta_id)
+    .select()
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Revoca el acceso de un proponente
+ */
+export async function revocarAccesoProponente(propuesta_id: string) {
+  const supabase = await createServerClient()
+
+  const { error } = await supabase
+    .from('acceso_proponentes')
+    .delete()
+    .eq('propuesta_id', propuesta_id)
+
+  return { error }
+}
+
+/**
+ * Obtiene el estado actual de acceso de una propuesta
+ */
+export async function obtenerAccesoProponente(propuesta_id: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .select('*')
+    .eq('propuesta_id', propuesta_id)
+    .single()
+
+  return { data, error }
+}
+
+/**
+ * Genera código único (3 letras + 5 números)
+ */
+function generarCodigoUnico(): string {
+  const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const codigoLetras = Array(3)
+    .fill(0)
+    .map(() => letras[Math.floor(Math.random() * letras.length)])
+    .join('')
+  const codigoNumeros = Math.floor(10000 + Math.random() * 90000).toString()
+  return codigoLetras + codigoNumeros
+}
+
+// ---------------------------------------------------------------------------
+// CONTRATOS
+// ---------------------------------------------------------------------------
+
+import type { Contrato, ContratoConEstado, ContratoAnexo } from '../types/index'
+
+export type CreateContratoInput = Omit<
+  Contrato,
+  'id' | 'estado' | 'fecha_max_notificacion' | 'created_at' | 'updated_at'
+>
+
+export type UpdateContratoInput = Partial<Omit<Contrato, 'id' | 'conjunto_id' | 'created_at' | 'updated_at'>>
+
+/**
+ * Obtiene todos los contratos de un conjunto con estado calculado
+ */
+export async function getContratosConEstado(conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase.rpc('get_contratos_con_estado', {
+    p_conjunto_id: conjunto_id,
+  }) as Promise<{ data: ContratoConEstado[] | null; error: { message: string } | null }>
+}
+
+/**
+ * Obtiene todos los contratos de un conjunto (simple)
+ */
+export async function getContratos(conjunto_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('contratos')
+    .select('*')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+    .order('fecha_fin', { ascending: true })
+}
+
+/**
+ * Obtiene un contrato por ID
+ */
+export async function getContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').select('*').eq('id', id).single()
+}
+
+/**
+ * Crea un nuevo contrato
+ */
+export async function createContrato(data: CreateContratoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').insert([data]).select().single()
+}
+
+/**
+ * Actualiza un contrato existente
+ */
+export async function updateContrato(id: string, data: UpdateContratoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').update(data).eq('id', id).select().single()
+}
+
+/**
+ * Elimina (soft delete) un contrato
+ */
+export async function deleteContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').update({ activo: false }).eq('id', id).select().single()
+}
+
+/**
+ * Elimina permanentemente un contrato (hard delete)
+ */
+export async function hardDeleteContrato(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contratos').delete().eq('id', id)
+}
+
+// ---------------------------------------------------------------------------
+// CONTRATO ANEXOS (Otrosíes)
+// ---------------------------------------------------------------------------
+
+export type CreateContratoAnexoInput = Omit<ContratoAnexo, 'id' | 'created_at' | 'updated_at'>
+
+/**
+ * Obtiene todos los anexos de un contrato
+ */
+export async function getContratoAnexos(contrato_id: string) {
+  const supabase = await createServerClient()
+  return supabase
+    .from('contrato_anexos')
+    .select('*')
+    .eq('contrato_id', contrato_id)
+    .order('fecha_documento', { ascending: false })
+}
+
+/**
+ * Crea un nuevo anexo de contrato
+ */
+export async function createContratoAnexo(data: CreateContratoAnexoInput) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').insert([data]).select().single()
+}
+
+/**
+ * Actualiza un anexo de contrato
+ */
+export async function updateContratoAnexo(id: string, data: Partial<ContratoAnexo>) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').update(data).eq('id', id).select().single()
+}
+
+/**
+ * Elimina un anexo de contrato
+ */
+export async function deleteContratoAnexo(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('contrato_anexos').delete().eq('id', id)
+}
+
+/**
+ * Obtiene contratos próximos a vencer (para alertas)
+ */
+export async function getContratosProximosAVencer(conjunto_id: string, dias: number = 30) {
+  const supabase = await createServerClient()
+  const fechaLimite = new Date()
+  fechaLimite.setDate(fechaLimite.getDate() + dias)
+  
+  return supabase
+    .from('contratos')
+    .select('*')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+    .lte('fecha_fin', fechaLimite.toISOString().split('T')[0])
+    .gte('fecha_fin', new Date().toISOString().split('T')[0])
+    .order('fecha_fin', { ascending: true })
+}
+
+/**
+ * Obtiene estadísticas de contratos de un conjunto
+ */
+export async function getContratosStats(conjunto_id: string) {
+  const supabase = await createServerClient()
+  
+  const { data: contratos, error } = await supabase
+    .from('contratos')
+    .select('id, fecha_fin, estado')
+    .eq('conjunto_id', conjunto_id)
+    .eq('activo', true)
+
+  if (error || !contratos) {
+    return { data: null, error }
+  }
+
+  const hoy = new Date()
+  const en30Dias = new Date()
+  en30Dias.setDate(en30Dias.getDate() + 30)
+
+  const stats = {
+    total: contratos.length,
+    vigentes: 0,
+    proximos_a_vencer: 0,
+    vencidos: 0,
+  }
+
+  for (const contrato of contratos) {
+    const fechaFin = new Date(contrato.fecha_fin)
+    if (fechaFin < hoy) {
+      stats.vencidos++
+    } else if (fechaFin <= en30Dias) {
+      stats.proximos_a_vencer++
+    } else {
+      stats.vigentes++
+    }
+  }
+
+  return { data: stats, error: null }
 }

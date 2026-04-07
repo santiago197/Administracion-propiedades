@@ -208,6 +208,17 @@ export default function TiposDocumentosPage() {
     } catch { /* silent */ }
   }
 
+  async function handleToggleObligatorio(tipo: TipoDocumentoConfig) {
+    try {
+      await fetch(`/api/tipos-documento/${tipo.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ es_obligatorio: !tipo.es_obligatorio }),
+      })
+      await loadTipos()
+    } catch { /* silent */ }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return
     setDeleting(true)
@@ -263,9 +274,11 @@ export default function TiposDocumentosPage() {
                 </Badge>
               </TableCell>
               <TableCell>
-                <Badge variant={t.es_obligatorio ? 'default' : 'secondary'} className="text-xs">
-                  {t.es_obligatorio ? 'Sí' : 'No'}
-                </Badge>
+                <Switch
+                  checked={t.es_obligatorio}
+                  onCheckedChange={() => handleToggleObligatorio(t)}
+                  aria-label="Obligatorio/Opcional"
+                />
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {(t.extensiones_permitidas ?? []).length > 0

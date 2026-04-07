@@ -61,48 +61,101 @@ export async function POST(
 
     // Validaciones previas según el estado destino
     if (estadoNuevo === 'evaluacion') {
-      const { count: habilitadas } = await supabase
+      // Contar propuestas habilitadas O en_evaluacion (igual que stats)
+      // Esto es importante porque si el usuario ya intentó iniciar evaluación,
+      // algunas podrían estar en 'en_evaluacion' en lugar de 'habilitada'
+      const { count: activas, error: countError } = await supabase
         .from('propuestas')
         .select('*', { count: 'exact', head: true })
         .eq('proceso_id', id)
-        .eq('estado', 'habilitada')
+        .or('estado.eq.habilitada,estado.eq.en_evaluacion')
 
-      if (!habilitadas || habilitadas === 0) {
+      console.log('[cambiar-estado] Debug - propuestas activas query:', { activas, countError, proceso_id: id })
+
+      if (countError) {
+        throw new Error(`Error al contar propuestas activas: ${countError.message}`)
+      }
+
+      if (!activas || activas === 0) {
+        // Debug: obtener todas las propuestas para ver qué hay
+        const { data: todasPropuestas, error: debugError } = await supabase
+          .from('propuestas')
+          .select('id, estado, razon_social')
+          .eq('proceso_id', id)
+        
+        console.log('[cambiar-estado] Debug - todas las propuestas:', { todasPropuestas, debugError })
+        
         return NextResponse.json(
-          { error: 'Debe haber al menos una propuesta habilitada para iniciar la evaluación' },
+          { 
+            error: 'Debe haber al menos una propuesta habilitada o en evaluación para iniciar la evaluación',
+            debug: { propuestas: todasPropuestas?.map(p => ({ id: p.id, estado: p.estado, razon_social: p.razon_social })) }
+          }, 
           { status: 400 }
         )
       }
 
       // Mover todas las propuestas 'habilitada' → 'en_evaluacion' vía RPC
-      const { data: propuestasHabilitadas } = await supabase
+      // (Las que ya estén en 'en_evaluacion' se ignorarán porque ya están donde deben estar)
+      const { data: propuestasHabilitadas, error: fetchPropError } = await supabase
         .from('propuestas')
         .select('id')
         .eq('proceso_id', id)
         .eq('estado', 'habilitada')
 
+      if (fetchPropError) {
+        throw new Error(`No se pudo obtener propuestas habilitadas: ${fetchPropError.message}`)
+      }
+
+      const rpcErrors: string[] = []
       for (const propuesta of propuestasHabilitadas ?? []) {
-        await supabase.rpc('cambiar_estado_propuesta', {
+        const { error: rpcError } = await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta.id,
           p_estado_nuevo: 'en_evaluacion',
           p_usuario_id: user?.id ?? null,
           p_observacion: 'Proceso iniciado en etapa de evaluación',
           p_metadata: { origen: 'cambiar_estado_proceso', proceso_id: id },
         })
+        if (rpcError) {
+          rpcErrors.push(`Propuesta ${propuesta.id}: ${rpcError.message}`)
+        }
+      }
+
+      if (rpcErrors.length > 0) {
+        throw new Error(`Error al cambiar estado de propuestas: ${rpcErrors.join(' | ')}`)
       }
     }
 
     if (estadoNuevo === 'votacion') {
       const estadosEvaluacion = ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']
-      const { data: enEvaluacion, count } = await supabase
+      const { data: enEvaluacion, count, error: queryError } = await supabase
         .from('propuestas')
         .select('id, clasificacion, estado', { count: 'exact' })
         .eq('proceso_id', id)
         .in('estado', estadosEvaluacion)
 
+      console.log('[cambiar-estado] Debug - votacion query:', { count, estadosEvaluacion, enEvaluacion, queryError, proceso_id: id })
+
+      if (queryError) {
+        throw new Error(`Error al obtener propuestas para votación: ${queryError.message}`)
+      }
+
       if (!count || count === 0) {
+        // Debug: obtener todas las propuestas para ver qué estados tienen
+        const { data: todasPropuestas } = await supabase
+          .from('propuestas')
+          .select('id, estado, clasificacion, razon_social')
+          .eq('proceso_id', id)
+        
+        console.log('[cambiar-estado] Debug - todas las propuestas:', todasPropuestas)
+        
         return NextResponse.json(
-          { error: 'No hay propuestas evaluadas para pasar a votación' },
+          { 
+            error: 'No hay propuestas evaluadas para pasar a votación',
+            debug: {
+              estadosBuscados: estadosEvaluacion,
+              propuestas: todasPropuestas?.map(p => ({ estado: p.estado, clasificacion: p.clasificacion, razon_social: p.razon_social }))
+            }
+          },
           { status: 400 }
         )
       }

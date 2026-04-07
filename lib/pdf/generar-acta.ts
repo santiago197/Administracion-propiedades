@@ -40,35 +40,102 @@ function labelEstado(estado: string): string {
   return map[estado] ?? estado
 }
 
-function encabezado(doc: jsPDF, datos: DatosActa) {
-  const { conjunto, proceso } = datos
+async function loadLogoDataUrl(url: string): Promise<string | null> {
+  try {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('load'))
+      img.src = url
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
+}
+
+async function encabezado(doc: jsPDF, datos: DatosActa) {
+  const { conjunto, proceso, fecha_generacion, numero_acta } = datos
   const pageW = doc.internal.pageSize.getWidth()
 
-  // Barra superior azul
-  doc.setFillColor(...COLOR_PRIMARIO)
-  doc.rect(0, 0, pageW, 28, 'F')
+  // Dimensiones de la tabla de encabezado
+  const margin = 14
+  const tableW = pageW - 2 * margin
+  const tableY = 8
+  const tableH = 28
+  const col1W = tableW * 0.28   // logo
+  const col2W = tableW * 0.44   // nombre conjunto
+  const col3W = tableW - col1W - col2W  // meta (versión / fecha / acta)
+  const subRowH = tableH / 3
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.text('ACTA DE SELECCIÓN DE ADMINISTRADOR', pageW / 2, 11, { align: 'center' })
+  // Borde exterior + divisores verticales
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.4)
+  doc.rect(margin, tableY, tableW, tableH)
+  doc.line(margin + col1W, tableY, margin + col1W, tableY + tableH)
+  doc.line(margin + col1W + col2W, tableY, margin + col1W + col2W, tableY + tableH)
 
+  // Divisores horizontales en la columna derecha
+  doc.line(margin + col1W + col2W, tableY + subRowH,     pageW - margin, tableY + subRowH)
+  doc.line(margin + col1W + col2W, tableY + 2 * subRowH, pageW - margin, tableY + 2 * subRowH)
+
+  // ── Columna 1: logo ──────────────────────────────────────────────────────
+  if (conjunto.logo_url) {
+    const dataUrl = await loadLogoDataUrl(conjunto.logo_url)
+    if (dataUrl) {
+      const maxW = col1W - 4
+      const maxH = tableH - 4
+      // Obtener dimensiones originales desde el dataUrl
+      const tmpImg = new Image()
+      tmpImg.src = dataUrl
+      const scale = Math.min(maxW / (tmpImg.naturalWidth || maxW), maxH / (tmpImg.naturalHeight || maxH))
+      const imgW = (tmpImg.naturalWidth || maxW) * scale
+      const imgH = (tmpImg.naturalHeight || maxH) * scale
+      doc.addImage(dataUrl, 'PNG', margin + (col1W - imgW) / 2, tableY + (tableH - imgH) / 2, imgW, imgH)
+    }
+  }
+
+  // ── Columna 2: nombre del conjunto ───────────────────────────────────────
+  doc.setTextColor(0, 0, 0)
   doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.text(conjunto.nombre.toUpperCase(), pageW / 2, 18, { align: 'center' })
-  doc.text(`${conjunto.direccion} — ${conjunto.ciudad}`, pageW / 2, 24, { align: 'center' })
+  doc.setFont('helvetica', 'bold')
+  const centerX = margin + col1W + col2W / 2
+  const lines = doc.splitTextToSize(conjunto.nombre.toUpperCase(), col2W - 6) as string[]
+  const lineH = 5
+  const blockH = lines.length * lineH
+  const textStartY = tableY + (tableH - blockH) / 2 + lineH * 0.75
+  doc.text(lines, centerX, textStartY, { align: 'center' })
 
-  // Línea de datos del proceso
+  // ── Columna 3: meta ───────────────────────────────────────────────────────
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  const col3TextX = margin + col1W + col2W + 3
+  const year = new Date(fecha_generacion).getFullYear()
+  const actaNum = numero_acta ?? `001-${year}`
+  const fechaFmt = new Date(proceso.fecha_inicio + 'T12:00:00').toLocaleDateString('es-CO', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+  doc.text(`Versión: 001`,        col3TextX, tableY + subRowH * 0.5,  { baseline: 'middle' })
+  doc.text(`Fecha: ${fechaFmt}`,  col3TextX, tableY + subRowH * 1.5,  { baseline: 'middle' })
+  doc.text(`Acta No. ${actaNum}`, col3TextX, tableY + subRowH * 2.5,  { baseline: 'middle' })
+
+  // Nombre del proceso debajo de la tabla
   doc.setTextColor(60, 60, 60)
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
-  const fechaGen = fechaColombia(datos.fecha_generacion)
-  const fechaInicio = fechaColombia(proceso.fecha_inicio)
-  doc.text(`Proceso: ${proceso.nombre}   |   Inicio: ${fechaInicio}   |   Generado: ${fechaGen}`, pageW / 2, 34, { align: 'center' })
-
-  doc.setDrawColor(...COLOR_PRIMARIO)
-  doc.setLineWidth(0.4)
-  doc.line(14, 37, pageW - 14, 37)
+  doc.text(
+    `Proceso: ${proceso.nombre}   |   Generado: ${fechaColombia(fecha_generacion)}`,
+    pageW / 2,
+    tableY + tableH + 5,
+    { align: 'center' },
+  )
 }
 
 function titulo(doc: jsPDF, texto: string, y: number): number {
@@ -82,7 +149,7 @@ function titulo(doc: jsPDF, texto: string, y: number): number {
   return y + 10
 }
 
-function piePagina(doc: jsPDF) {
+function piePagina(doc: jsPDF, generadoPor?: string) {
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
   const total = (doc as any).internal.getNumberOfPages()
@@ -91,17 +158,23 @@ function piePagina(doc: jsPDF) {
     doc.setPage(i)
     doc.setFontSize(7)
     doc.setTextColor(...COLOR_GRIS_MEDIO)
-    doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 6, { align: 'center' })
-    doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 3, { align: 'center' })
+    if (generadoPor) {
+      doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 9, { align: 'center' })
+      doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 6, { align: 'center' })
+      doc.text(`Generado por: ${generadoPor}`, pageW / 2, pageH - 3, { align: 'center' })
+    } else {
+      doc.text(`Página ${i} de ${total}`, pageW / 2, pageH - 6, { align: 'center' })
+      doc.text('Documento generado por el sistema de selección de administradores — Ley 675 de 2001', pageW / 2, pageH - 3, { align: 'center' })
+    }
   }
 }
 
-export function generarActaPDF(datos: DatosActa): void {
+export async function generarActaPDF(datos: DatosActa): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
-  let y = 42
+  let y = 48
 
-  encabezado(doc, datos)
+  await encabezado(doc, datos)
 
   // ── 1. CANDIDATOS EVALUADOS ───────────────────────────────────────────────
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
@@ -111,7 +184,7 @@ export function generarActaPDF(datos: DatosActa): void {
     head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
     body: datos.candidatos.map((c, i) => [
       i + 1,
-      c.razon_social,
+      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
       labelTipoPersona(c.tipo_persona),
       labelEstado(c.estado),
       labelClasificacion(c.clasificacion),
@@ -121,6 +194,13 @@ export function generarActaPDF(datos: DatosActa): void {
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
     margin: { left: 14, right: 14 },
     didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const candidato = datos.candidatos[hookData.row.index]
+        if (candidato?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        }
+      }
       if (hookData.section === 'body' && hookData.column.index === 4) {
         const val = String(hookData.cell.text)
         if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
@@ -299,7 +379,36 @@ export function generarActaPDF(datos: DatosActa): void {
     y = (doc as any).lastAutoTable.finalY + 12
   }
 
-  // ── 6. FIRMAS ─────────────────────────────────────────────────────────────
+  // ── 6. PARTICIPACIÓN DEL CONSEJO ─────────────────────────────────────────
+  const participacion = datos.participacion ?? { total_consejeros: 0, votaron: 0, porcentaje: 0 }
+  if (participacion.total_consejeros > 0) {
+    if (y > 230) { doc.addPage(); y = 16 }
+    y = titulo(doc, '6. PARTICIPACIÓN DEL CONSEJO', y)
+
+    const colorPart: [number, number, number] = participacion.porcentaje >= 70
+      ? COLOR_VERDE : participacion.porcentaje >= 50 ? COLOR_AMARILLO : COLOR_ROJO
+
+    autoTable(doc, {
+      startY: y,
+      body: [
+        ['Total consejeros activos', `${participacion.total_consejeros}`],
+        ['Consejeros que votaron', `${participacion.votaron}`],
+        ['Porcentaje de participación', `${participacion.porcentaje}%`],
+      ],
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 50, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.row.index === 2 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = colorPart
+          hookData.cell.styles.fontSize = 9
+        }
+      },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  // ── 7. FIRMAS ─────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
 
   doc.setFontSize(8)
@@ -311,7 +420,7 @@ export function generarActaPDF(datos: DatosActa): void {
   const firmas = [
     'Presidente del Consejo',
     'Secretario del Consejo',
-    'Delegado de Copropiedad',
+    // 'Delegado de Copropiedad',
   ]
 
   const anchoFirma = (pageW - 28) / firmas.length
@@ -325,8 +434,217 @@ export function generarActaPDF(datos: DatosActa): void {
     doc.text(cargo, x, y + 17, { align: 'center' })
   })
 
-  piePagina(doc)
+  piePagina(doc, datos.generado_por)
 
   const nombreArchivo = `Acta_Seleccion_${datos.conjunto.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`
   doc.save(nombreArchivo)
+}
+
+export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  const pageW = doc.internal.pageSize.getWidth()
+  let y = 48
+
+  await encabezado(doc, datos)
+
+  y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
+    body: datos.candidatos.map((c, i) => [
+      i + 1,
+      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
+      labelTipoPersona(c.tipo_persona),
+      labelEstado(c.estado),
+      labelClasificacion(c.clasificacion),
+    ]),
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
+    margin: { left: 14, right: 14 },
+    didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const candidato = datos.candidatos[hookData.row.index]
+        if (candidato?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        }
+      }
+      if (hookData.section === 'body' && hookData.column.index === 4) {
+        const val = String(hookData.cell.text)
+        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
+        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
+        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
+      }
+    },
+  })
+  y = (doc as any).lastAutoTable.finalY + 8
+
+  const criteriosRef = datos.matriz[0]?.criterios ?? []
+  if (criteriosRef.length > 0) {
+    if (y > 230) { doc.addPage(); y = 16 }
+    y = titulo(doc, '2. CRITERIOS DE SELECCIÓN', y)
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Criterio', 'Descripción', 'Peso']],
+      body: criteriosRef.map((c, i) => [i + 1, c.nombre, c.descripcion || '—', `${c.peso}%`]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 55 }, 2: { cellWidth: 95 }, 3: { cellWidth: 15, halign: 'center' } },
+      margin: { left: 14, right: 14 },
+      foot: [['', '', 'TOTAL', '100%']],
+      footStyles: { fontStyle: 'bold', fillColor: [241, 245, 249] },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  if (datos.matriz.length > 0) {
+    if (y > 200) { doc.addPage(); y = 16 }
+    y = titulo(doc, '3. EVALUACIÓN TÉCNICA POR CANDIDATO', y)
+    for (const fila of datos.matriz) {
+      if (y > 220) { doc.addPage(); y = 16 }
+      doc.setFillColor(241, 245, 249)
+      doc.rect(14, y, pageW - 28, 5.5, 'F')
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text(fila.razon_social, 16, y + 3.8)
+      const puntajeColor = fila.puntaje_total >= 70 ? COLOR_VERDE : fila.puntaje_total >= 55 ? COLOR_AMARILLO : COLOR_ROJO
+      doc.setTextColor(...puntajeColor)
+      doc.text(`${fila.puntaje_total}%  ${labelClasificacion(fila.clasificacion)}`, pageW - 16, y + 3.8, { align: 'right' })
+      doc.setTextColor(0, 0, 0)
+      y += 7
+      if (fila.criterios.length > 0) {
+        autoTable(doc, {
+          startY: y,
+          head: [['#', 'Criterio', 'Respuesta', 'Peso', 'Puntaje']],
+          body: fila.criterios.map((c, i) => [i + 1, c.nombre, c.respuesta ? 'Sí' : 'No', `${c.peso}%`, `${c.puntaje}%`]),
+          styles: { fontSize: 7.5, cellPadding: 1.8 },
+          headStyles: { fillColor: [226, 232, 240], textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7 },
+          columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 75 }, 2: { cellWidth: 20, halign: 'center' }, 3: { cellWidth: 18, halign: 'center' }, 4: { cellWidth: 18, halign: 'center' } },
+          foot: [['', 'TOTAL', '', '100%', `${fila.puntaje_total}%`]],
+          footStyles: { fontStyle: 'bold', fillColor: [241, 245, 249] },
+          margin: { left: 14, right: 14 },
+          didParseCell: (hookData) => {
+            if (hookData.section === 'body' && hookData.column.index === 2) {
+              hookData.cell.styles.textColor = hookData.cell.text[0] === 'Sí' ? COLOR_VERDE : COLOR_ROJO
+              hookData.cell.styles.fontStyle = 'bold'
+            }
+            if (hookData.section === 'foot' && hookData.column.index === 4) {
+              const p = fila.puntaje_total
+              hookData.cell.styles.textColor = p >= 70 ? COLOR_VERDE : p >= 55 ? COLOR_AMARILLO : COLOR_ROJO
+            }
+          },
+        })
+        y = (doc as any).lastAutoTable.finalY + 6
+      } else {
+        y += 8
+      }
+    }
+  }
+
+  if (datos.ranking.length > 0) {
+    if (y > 220) { doc.addPage(); y = 16 }
+    y = titulo(doc, '4. RANKING FINAL (de mayor a menor puntaje)', y)
+    doc.setFontSize(7.5)
+    doc.setTextColor(...COLOR_GRIS_MEDIO)
+    doc.text(`Pesos del proceso: Evaluación técnica ${datos.proceso.peso_evaluacion}%  |  Votación del consejo ${datos.proceso.peso_votacion}%`, 14, y)
+    doc.setTextColor(0, 0, 0)
+    y += 5
+    autoTable(doc, {
+      startY: y,
+      head: [['Pos.', 'Candidato', 'Puntaje Eval.', 'Votos', 'Puntaje Final', 'Semáforo']],
+      body: datos.ranking.map((r) => [
+        `#${r.posicion}`,
+        r.razon_social,
+        `${Number(r.puntaje_evaluacion ?? 0).toFixed(1)}`,
+        r.votos_recibidos ?? 0,
+        `${Number(r.puntaje_final ?? 0).toFixed(1)}`,
+        r.estado_semaforo === 'verde' ? 'Alto' : r.estado_semaforo === 'amarillo' ? 'Medio' : 'Bajo',
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 12, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 25, halign: 'center' }, 3: { cellWidth: 18, halign: 'center' }, 4: { cellWidth: 25, halign: 'center', fontStyle: 'bold' }, 5: { cellWidth: 18, halign: 'center' } },
+      margin: { left: 14, right: 14 },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.column.index === 5) {
+          const v = String(hookData.cell.text[0])
+          hookData.cell.styles.textColor = v === 'Alto' ? COLOR_VERDE : v === 'Medio' ? COLOR_AMARILLO : COLOR_ROJO
+          hookData.cell.styles.fontStyle = 'bold'
+        }
+        if (hookData.section === 'body' && hookData.column.index === 4) {
+          hookData.cell.styles.textColor = COLOR_PRIMARIO
+        }
+      },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  if (datos.votos.length > 0) {
+    if (y > 220) { doc.addPage(); y = 16 }
+    y = titulo(doc, '5. VOTOS DEL CONSEJO (ordenados por puntaje del candidato)', y)
+    autoTable(doc, {
+      startY: y,
+      head: [['Consejero', 'Cargo', 'Apt.', 'Candidato Votado', 'Puntaje Final']],
+      body: datos.votos.map((v) => [v.consejero_nombre, v.consejero_cargo, v.consejero_apartamento, v.propuesta_votada, `${v.puntaje_final_propuesta.toFixed(1)}`]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 52 }, 1: { cellWidth: 35 }, 2: { cellWidth: 18, halign: 'center' }, 3: { cellWidth: 50 }, 4: { cellWidth: 22, halign: 'center', fontStyle: 'bold', textColor: COLOR_PRIMARIO } },
+      margin: { left: 14, right: 14 },
+    })
+    y = (doc as any).lastAutoTable.finalY + 12
+  }
+
+  // ── 6. PARTICIPACIÓN DEL CONSEJO ─────────────────────────────────────────
+  const participacion2 = datos.participacion ?? { total_consejeros: 0, votaron: 0, porcentaje: 0 }
+  if (participacion2.total_consejeros > 0) {
+    if (y > 230) { doc.addPage(); y = 16 }
+    y = titulo(doc, '6. PARTICIPACIÓN DEL CONSEJO', y)
+
+    const colorPart2: [number, number, number] = participacion2.porcentaje >= 70
+      ? COLOR_VERDE : participacion2.porcentaje >= 50 ? COLOR_AMARILLO : COLOR_ROJO
+
+    autoTable(doc, {
+      startY: y,
+      body: [
+        ['Total consejeros activos', `${participacion2.total_consejeros}`],
+        ['Consejeros que votaron', `${participacion2.votaron}`],
+        ['Porcentaje de participación', `${participacion2.porcentaje}%`],
+      ],
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 50, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+      didParseCell: (hookData) => {
+        if (hookData.section === 'body' && hookData.row.index === 2 && hookData.column.index === 1) {
+          hookData.cell.styles.textColor = colorPart2
+          hookData.cell.styles.fontSize = 9
+        }
+      },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  if (y > 230) { doc.addPage(); y = 16 }
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...COLOR_GRIS_MEDIO)
+  doc.text('Firmas del Consejo de Administración', pageW / 2, y, { align: 'center' })
+  y += 6
+  const firmas2 = ['Presidente del Consejo', 'Secretario del Consejo'
+    // , 'Delegado de Copropiedad'
+  ]
+  const anchoFirma2 = (pageW - 28) / firmas2.length
+  firmas2.forEach((cargo, i) => {
+    const x = 14 + i * anchoFirma2 + anchoFirma2 / 2
+    doc.setDrawColor(150, 150, 150)
+    doc.setLineWidth(0.3)
+    doc.line(x - 30, y + 12, x + 30, y + 12)
+    doc.setFontSize(7.5)
+    doc.setTextColor(80, 80, 80)
+    doc.text(cargo, x, y + 17, { align: 'center' })
+  })
+
+  piePagina(doc, datos.generado_por)
+
+  return doc.output('bloburl') as unknown as string
 }

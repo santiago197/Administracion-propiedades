@@ -5,9 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Loader2, AlertCircle, Trophy } from 'lucide-react'
+import { Loader2, AlertCircle, Trophy, FileDown } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import type { ResultadoFinal, Proceso } from '@/lib/types/index'
+import { Button } from '@/components/ui/button'
 
 export default function ReportesPage() {
   const { procesos, loading: loadingProceso, error: errorProceso } = useActiveProceso()
@@ -16,6 +17,7 @@ export default function ReportesPage() {
   const [resultados, setResultados] = useState<ResultadoFinal[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadingPdf, setLoadingPdf] = useState(false)
 
   useEffect(() => {
     if (procesos.length > 0 && !selectedProcesoId) {
@@ -53,6 +55,22 @@ export default function ReportesPage() {
     fetchResultados()
   }, [selectedProcesoId])
 
+  const handleDescargarActa = async () => {
+    if (!selectedProcesoId) return
+    setLoadingPdf(true)
+    try {
+      const res = await fetch(`/api/resultados?type=acta&proceso_id=${selectedProcesoId}`)
+      if (!res.ok) throw new Error('Error al obtener datos del acta')
+      const datos = await res.json()
+      const { generarActaPDF } = await import('@/lib/pdf/generar-acta')
+      await generarActaPDF(datos)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingPdf(false)
+    }
+  }
+
   if (loadingProceso) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -74,7 +92,7 @@ export default function ReportesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Exportable / Auditoría</p>
           <h1 className="text-2xl tracking-tight">Informes y Auditoría</h1>
@@ -82,18 +100,33 @@ export default function ReportesPage() {
             Resume criterios, puntajes, ranking final, votos y trazabilidad Ley 675.
           </p>
         </div>
-        {procesos.length > 1 && (
-          <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Selecciona proceso" />
-            </SelectTrigger>
-            <SelectContent>
-              {procesos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-2">
+          {procesos.length > 1 && (
+            <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Selecciona proceso" />
+              </SelectTrigger>
+              <SelectContent>
+                {procesos.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!selectedProcesoId || loadingPdf || resultados.length === 0}
+            onClick={handleDescargarActa}
+          >
+            {loadingPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
+            Descargar Acta PDF
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -230,9 +263,6 @@ export default function ReportesPage() {
                     ))}
                   </TableBody>
                 </Table>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Esta vista debe ser exportable (PDF) para auditoría y cumplimiento Ley 675.
-                </p>
               </CardContent>
             </Card>
           )}

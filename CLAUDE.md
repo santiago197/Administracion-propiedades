@@ -51,11 +51,15 @@ El sistema gestiona actualmente el proceso de selección de administrador para *
 
 Sistema multi-tenant para la selección de administradores de Propiedad Horizontal (Ley 675 de 2001 Colombia). Next.js 16 App Router + Supabase (auth + PostgreSQL) + Radix UI (shadcn/ui) + Tailwind CSS v4.
 
-### Dos flujos de usuario
+### Cuatro flujos de usuario
 
 **`/admin/*`** — Administradores autenticados con email/password. Protegido por `middleware.ts` que valida sesión Supabase y existencia en tabla `usuarios` con `activo = true`.
 
 **`/consejero/*`** — Consejeros de conjunto. Acceso público por código de 8 caracteres (sin Supabase Auth). El código se valida en `/api/auth/validate-code` consultando la tabla `consejeros`. La sesión se gestiona mediante una cookie HMAC-signed implementada en `lib/consejero-session.ts` (duración 8 horas).
+
+**`/proponente/*`** — Portal de postulantes. Acceso por código de la tabla `acceso_proponentes`. Sin Supabase Auth. Los postulantes solo pueden cargar/ver sus propios documentos. Las subidas usan `/api/proponente/upload-url` y el código se valida en `/api/proponente/validar`.
+
+**`/consulta/[slug]`** — Consulta pública del estado de un proceso. Totalmente pública, sin autenticación. El `slug` identifica el proceso.
 
 ### Roles de usuario (`usuarios.rol`)
 
@@ -72,6 +76,10 @@ El middleware bloquea a cualquier usuario cuyo `id` no exista en la tabla `usuar
 - `lib/supabase/server.ts` → para Server Components y API Routes (usa cookies)
 - `lib/supabase/client.ts` → para Client Components (browser)
 - `lib/supabase/auth-utils.ts` → helpers `requireAuth()` y `getCurrentUser()` para API Routes
+- `lib/supabase/admin.ts` → cliente con service-role key (operaciones privilegiadas)
+- `lib/supabase/audit.ts` → helpers para registrar en `audit_log`
+- `lib/supabase/proxy.ts` → utilidades para llamadas server-side a supabase sin cookies
+- `lib/supabase/user.ts` → helpers para obtener datos del usuario actual
 
 `requireAuth()` valida sesión **y** que el usuario tenga `conjunto_id` asignado. El `superadmin` **no** puede usar rutas que llamen `requireAuth()` directamente porque retornará 403 (no tiene `conjunto_id`). Para rutas accesibles por superadmin, usar `getCurrentUser()` directamente y manejar el caso sin `conjunto_id`.
 
@@ -83,12 +91,18 @@ Las siguientes rutas no requieren autenticación y están exentas en `middleware
 /
 /login
 /consejero  (y todos los subrutas /consejero/*)
+/proponente (y todos los subrutas /proponente/*)
+/consulta   (y todos los subrutas /consulta/*)
+/api/procesos (y subrutas)
 /api/auth/login
 /api/auth/logout
 /api/auth/validate-code
 /api/evaluacion/*   (sesión consejero, no Supabase)
 /api/consejero/*    (sesión consejero, no Supabase)
+/api/proponente/*   (código de acceso proponente, no Supabase)
 ```
+
+Las API routes manejan su propia autenticación vía `requireAuth()`. El middleware solo renueva cookies de Supabase para rutas `/api/`.
 
 ### Queries de base de datos
 
@@ -127,6 +141,7 @@ Todos los tipos TypeScript del dominio están en `lib/types/index.ts`. Incluye t
 conjuntos → procesos → propuestas → documentos, evaluaciones, votos
 conjuntos → consejeros (evaluadores sin cuenta Supabase Auth)
 usuarios → referencia auth.users (1:1), tiene conjunto_id y rol
+propuestas → acceso_proponentes (códigos de acceso para el portal /proponente)
 ```
 
 **Tablas de evaluación del administrador** (separadas de las evaluaciones de consejeros):
@@ -152,10 +167,27 @@ Ejecutar en orden en Supabase SQL Editor:
 9. `scripts/009_fix_usuarios_roles_policies.sql` — correcciones de políticas de roles
 10. `scripts/010_criterios_evaluacion.sql` — tabla `criterios_evaluacion` con 9 criterios por defecto
 11. `scripts/011_usuarios_permisos.sql` — tabla `usuarios_permisos` para permisos granulares
+12. `scripts/012_fix_documentos_schema.sql` — correcciones al esquema de documentos
+13. `scripts/013_transiciones_documentos_evaluacion.sql` — transiciones de estado para documentos y evaluación
 
 ### Subida de archivos
 
-Los documentos se suben a **Vercel Blob** (`@vercel/blob`). La API route `/api/upload` gestiona la subida. No se usa Supabase Storage. El campo `archivo_pathname` guarda la ruta interna para poder eliminar el blob.
+Los documentos se suben a **Vercel Blob** (`@vercel/blob`). No se usa Supabase Storage. El campo `archivo_pathname` guarda la ruta interna para poder eliminar el blob.
+
+- `/api/upload-url` — genera URL de subida para el panel admin
+- `/api/proponente/upload-url` — genera URL de subida para el portal proponente
+
+### Generación de PDF
+
+`lib/pdf/generar-acta.ts` implementa la generación del acta de selección usando **jsPDF + jspdf-autotable**. Exporta:
+- `generarActaPDF(datos: DatosActa)` — descarga el PDF directamente en el browser
+- `previsualizarActaPDF(datos: DatosActa)` — retorna un blob URL para previsualización
+
+El tipo `DatosActa` se define en `lib/supabase/queries.ts`. Esta función corre **solo en el browser** (usa `document.createElement`), no en el servidor.
+
+### Rate limiting
+
+`lib/rate-limit.ts` implementa un rate limiter en memoria por clave. Advertencia: es por instancia serverless — en producción con múltiples instancias, cada una tiene su propio conteo. Aceptable para el volumen actual; para producción a escala usar `@upstash/ratelimit` + Redis.
 
 ### Sistema OCR / Extracción de RUT
 
@@ -176,11 +208,12 @@ La función `getMatrizEvaluacionAdmin(proceso_id)` en `queries.ts` y el endpoint
 
 Los criterios de la matriz se gestionan dinámicamente desde la BD en lugar de estar completamente hardcodeados:
 
-- **Tabla**: `criterios_evaluacion` — columnas `id`, `codigo`, `nombre`, `descripcion`, `peso`, `activo`, `orden`
-- **UI Admin**: `app/admin/configuracion/criterios/page.tsx` — CRUD completo con drag-and-drop y validación de pesos
-- **API**: `GET/POST /api/criterios` y `GET/PUT/DELETE /api/criterios/[id]` — requieren `requireAuth()`
-- **Queries**: `getCriterios()`, `createCriterio()`, `updateCriterio()`, `deleteCriterio()`, `getPesoTotalCriterios()` en `queries.ts`
-- **Validación**: peso entre 0–100 por criterio; la suma total de activos debe ser 100 (validado en UI y API)
+- **Tabla catálogo**: `criterios_evaluacion` — columnas `id`, `nombre`, `descripcion`, `tipo`, `activo`, `orden`
+- **Tabla proceso**: `criterios` — columnas `id`, `proceso_id`, `criterio_evaluacion_id`, `peso`, `valor_minimo`, `valor_maximo`, `orden`, `activo`
+- **UI Admin**: `app/admin/configuracion/criterios/page.tsx` — CRUD catálogo con drag-and-drop
+- **API**: `GET/POST /api/criterios` y `GET/PUT/DELETE /api/criterios/[id]` — requieren `requireAuth()` (catálogo) y soportan `proceso_id` para configuración por proceso
+- **Queries**: `getCriterios()`, `createCriterio()`, `updateCriterio()`, `deleteCriterio()`, `getCriteriosProceso()`, `createCriterioProceso()` en `queries.ts`
+- **Validación**: peso entre 0–100 por criterio; la suma total de activos debe ser 100 (validado en UI y API de proceso)
 - **RLS**: lectura para todos los autenticados; escritura solo para `superadmin` y `admin`
 
 ### Permisos granulares por usuario

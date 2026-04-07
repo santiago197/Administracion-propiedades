@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getResultadosFinales, getProcesoConjunto, getMatrizEvaluacionAdmin, getDatosActa } from '@/lib/supabase/queries'
-import { requireAuth } from '@/lib/supabase/auth-utils'
+import { requireAuth, getSupabaseClient } from '@/lib/supabase/auth-utils'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function GET(request: NextRequest) {
   // Validar autenticación
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -34,7 +34,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === 'acta') {
-      const datos = await getDatosActa(procesoId)
+      let generadoPor: string | undefined
+      if (user) {
+        const supabase = await getSupabaseClient()
+        const { data: perfil } = await supabase
+          .from('usuarios')
+          .select('nombre')
+          .eq('id', user.id)
+          .single()
+        generadoPor = perfil?.nombre ?? user.email ?? undefined
+      }
+      const datos = await getDatosActa(procesoId, generadoPor)
       return NextResponse.json(datos)
     }
 
@@ -69,7 +79,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createAdminClient()
-    const { data: resultados, error } = await supabase
+    // recalcular_resultados retorna VOID — solo verificamos que no haya error
+    const { error } = await supabase
       .rpc('recalcular_resultados', { p_proceso_id: procesoId })
 
     if (error) {
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, resultados: resultados ?? [] })
+    return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[resultados/calcular] error:', error)
     return NextResponse.json({ error: 'Error en el servidor' }, { status: 500 })

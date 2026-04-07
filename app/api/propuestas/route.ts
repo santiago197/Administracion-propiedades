@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 // Crea una nueva propuesta. Valida campos requeridos antes de llamar a Supabase.
 // ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   let body: Record<string, unknown>
@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
         ? Number(body.valor_honorarios)
         : null,
     observaciones: body.observaciones ? String(body.observaciones).trim() : null,
+    created_by: user?.id ?? null,  // ✅ Registrar quién creó la propuesta
   }
 
   const { data: proceso, error: procesoError } = await getProcesoConjunto(payload.proceso_id, conjuntoId!)

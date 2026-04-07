@@ -1,4 +1,56 @@
 export type TipoPersona = 'juridica' | 'natural'
+
+// ---------------------------------------------------------------------------
+// Contratos
+// ---------------------------------------------------------------------------
+
+export type EstadoContrato = 'vigente' | 'proximo_a_vencer' | 'vencido'
+
+export interface Contrato {
+  id: string
+  conjunto_id: string
+  nombre: string
+  responsable?: string
+  descripcion?: string
+  fecha_inicio: string
+  fecha_fin: string
+  dias_preaviso: number
+  fecha_max_notificacion?: string
+  valor?: number
+  moneda: string
+  archivo_principal_url?: string
+  archivo_principal_pathname?: string
+  observaciones?: string
+  estado: EstadoContrato
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ContratoConEstado extends Contrato {
+  estado_calculado: EstadoContrato
+  dias_para_vencer: number
+  dias_para_notificar: number
+  notificacion_vencida: boolean
+}
+
+export interface ContratoAnexo {
+  id: string
+  contrato_id: string
+  nombre: string
+  descripcion?: string
+  archivo_url?: string
+  archivo_pathname?: string
+  fecha_documento?: string
+  created_at: string
+  updated_at: string
+}
+
+export const LABEL_ESTADO_CONTRATO: Record<EstadoContrato, string> = {
+  vigente: 'Vigente',
+  proximo_a_vencer: 'Próximo a vencer',
+  vencido: 'Vencido',
+}
 export type CargoCohnsejero =
   | 'presidente'
   | 'vicepresidente'
@@ -102,6 +154,8 @@ export interface Proceso {
   peso_evaluacion: number
   peso_votacion: number
   estado: EstadoProceso
+  es_publica?: boolean
+  slug?: string
   created_at: string
   updated_at: string
 }
@@ -117,6 +171,7 @@ export interface Consejero {
   telefono?: string
   codigo_acceso: string
   activo: boolean
+  puede_votar: boolean
   created_at: string
   updated_at: string
 }
@@ -264,6 +319,7 @@ export interface ResultadoFinal {
   puntaje_final: number
   posicion: number
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+  clasificacion?: string | null
 }
 
 /** Detalle de un criterio de la matriz de evaluación para una propuesta */
@@ -388,6 +444,7 @@ export interface PropuestaRutDatos {
 
 export type EstadoItemChecklist = 'pendiente' | 'cumple' | 'no_cumple'
 export type CriticidadItem = 'critico' | 'importante' | 'condicionante' | 'informativo'
+export type AplicaAItemChecklist = 'ambos' | 'juridica' | 'natural'
 
 export interface ItemChecklistLegal {
   id: string
@@ -405,7 +462,23 @@ export interface DefinicionItemChecklist {
   label: string
   descripcion: string
   criticidad: CriticidadItem
-  aplica_a: 'ambos' | 'juridica' | 'natural'
+  aplica_a: AplicaAItemChecklist
+  obligatorio?: boolean
+}
+
+export interface ValidacionLegalItemConfig {
+  id: string
+  codigo: string
+  seccion: string
+  nombre: string
+  categoria: CriticidadItem
+  descripcion: string
+  aplica_a: AplicaAItemChecklist
+  activo: boolean
+  obligatorio: boolean
+  orden: number
+  created_at: string
+  updated_at: string
 }
 
 export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { procesarValidacionLegal, getPropuestaConjunto } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createClient } from '@/lib/supabase/server'
-import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist } from '@/lib/types/index'
+import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist, ValidacionLegalItemConfig } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
 // Estados donde se puede cambiar entre habilitada ↔ no_apto_legal
@@ -14,6 +14,18 @@ const ESTADOS_SOLO_ACTUALIZAR: EstadoPropuesta[] = [
 ]
 const ESTADOS_PREVALIDACION: EstadoPropuesta[] = ['en_revision', 'en_subsanacion']
 
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
+}
+
 /**
  * Dado un checklist completo, calcula si la propuesta cumple o no.
  * Un ítem crítico en 'no_cumple' = no aprueba.
@@ -21,11 +33,13 @@ const ESTADOS_PREVALIDACION: EstadoPropuesta[] = ['en_revision', 'en_subsanacion
  */
 function calcularCumpleDesdeChecklist(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
+  tipoPersona: 'juridica' | 'natural',
+  items: DefinicionItemChecklist[]
 ): boolean {
-  const itemsCriticos = ITEMS_VALIDACION_LEGAL.filter(
+  const itemsCriticos = items.filter(
     (def: DefinicionItemChecklist) =>
       def.criticidad === 'critico' &&
+      def.obligatorio !== false &&
       (def.aplica_a === 'ambos' || def.aplica_a === tipoPersona)
   )
 
@@ -40,9 +54,10 @@ function calcularCumpleDesdeChecklist(
  */
 function consolidarObservaciones(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
+  tipoPersona: 'juridica' | 'natural',
+  items: DefinicionItemChecklist[]
 ): string {
-  const itemsConProblema = ITEMS_VALIDACION_LEGAL.filter((def) => {
+  const itemsConProblema = items.filter((def) => {
     if (def.aplica_a !== 'ambos' && def.aplica_a !== tipoPersona) return false
     return checklist[def.id]?.estado === 'no_cumple'
   })
@@ -75,14 +90,24 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient()
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('validacion_legal_items')
+      .select('*')
+      .eq('activo', true)
+      .order('seccion', { ascending: true })
+      .order('orden', { ascending: true })
+    if (itemsError) throw itemsError
+    const definiciones: DefinicionItemChecklist[] = (itemsData ?? []).length > 0
+      ? (itemsData ?? []).map((row) => mapItemConfigToDef(row as ValidacionLegalItemConfig))
+      : ITEMS_VALIDACION_LEGAL
 
     // Calcular cumple y observaciones desde el checklist si viene, si no usar los manuales
     const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
     const cumple: boolean = checklist
-      ? calcularCumpleDesdeChecklist(checklist as ChecklistLegal, tipoPersona)
+      ? calcularCumpleDesdeChecklist(checklist as ChecklistLegal, tipoPersona, definiciones)
       : (cumpleManual ?? false)
     const observaciones: string = checklist
-      ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona)
+      ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona, definiciones)
       : (obsManual ?? '')
 
     // Intentar actualizar con checklist_legal; si falla por columna faltante, reintentar sin él

@@ -37,8 +37,16 @@ function extractErrorDetail(error: unknown): string {
 
 export async function GET(request: NextRequest) {
   // Validar autenticación
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, rol } = await requireAuth(request)
   if (!authorized && authError) return authError
+
+  // ✅ Bloquear acceso a evaluadores
+  if (rol === 'evaluador') {
+    return NextResponse.json(
+      { error: 'Los evaluadores no tienen acceso a la gestión de consejeros' },
+      { status: 403 }
+    )
+  }
 
   try {
     const { searchParams } = new URL(request.url)
@@ -81,8 +89,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   // Validar autenticación
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, rol } = await requireAuth(request)
   if (!authorized && authError) return authError
+
+  // ✅ Bloquear acceso a evaluadores
+  if (rol === 'evaluador') {
+    return NextResponse.json(
+      { error: 'Los evaluadores no tienen acceso a la gestión de consejeros' },
+      { status: 403 }
+    )
+  }
 
   try {
     const body = await request.json()
@@ -147,8 +163,16 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, rol } = await requireAuth(request)
   if (!authorized && authError) return authError
+
+  // ✅ Bloquear acceso a evaluadores
+  if (rol === 'evaluador') {
+    return NextResponse.json(
+      { error: 'Los evaluadores no tienen acceso a la gestión de consejeros' },
+      { status: 403 }
+    )
+  }
 
   try {
     const body = await request.json()
@@ -178,6 +202,7 @@ export async function PATCH(request: NextRequest) {
       'apartamento',
       'email',
       'telefono',
+      'puede_votar',
     ]
 
     const filteredUpdates: Record<string, any> = {}

@@ -49,16 +49,23 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createAdminClient()
 
-    // 1. Validar consejero activo
+    // 1. Validar consejero activo y con permiso de voto
     const { data: consejero } = await supabase
       .from('consejeros')
-      .select('conjunto_id')
+      .select('conjunto_id, puede_votar')
       .eq('id', session.consejeroId)
       .eq('activo', true)
       .single()
 
     if (!consejero) {
       return NextResponse.json({ error: 'Consejero no válido o inactivo' }, { status: 403 })
+    }
+
+    if (!consejero.puede_votar) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para votar en este proceso. Contacta al administrador.' },
+        { status: 403 }
+      )
     }
 
     // 2. Validar proceso
