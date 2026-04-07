@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Loader2, AlertCircle, Trophy, FileDown } from 'lucide-react'
+import {
+  Loader2, AlertCircle, Trophy, FileDown, FileText,
+  ChevronDown, ChevronUp, RefreshCw,
+} from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import type { ResultadoFinal, Proceso } from '@/lib/types/index'
 import { Button } from '@/components/ui/button'
@@ -18,6 +21,13 @@ export default function ReportesPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadingPdf, setLoadingPdf] = useState(false)
+
+  // Borrador PDF
+  const [showBorrador, setShowBorrador] = useState(false)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [loadingBorrador, setLoadingBorrador] = useState(false)
+  const [errorBorrador, setErrorBorrador] = useState<string | null>(null)
+  const prevBlobUrl = useRef<string | null>(null)
 
   useEffect(() => {
     if (procesos.length > 0 && !selectedProcesoId) {
@@ -32,7 +42,22 @@ export default function ReportesPage() {
   useEffect(() => {
     const proc = procesos.find((p) => p.id === selectedProcesoId) ?? null
     setSelectedProceso(proc)
+    // Limpiar borrador al cambiar proceso
+    if (prevBlobUrl.current) {
+      URL.revokeObjectURL(prevBlobUrl.current)
+      prevBlobUrl.current = null
+    }
+    setBlobUrl(null)
+    setShowBorrador(false)
+    setErrorBorrador(null)
   }, [selectedProcesoId, procesos])
+
+  // Revocar blob URL al desmontar
+  useEffect(() => {
+    return () => {
+      if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedProcesoId) return
@@ -71,6 +96,39 @@ export default function ReportesPage() {
     }
   }
 
+  const generarBorrador = async () => {
+    if (!selectedProcesoId) return
+    setLoadingBorrador(true)
+    setErrorBorrador(null)
+    try {
+      const res = await fetch(`/api/resultados?type=acta&proceso_id=${selectedProcesoId}`)
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al cargar datos del acta')
+      }
+      const datos = await res.json()
+      const { previsualizarActaPDF } = await import('@/lib/pdf/generar-acta')
+      const url = await previsualizarActaPDF(datos)
+      // Revocar el anterior antes de guardar el nuevo
+      if (prevBlobUrl.current) URL.revokeObjectURL(prevBlobUrl.current)
+      prevBlobUrl.current = url
+      setBlobUrl(url)
+    } catch (e) {
+      setErrorBorrador(e instanceof Error ? e.message : 'Error al generar borrador')
+    } finally {
+      setLoadingBorrador(false)
+    }
+  }
+
+  const handleToggleBorrador = async () => {
+    if (!showBorrador) {
+      setShowBorrador(true)
+      if (!blobUrl) await generarBorrador()
+    } else {
+      setShowBorrador(false)
+    }
+  }
+
   if (loadingProceso) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -100,7 +158,7 @@ export default function ReportesPage() {
             Resume criterios, puntajes, ranking final, votos y trazabilidad Ley 675.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {procesos.length > 1 && (
             <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
               <SelectTrigger className="w-56">
@@ -118,12 +176,9 @@ export default function ReportesPage() {
             size="sm"
             disabled={!selectedProcesoId || loadingPdf || resultados.length === 0}
             onClick={handleDescargarActa}
+            className="gap-1.5"
           >
-            {loadingPdf ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileDown className="h-4 w-4" />
-            )}
+            {loadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
             Descargar Acta PDF
           </Button>
         </div>
@@ -150,7 +205,7 @@ export default function ReportesPage() {
               <CardContent className="space-y-2">
                 {selectedProceso ? (
                   <>
-                    <p className="font-semibold">{selectedProceso.nombre}</p>
+                    <p>{selectedProceso.nombre}</p>
                     <div className="flex gap-6 text-sm text-muted-foreground">
                       <span>
                         Inicio:{' '}
@@ -196,15 +251,15 @@ export default function ReportesPage() {
                       className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2"
                     >
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-card flex items-center justify-center font-bold shrink-0">
-                          {idx === 0 ? <Trophy className="h-4 w-4 text-amber-500" /> : `#${idx + 1}`}
+                        <div className="h-8 w-8 rounded-lg bg-card flex items-center justify-center shrink-0">
+                          {idx === 0 ? <Trophy className="h-4 w-4 text-amber-500" /> : <span className="text-sm">#{idx + 1}</span>}
                         </div>
                         <div>
-                          <p className="font-semibold text-sm">{r.razon_social}</p>
+                          <p className="text-sm">{r.razon_social}</p>
                           <p className="text-xs text-muted-foreground">Votos: {r.votos_recibidos}</p>
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-base font-semibold tabular-nums">
+                      <Badge variant="outline" className="text-base tabular-nums">
                         {r.puntaje_final.toFixed(2)}
                       </Badge>
                     </div>
@@ -237,11 +292,11 @@ export default function ReportesPage() {
                     {resultados.map((r, idx) => (
                       <TableRow key={r.propuesta_id} className={idx === 0 ? 'bg-amber-500/5' : ''}>
                         <TableCell className="text-muted-foreground tabular-nums">{idx + 1}</TableCell>
-                        <TableCell className="font-medium">{r.razon_social}</TableCell>
+                        <TableCell>{r.razon_social}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.puntaje_evaluacion.toFixed(1)}</TableCell>
                         <TableCell className="text-right tabular-nums">{r.votos_recibidos}</TableCell>
                         <TableCell className="text-right">
-                          <span className="font-bold text-primary tabular-nums">{r.puntaje_final.toFixed(2)}</span>
+                          <span className="text-primary tabular-nums">{r.puntaje_final.toFixed(2)}</span>
                         </TableCell>
                         <TableCell>
                           {r.estado_semaforo && (
@@ -264,6 +319,74 @@ export default function ReportesPage() {
                   </TableBody>
                 </Table>
               </CardContent>
+            </Card>
+          )}
+
+          {/* Borrador del acta (PDF incrustado) */}
+          {selectedProcesoId && (
+            <Card>
+              <CardHeader className="cursor-pointer select-none" onClick={handleToggleBorrador}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <CardTitle>Borrador del Acta</CardTitle>
+                      <CardDescription>
+                        Vista previa del PDF con el estado actual del proceso
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">
+                      BORRADOR
+                    </Badge>
+                    {loadingBorrador
+                      ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      : showBorrador
+                      ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    }
+                  </div>
+                </div>
+              </CardHeader>
+
+              {showBorrador && (
+                <CardContent className="space-y-3">
+                  {errorBorrador ? (
+                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {errorBorrador}
+                    </div>
+                  ) : loadingBorrador ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                      <p className="text-sm">Generando vista previa del acta…</p>
+                    </div>
+                  ) : blobUrl ? (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>El PDF refleja el estado del proceso al momento de la generación.</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 h-7 text-xs"
+                          onClick={(e) => { e.stopPropagation(); generarBorrador() }}
+                          disabled={loadingBorrador}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Actualizar
+                        </Button>
+                      </div>
+                      <iframe
+                        src={blobUrl}
+                        className="w-full rounded border bg-muted/20"
+                        style={{ height: '80vh', minHeight: '600px' }}
+                        title="Borrador del Acta de Selección"
+                      />
+                    </>
+                  ) : null}
+                </CardContent>
+              )}
             </Card>
           )}
         </>

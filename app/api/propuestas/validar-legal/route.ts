@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { procesarValidacionLegal, getPropuestaConjunto } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createClient } from '@/lib/supabase/server'
+import { getRequestMeta } from '@/lib/supabase/audit'
 import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist, ValidacionLegalItemConfig } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
@@ -73,7 +74,7 @@ function consolidarObservaciones(
 }
 
 export async function POST(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
         const { error: rpcErr } = await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta_id,
           p_estado_nuevo: estadoObjetivo,
-          p_usuario_id: null,
+          p_usuario_id: user?.id ?? null,
           p_observacion: observaciones || null,
           p_metadata: { origen: 're_validacion_legal', cumple_requisitos: cumple },
         })
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
       const { error: toValidacionErr } = await supabase.rpc('cambiar_estado_propuesta', {
         p_propuesta_id: propuesta_id,
         p_estado_nuevo: 'en_validacion',
-        p_usuario_id: null,
+        p_usuario_id: user?.id ?? null,
         p_observacion: null,
         p_metadata: { origen: 'validar_legal_pretransicion' },
       })
@@ -176,6 +177,25 @@ export async function POST(request: NextRequest) {
     // Caso 3: Flujo normal (en_validacion) — transición por máquina de estados
     await ejecutarUpdate()
     const { success, estado } = await procesarValidacionLegal(propuesta_id, cumple, observaciones)
+
+    // Registrar quién realizó la validación legal
+    const { ip, userAgent } = getRequestMeta(request)
+    await supabase.from('audit_log').insert({
+      accion: cumple ? 'VALIDACION_LEGAL_APROBADA' : 'VALIDACION_LEGAL_RECHAZADA',
+      entidad: 'propuestas',
+      entidad_id: propuesta_id,
+      conjunto_id: conjuntoId,
+      datos_nuevos: {
+        usuario_id: user?.id ?? null,
+        cumple_requisitos: cumple,
+        observaciones: observaciones || null,
+      },
+      ip_address: ip,
+      user_agent: userAgent,
+    }).then(({ error: auditErr }) => {
+      if (auditErr) console.warn('[validar-legal] Error inserting audit_log:', auditErr)
+    })
+
     return NextResponse.json({ success, estado }, { status: 200 })
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error)
