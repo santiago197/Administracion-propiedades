@@ -1121,7 +1121,7 @@ function ValidacionLegalContent() {
                   </div>
 
                   {/* Indicador de flujo — muestra el paso actual y permite avanzar */}
-                  {esValidable && estadoLegal === 'pendiente' && (
+                  {esValidable && (estadoLegal === 'pendiente' || estadoLegal === 'apto_con_obs') && (
                     <div className="border-t border-border/40 px-5 sm:px-6 py-4 bg-background/30">
                       <IndicadorFlujo
                         propuesta={p}
