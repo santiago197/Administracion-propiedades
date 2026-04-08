@@ -86,8 +86,9 @@ function calcularCumplimientoLegal(
   const importantesFallidos = items.filter(
     (d) => d.criticidad === 'importante' && checklist[d.id]?.estado === 'no_cumple'
   ).length
+  const totalFallidos = items.filter((d) => checklist[d.id]?.estado === 'no_cumple').length
   return {
-    pct: items.length > 0 ? Math.round((cumplidos / items.length) * 100) : 0,
+    pct: items.length > 0 ? Math.round(((items.length - totalFallidos) / items.length) * 100) : 0,
     cumplidos,
     total: items.length,
     criticosFallidos,

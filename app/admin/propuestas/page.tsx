@@ -147,8 +147,8 @@ function pctCumplimientoLegal(p: Propuesta): number | null {
     (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
   )
   if (items.length === 0) return null
-  const cumplidos = items.filter((d) => ckl[d.id]?.estado === 'cumple').length
-  return Math.round((cumplidos / items.length) * 100)
+  const noCumple = items.filter((d) => ckl[d.id]?.estado === 'no_cumple').length
+  return Math.round(((items.length - noCumple) / items.length) * 100)
 }
 
 // ---------------------------------------------------------------------------
