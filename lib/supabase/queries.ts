@@ -1697,7 +1697,7 @@ export async function obtenerAccesoProponente(propuesta_id: string) {
     .from('acceso_proponentes')
     .select('*')
     .eq('propuesta_id', propuesta_id)
-    .single()
+    .maybeSingle()
 
   return { data, error }
 }

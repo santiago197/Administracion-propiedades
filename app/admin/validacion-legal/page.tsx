@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertCircle, ExternalLink } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
-import { LABEL_ESTADO } from '@/lib/types/index'
-import type { Propuesta, Proceso } from '@/lib/types/index'
+import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
+import type { Propuesta, Proceso, ChecklistLegal } from '@/lib/types/index'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   habilitada:    { label: 'Apto legal',        cls: 'bg-emerald-500/10 text-emerald-700' },
@@ -22,6 +22,16 @@ const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
 
 function badgeForPropuesta(p: Propuesta) {
   return ESTADO_BADGE[p.estado] ?? { label: LABEL_ESTADO[p.estado] ?? p.estado, cls: 'bg-muted/50 text-muted-foreground' }
+}
+
+function calcularPctCumplimiento(p: Propuesta): number | null {
+  const ckl = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal
+  if (!ckl || Object.keys(ckl).length === 0) return null
+  const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
+  const items = ITEMS_VALIDACION_LEGAL.filter((d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona)
+  if (items.length === 0) return null
+  const cumplidos = items.filter((d) => ckl[d.id]?.estado === 'cumple').length
+  return Math.round((cumplidos / items.length) * 100)
 }
 
 export default function ValidacionLegalAdmin() {
@@ -130,68 +140,80 @@ export default function ValidacionLegalAdmin() {
               No hay propuestas para este proceso.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Propuesta</TableHead>
-                  <TableHead className="hidden sm:table-cell">NIT / Cédula</TableHead>
-                  <TableHead className="hidden sm:table-cell">Tipo</TableHead>
-                  <TableHead>Cumple</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="hidden md:table-cell">Observaciones</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {propuestas.map((p) => {
-                  const badge = badgeForPropuesta(p)
-                  const isValidable = !['adjudicado', 'descalificada', 'retirada'].includes(p.estado)
-                  return (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-semibold">{p.razon_social}</TableCell>
-                      <TableCell className="hidden sm:table-cell text-muted-foreground tabular-nums">{p.nit_cedula}</TableCell>
-                      <TableCell className="hidden sm:table-cell capitalize">{p.tipo_persona}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            p.cumple_requisitos_legales
-                              ? 'bg-emerald-500/10 text-emerald-700'
-                              : 'bg-destructive/10 text-destructive'
-                          }
-                        >
-                          {p.cumple_requisitos_legales ? 'Sí' : 'No'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={badge.cls}>
-                          {badge.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground text-sm max-w-xs truncate">
-                        {p.observaciones_legales ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {isValidable && selectedProceso && conjunto ? (
-                          <a
-                            href={`/admin/conjuntos/${conjunto.id}/procesos/${selectedProceso.id}/validacion-legal?propuestaId=${p.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <Button variant="ghost" size="sm" className="gap-1.5">
-                              <ExternalLink className="h-4 w-4" />
-                              Editar
-                            </Button>
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Propuesta</TableHead>
+                    <TableHead className="hidden sm:table-cell">NIT / Cédula</TableHead>
+                    <TableHead className="hidden lg:table-cell">Tipo</TableHead>
+                    <TableHead>% Cumpl.</TableHead>
+                    <TableHead className="hidden sm:table-cell">Estado</TableHead>
+                    <TableHead className="hidden md:table-cell">Observaciones</TableHead>
+                    <TableHead className="text-right w-20">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {propuestas.map((p) => {
+                    const badge = badgeForPropuesta(p)
+                    const isValidable = !['adjudicado', 'descalificada', 'retirada'].includes(p.estado)
+                    const pct = calcularPctCumplimiento(p)
+                    const pctColor = pct === null ? 'text-muted-foreground' : pct === 100 ? 'text-emerald-600' : pct >= 70 ? 'text-amber-600' : 'text-destructive'
+                    return (
+                      <TableRow key={p.id}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <span className="font-semibold truncate block max-w-[140px] sm:max-w-none">{p.razon_social}</span>
+                            <span className="text-xs text-muted-foreground sm:hidden">{p.nit_cedula}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell text-muted-foreground tabular-nums text-sm">{p.nit_cedula}</TableCell>
+                        <TableCell className="hidden lg:table-cell text-sm capitalize">{p.tipo_persona}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span className={`font-semibold tabular-nums ${pctColor}`}>
+                              {pct !== null ? `${pct}%` : '—'}
+                            </span>
+                            {pct !== null && (
+                              <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full ${pct === 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-500' : 'bg-destructive'}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <Badge variant="outline" className={`text-xs ${badge.cls}`}>
+                            {badge.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground text-sm max-w-[150px] truncate">
+                          {p.observaciones_legales ?? '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {isValidable && selectedProceso && conjunto ? (
+                            <a
+                              href={`/admin/conjuntos/${conjunto.id}/procesos/${selectedProceso.id}/validacion-legal?propuestaId=${p.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <Button variant="ghost" size="sm" className="gap-1 h-8 px-2">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Editar</span>
+                              </Button>
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
             Transparencia: registre quién validó, fecha y observaciones. Si es No Apto, la propuesta no continúa a Evaluación ni Votación.
