@@ -112,6 +112,7 @@ function OpcionBinaria({
   value: number | null
   onChange: (v: number) => void
 }) {
+  const maxPts = max ?? 0
   return (
     <RadioGroup
       value={value?.toString() ?? ''}
@@ -120,12 +121,12 @@ function OpcionBinaria({
     >
       <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
         <div className="flex items-center gap-3">
-          <RadioGroupItem value={max.toString()} id={`${field}-si`} />
+          <RadioGroupItem value={maxPts.toString()} id={`${field}-si`} />
           <Label htmlFor={`${field}-si`} className="cursor-pointer font-normal text-sm">
             Sí cumple
           </Label>
         </div>
-        <span className="text-xs text-muted-foreground font-medium ml-3 shrink-0">{max} pts</span>
+        <span className="text-xs text-muted-foreground font-medium ml-3 shrink-0">{maxPts} pts</span>
       </div>
       <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-destructive has-[[data-state=checked]]:bg-destructive/5">
         <div className="flex items-center gap-3">
@@ -190,7 +191,7 @@ function CriterioBloque({
           </div>
         </div>
         <span className={`text-base font-bold shrink-0 tabular-nums ${pts !== null ? 'text-primary' : 'text-muted-foreground'}`}>
-          {pts !== null ? pts : '–'}/{maxPts}
+          {pts !== null ? pts : '–'}/{maxPts ?? 0}
         </span>
       </div>
       {children}
@@ -382,7 +383,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                     numero={index + 1}
                     nombre={criterio.nombre}
                     pts={evalData[criterio.codigo] ?? null}
-                    maxPts={criterio.peso}
+                    maxPts={criterio.peso ?? 0}
                     icon={getIconForCriterio(criterio.codigo)}
                     tooltip={criterio.descripcion || criterio.nombre}
                     autosugerido={
@@ -392,7 +393,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                   >
                     <OpcionBinaria
                       field={criterio.codigo}
-                      max={criterio.peso}
+                      max={criterio.peso ?? 0}
                       value={evalData[criterio.codigo] ?? null}
                       onChange={(v) => set(criterio.codigo, v)}
                     />
