@@ -75,8 +75,9 @@ function calcularCumplimientoLegal(
   checklist: ChecklistLegal,
   tipoPersona: 'juridica' | 'natural'
 ): { pct: number; cumplidos: number; total: number; criticosFallidos: number; importantesFallidos: number } {
+  // Solo considerar ítems obligatorios (obligatorio !== false)
   const items = ITEMS_VALIDACION_LEGAL.filter(
-    (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+    (d) => (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
   )
   const cumplidos = items.filter((d) => checklist[d.id]?.estado === 'cumple').length
   const criticosFallidos = items.filter(

@@ -81,7 +81,10 @@ function pctCumplimientoLegal(p: Propuesta): number | null {
   const ckl = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal
   if (!ckl || Object.keys(ckl).length === 0) return null
   const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
-  const items = ITEMS_VALIDACION_LEGAL.filter((d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona)
+  // Solo considerar ítems obligatorios (obligatorio !== false)
+  const items = ITEMS_VALIDACION_LEGAL.filter((d) => 
+    (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
+  )
   if (items.length === 0) return null
   const cumplidos = items.filter((d) => ckl[d.id]?.estado === 'cumple').length
   return Math.round((cumplidos / items.length) * 100)
