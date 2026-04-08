@@ -20,6 +20,7 @@ import type {
   ClasificacionPropuesta,
   Criterio,
   CriterioEvaluacion,
+  TipoCriterio,
   TipoDocumentoConfig,
   TipoPersona,
   ValidacionLegalItemConfig,
@@ -1334,7 +1335,7 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
   const { data, error } = await supabase
     .from('criterios')
     .select(
-      'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, codigo, nombre, descripcion, tipo, orden, activo)'
+      'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, nombre, descripcion, tipo, orden, activo)'
     )
     .eq('proceso_id', procesoId)
     .order('orden', { ascending: true })
@@ -1342,15 +1343,15 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
   if (error) throw error
 
   return (data ?? []).map((row) => {
-    const catalogo = row.criterios_evaluacion
+    const catalogo = row.criterios_evaluacion as { id?: string; nombre?: string; descripcion?: string; tipo?: string; orden?: number; activo?: boolean } | null
     return {
       id: row.id,
       proceso_id: row.proceso_id,
       criterio_evaluacion_id: row.criterio_evaluacion_id,
-      codigo: catalogo?.codigo ?? row.id,
+      codigo: row.criterio_evaluacion_id ?? row.id,
       nombre: catalogo?.nombre ?? 'Criterio',
       descripcion: catalogo?.descripcion ?? null,
-      tipo: catalogo?.tipo ?? 'escala',
+      tipo: (catalogo?.tipo ?? 'escala') as TipoCriterio,
       peso: row.peso,
       valor_minimo: row.valor_minimo,
       valor_maximo: row.valor_maximo,
@@ -1700,6 +1701,21 @@ export async function obtenerAccesoProponente(propuesta_id: string) {
     .select('*')
     .eq('propuesta_id', propuesta_id)
     .maybeSingle()
+
+  return { data, error }
+}
+
+/**
+ * Obtiene todos los accesos de proponentes de un proceso en una sola query
+ */
+export async function obtenerAccesosPorProceso(proceso_id: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .select('propuesta_id, codigo, activo, fecha_limite, propuestas!inner(proceso_id)')
+    .eq('propuestas.proceso_id', proceso_id)
+    .not('codigo', 'is', null)
 
   return { data, error }
 }

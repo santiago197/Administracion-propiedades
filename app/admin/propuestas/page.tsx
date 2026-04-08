@@ -164,6 +164,8 @@ export default function PropuestasPage() {
   const [selectedProceso, setSelectedProceso] = useState<string>('')
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
+  const selectedPropuestaRef = useRef<Propuesta | null>(null)
+  useEffect(() => { selectedPropuestaRef.current = selectedPropuesta }, [selectedPropuesta])
 
   // Usuario actual y rol
   const [userInfo, setUserInfo] = useState<{ id?: string; rol?: string; nombre?: string } | null>(null)
@@ -197,32 +199,30 @@ export default function PropuestasPage() {
       const data: Propuesta[] = await res.json()
       setPropuestas(data)
 
-      // Cargar accesos guardados en paralelo
-      const accesos = await Promise.all(
-        data.map(async (p) => {
-          try {
-            const r = await fetch(`/api/propuestas/${p.id}/acceso`)
-            if (!r.ok) return null
-            const a = await r.json()
-            if (!a?.codigo) return null
-            const acceso: AccesoProponente = {
-              propuestaId: a.propuesta_id,
-              codigo: a.codigo,
-              fechaLimite: a.fecha_limite ? new Date(a.fecha_limite) : null,
-              activo: a.activo,
-              estado: 'inactivo',
+      // Cargar accesos en una sola query batch
+      try {
+        const r = await fetch(`/api/acceso-proponentes?proceso_id=${procesoId}`)
+        if (r.ok) {
+          const accesosRaw: { propuesta_id: string; codigo: string; activo: boolean; fecha_limite: string | null }[] = await r.json()
+          setAccesosMap(() => {
+            const map = new Map<string, AccesoProponente>()
+            for (const a of accesosRaw) {
+              if (!a.codigo) continue
+              const acceso: AccesoProponente = {
+                propuestaId: a.propuesta_id,
+                codigo: a.codigo,
+                fechaLimite: a.fecha_limite ? new Date(a.fecha_limite) : null,
+                activo: a.activo,
+                estado: 'inactivo',
+              }
+              map.set(a.propuesta_id, { ...acceso, estado: calcularEstadoAcceso(acceso) })
             }
-            return { ...acceso, estado: calcularEstadoAcceso(acceso) }
-          } catch {
-            return null
-          }
-        })
-      )
-      setAccesosMap(() => {
-        const map = new Map<string, AccesoProponente>()
-        accesos.forEach((a) => { if (a) map.set(a.propuestaId, a) })
-        return map
-      })
+            return map
+          })
+        }
+      } catch {
+        // no bloquear carga de propuestas si falla el batch de accesos
+      }
 
       return data
     } catch {
@@ -255,7 +255,7 @@ export default function PropuestasPage() {
         if (procesosData.length > 0) {
           const primerProceso = procesosData[0].id
           setSelectedProceso(primerProceso)
-          await loadPropuestas(primerProceso, filterMode)
+          await loadPropuestas(primerProceso, filterModeRef.current)
         }
       } catch (e) {
         console.error('Error fetching data:', e)
@@ -264,7 +264,9 @@ export default function PropuestasPage() {
       }
     }
     init()
-  }, [loadPropuestas, filterMode])
+  // loadPropuestas es estable (deps vacíos). filterMode se lee por ref para no re-ejecutar el init completo al cambiar el filtro.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadPropuestas])
 
   async function handleProcesoChange(procesoId: string) {
     setSelectedProceso(procesoId)
@@ -281,14 +283,21 @@ export default function PropuestasPage() {
     }
   }
 
-  // Refresca la lista y mantiene la selección actualizada
+  // Refresca la lista y mantiene la selección actualizada.
+  // Usa ref para selectedPropuesta para no recrear la función en cada cambio de selección.
+  const selectedProcesoRef = useRef(selectedProceso)
+  const filterModeRef = useRef(filterMode)
+  useEffect(() => { selectedProcesoRef.current = selectedProceso }, [selectedProceso])
+  useEffect(() => { filterModeRef.current = filterMode }, [filterMode])
+
   const handlePropuestaChanged = useCallback(async () => {
-    const data = await loadPropuestas(selectedProceso, filterMode)
-    if (selectedPropuesta) {
-      const fresh = data.find((p) => p.id === selectedPropuesta.id)
+    const data = await loadPropuestas(selectedProcesoRef.current, filterModeRef.current)
+    const current = selectedPropuestaRef.current
+    if (current) {
+      const fresh = data.find((p) => p.id === current.id)
       setSelectedPropuesta(fresh ?? null)
     }
-  }, [loadPropuestas, selectedProceso, selectedPropuesta, filterMode])
+  }, [loadPropuestas])
 
   // ---------------------------------------------------------------------------
   // Funciones de Acceso Proponente
