@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         if (isSchemaMismatch) {
           const { data, error: adminError } = await adminClient
             .from('criterios')
-            .select('id, proceso_id, nombre, descripcion, tipo, peso, valor_minimo, valor_maximo, orden, activo')
+            .select('id, proceso_id, codigo, nombre, descripcion, tipo, peso, valor_minimo, valor_maximo, orden, activo')
             .eq('proceso_id', procesoId)
             .order('orden', { ascending: true })
 
@@ -60,13 +60,24 @@ export async function GET(request: NextRequest) {
         const { data, error: adminError } = await adminClient
           .from('criterios')
           .select(
-            'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, nombre, descripcion, tipo, orden, activo)'
+            'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, codigo, nombre, descripcion, tipo, orden, activo)'
           )
           .eq('proceso_id', procesoId)
           .order('orden', { ascending: true })
 
         if (adminError) throw adminError
-        return NextResponse.json(data ?? [])
+        
+        // Mapear para incluir codigo del catálogo
+        const mapped = (data ?? []).map((row: Record<string, unknown>) => {
+          const catalogo = row.criterios_evaluacion as Record<string, unknown> | null
+          return {
+            ...row,
+            codigo: catalogo?.codigo ?? row.id,
+            nombre: catalogo?.nombre ?? 'Criterio',
+            descripcion: catalogo?.descripcion ?? null,
+          }
+        })
+        return NextResponse.json(mapped)
       }
     }
 

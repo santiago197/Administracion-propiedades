@@ -169,6 +169,78 @@ function piePagina(doc: jsPDF, generadoPor?: string) {
   }
 }
 
+function seccionDecisionJustificacion(doc: jsPDF, datos: DatosActa, y: number): number {
+  const pageW = doc.internal.pageSize.getWidth()
+  if (y > 200) { doc.addPage(); y = 16 }
+  y = titulo(doc, '7. DECISIÓN Y JUSTIFICACIÓN DE LA SELECCIÓN', y)
+
+  const primero = datos.ranking[0]
+  const adjudicado = datos.candidatos.find(c => c.estado === 'adjudicado')
+  const nombreSeleccionado = adjudicado?.razon_social ?? primero?.razon_social
+
+  if (nombreSeleccionado && primero) {
+    const segundo = datos.ranking[1]
+    const diferencia = segundo
+      ? (Number(primero.puntaje_final ?? 0) - Number(segundo.puntaje_final ?? 0)).toFixed(1)
+      : null
+
+    const lineas: string[] = [
+      `Candidato seleccionado: ${nombreSeleccionado}`,
+      `Puntaje final obtenido: ${Number(primero.puntaje_final ?? 0).toFixed(1)} puntos — Evaluación técnica: ${Number(primero.puntaje_evaluacion ?? 0).toFixed(1)} | Votos del consejo: ${primero.votos_recibidos ?? 0}`,
+    ]
+    if (diferencia !== null && segundo) {
+      lineas.push(`Diferencia frente al segundo lugar (${segundo.razon_social}): ${diferencia} puntos`)
+    }
+    lineas.push(
+      `La selección se fundamenta en que el candidato obtuvo el mayor puntaje final ponderado del proceso, resultado de la evaluación técnica realizada por el equipo administrativo y la votación directa de los miembros del Consejo de Administración, aplicando los criterios y pesos previamente definidos para el proceso.`,
+    )
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(30, 41, 59)
+
+    for (const linea of lineas) {
+      const wrapped = doc.splitTextToSize(linea, pageW - 28) as string[]
+      if (y + wrapped.length * 5 > 270) { doc.addPage(); y = 16 }
+      doc.text(wrapped, 14, y)
+      y += wrapped.length * 5 + 3
+    }
+  } else {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(...COLOR_GRIS_MEDIO)
+    doc.text('No se ha registrado un candidato adjudicado ni datos de ranking para este proceso.', 14, y)
+    doc.setTextColor(0, 0, 0)
+    y += 8
+  }
+
+  return y + 4
+}
+
+function seccionDeclaraciones(doc: jsPDF, y: number): number {
+  const pageW = doc.internal.pageSize.getWidth()
+  if (y > 210) { doc.addPage(); y = 16 }
+  y = titulo(doc, '8. DECLARACIONES', y)
+
+  const parrafos = [
+    'DECLARACIÓN DE OBJETIVIDAD: Los miembros del Consejo de Administración declaran expresamente que el presente proceso de selección se desarrolló de forma objetiva, imparcial y transparente, sin que mediaran intereses personales, familiares, económicos o de cualquier otra índole que pudieran comprometer la integridad de la decisión adoptada.',
+    'DECLARACIÓN DE CUMPLIMIENTO: El proceso de selección se adelantó en estricto cumplimiento de los criterios, pesos y procedimientos previamente aprobados por el Consejo de Administración, en observancia de las disposiciones de la Ley 675 de 2001 (Régimen de Propiedad Horizontal) y del Reglamento de Propiedad Horizontal del conjunto.',
+  ]
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(30, 41, 59)
+
+  for (const parrafo of parrafos) {
+    const wrapped = doc.splitTextToSize(parrafo, pageW - 28) as string[]
+    if (y + wrapped.length * 5 > 270) { doc.addPage(); y = 16 }
+    doc.text(wrapped, 14, y)
+    y += wrapped.length * 5 + 5
+  }
+
+  return y + 4
+}
+
 export async function generarActaPDF(datos: DatosActa): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
@@ -408,7 +480,13 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  // ── 7. FIRMAS ─────────────────────────────────────────────────────────────
+  // ── 7. DECISIÓN Y JUSTIFICACIÓN ──────────────────────────────────────────
+  y = seccionDecisionJustificacion(doc, datos, y)
+
+  // ── 8. DECLARACIONES ─────────────────────────────────────────────────────
+  y = seccionDeclaraciones(doc, y)
+
+  // ── FIRMAS ────────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
 
   doc.setFontSize(8)
@@ -624,6 +702,13 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
+  // ── 7. DECISIÓN Y JUSTIFICACIÓN ──────────────────────────────────────────
+  y = seccionDecisionJustificacion(doc, datos, y)
+
+  // ── 8. DECLARACIONES ─────────────────────────────────────────────────────
+  y = seccionDeclaraciones(doc, y)
+
+  // ── FIRMAS ────────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')

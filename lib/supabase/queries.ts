@@ -1334,7 +1334,7 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
   const { data, error } = await supabase
     .from('criterios')
     .select(
-      'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, nombre, descripcion, tipo, orden, activo)'
+      'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, codigo, nombre, descripcion, tipo, orden, activo)'
     )
     .eq('proceso_id', procesoId)
     .order('orden', { ascending: true })
@@ -1347,6 +1347,7 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
       id: row.id,
       proceso_id: row.proceso_id,
       criterio_evaluacion_id: row.criterio_evaluacion_id,
+      codigo: catalogo?.codigo ?? row.id,
       nombre: catalogo?.nombre ?? 'Criterio',
       descripcion: catalogo?.descripcion ?? null,
       tipo: catalogo?.tipo ?? 'escala',

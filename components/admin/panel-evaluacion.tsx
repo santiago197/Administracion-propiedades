@@ -113,16 +113,18 @@ function OpcionBinaria({
   onChange: (v: number) => void
 }) {
   const maxPts = max ?? 0
+  const uniqueId = `eval-${field}`
   return (
     <RadioGroup
+      name={uniqueId}
       value={value?.toString() ?? ''}
       onValueChange={(v) => onChange(parseInt(v))}
       className="grid grid-cols-1 sm:grid-cols-2 gap-3"
     >
       <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
         <div className="flex items-center gap-3">
-          <RadioGroupItem value={maxPts.toString()} id={`${field}-si`} />
-          <Label htmlFor={`${field}-si`} className="cursor-pointer font-normal text-sm">
+          <RadioGroupItem value={maxPts.toString()} id={`${uniqueId}-si`} />
+          <Label htmlFor={`${uniqueId}-si`} className="cursor-pointer font-normal text-sm">
             Sí cumple
           </Label>
         </div>
@@ -130,8 +132,8 @@ function OpcionBinaria({
       </div>
       <div className="flex items-center justify-between border rounded-md px-4 py-3 hover:bg-muted/40 transition-colors cursor-pointer has-[[data-state=checked]]:border-destructive has-[[data-state=checked]]:bg-destructive/5">
         <div className="flex items-center gap-3">
-          <RadioGroupItem value="0" id={`${field}-no`} />
-          <Label htmlFor={`${field}-no`} className="cursor-pointer font-normal text-sm">
+          <RadioGroupItem value="0" id={`${uniqueId}-no`} />
+          <Label htmlFor={`${uniqueId}-no`} className="cursor-pointer font-normal text-sm">
             No cumple
           </Label>
         </div>
@@ -218,19 +220,24 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Cargar criterios de evaluación desde la BD
+  // Cargar criterios de evaluación desde la BD (por proceso_id)
   useEffect(() => {
+    if (!propuesta?.proceso_id) {
+      setCriteriosLoading(false)
+      return
+    }
+
     const cargarCriterios = async () => {
       setCriteriosLoading(true)
       try {
-        const res = await fetch('/api/criterios?activos=true')
+        const res = await fetch(`/api/criterios?proceso_id=${propuesta.proceso_id}`)
         if (res.ok) {
           const data = await res.json()
           // data puede ser { criterios: [...] } o directamente [...]
           const lista = Array.isArray(data) ? data : (data.criterios ?? [])
           const criteriosActivos = lista
-            .filter((c: CriterioConfig) => c.activo)
-            .sort((a: CriterioConfig, b: CriterioConfig) => a.orden - b.orden)
+            .filter((c: CriterioConfig) => c.activo !== false)
+            .sort((a: CriterioConfig, b: CriterioConfig) => (a.orden ?? 0) - (b.orden ?? 0))
           setCriterios(criteriosActivos)
         }
       } catch (e) {
@@ -240,7 +247,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
       }
     }
     cargarCriterios()
-  }, [])
+  }, [propuesta?.proceso_id])
 
   // Calcular el puntaje máximo posible
   const maxScore = useMemo(() => {
