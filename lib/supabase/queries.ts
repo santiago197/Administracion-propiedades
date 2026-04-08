@@ -245,6 +245,7 @@ export async function getPropuestas(proceso_id: string, created_by?: string) {
     .from('propuestas')
     .select('*, usuarios:created_by(nombre)')
     .eq('proceso_id', proceso_id)
+    .order('created_at', { ascending: false })
   
   // Filtrar por created_by si se proporciona
   if (created_by) {
