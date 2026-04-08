@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { procesarValidacionLegal, getPropuestaConjunto } from '@/lib/supabase/queries'
 import { requireAuth } from '@/lib/supabase/auth-utils'
 import { createClient } from '@/lib/supabase/server'
-import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist } from '@/lib/types/index'
+import { getRequestMeta } from '@/lib/supabase/audit'
+import type { EstadoPropuesta, ChecklistLegal, DefinicionItemChecklist, ValidacionLegalItemConfig } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
 // Estados donde se puede cambiar entre habilitada ↔ no_apto_legal
@@ -13,26 +14,45 @@ const ESTADOS_SOLO_ACTUALIZAR: EstadoPropuesta[] = [
   'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado',
 ]
 const ESTADOS_PREVALIDACION: EstadoPropuesta[] = ['en_revision', 'en_subsanacion']
+const UMBRAL_APTO_CON_OBS = 70
 
-/**
- * Dado un checklist completo, calcula si la propuesta cumple o no.
- * Un ítem crítico en 'no_cumple' = no aprueba.
- * Todos los críticos en 'cumple' = aprueba (importants/condicionantes no bloquean).
- */
-function calcularCumpleDesdeChecklist(
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
+}
+
+function calcularResultadoChecklist(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
-): boolean {
-  const itemsCriticos = ITEMS_VALIDACION_LEGAL.filter(
-    (def: DefinicionItemChecklist) =>
-      def.criticidad === 'critico' &&
+  tipoPersona: 'juridica' | 'natural',
+  items: DefinicionItemChecklist[]
+): { cumple: boolean; pct: number } {
+  const itemsObligatorios = items.filter(
+    (def) =>
+      def.obligatorio !== false &&
       (def.aplica_a === 'ambos' || def.aplica_a === tipoPersona)
   )
+  const totalNoCumple = itemsObligatorios.filter(
+    (def) => checklist[def.id]?.estado === 'no_cumple'
+  ).length
+  const pct =
+    itemsObligatorios.length > 0
+      ? Math.round(((itemsObligatorios.length - totalNoCumple) / itemsObligatorios.length) * 100)
+      : 0
+  const criticosPendientes = itemsObligatorios.some(
+    (def) => def.criticidad === 'critico' && (checklist[def.id]?.estado ?? 'pendiente') === 'pendiente'
+  )
 
-  return itemsCriticos.every((def) => {
-    const item = checklist[def.id]
-    return item?.estado === 'cumple'
-  })
+  return {
+    cumple: !criticosPendientes && pct >= UMBRAL_APTO_CON_OBS,
+    pct,
+  }
 }
 
 /**
@@ -40,9 +60,10 @@ function calcularCumpleDesdeChecklist(
  */
 function consolidarObservaciones(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
+  tipoPersona: 'juridica' | 'natural',
+  items: DefinicionItemChecklist[]
 ): string {
-  const itemsConProblema = ITEMS_VALIDACION_LEGAL.filter((def) => {
+  const itemsConProblema = items.filter((def) => {
     if (def.aplica_a !== 'ambos' && def.aplica_a !== tipoPersona) return false
     return checklist[def.id]?.estado === 'no_cumple'
   })
@@ -58,7 +79,7 @@ function consolidarObservaciones(
 }
 
 export async function POST(request: NextRequest) {
-  const { authorized, response: authError, conjuntoId } = await requireAuth(request)
+  const { authorized, response: authError, conjuntoId, user } = await requireAuth(request)
   if (!authorized && authError) return authError
 
   try {
@@ -75,14 +96,27 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await createClient()
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('validacion_legal_items')
+      .select('*')
+      .eq('activo', true)
+      .order('seccion', { ascending: true })
+      .order('orden', { ascending: true })
+    if (itemsError) throw itemsError
+    const definiciones: DefinicionItemChecklist[] = (itemsData ?? []).length > 0
+      ? (itemsData ?? []).map((row) => mapItemConfigToDef(row as ValidacionLegalItemConfig))
+      : ITEMS_VALIDACION_LEGAL
 
     // Calcular cumple y observaciones desde el checklist si viene, si no usar los manuales
     const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
-    const cumple: boolean = checklist
-      ? calcularCumpleDesdeChecklist(checklist as ChecklistLegal, tipoPersona)
+    const resultadoChecklist = checklist
+      ? calcularResultadoChecklist(checklist as ChecklistLegal, tipoPersona, definiciones)
+      : null
+    const cumple: boolean = resultadoChecklist
+      ? resultadoChecklist.cumple
       : (cumpleManual ?? false)
     const observaciones: string = checklist
-      ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona)
+      ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona, definiciones)
       : (obsManual ?? '')
 
     // Intentar actualizar con checklist_legal; si falla por columna faltante, reintentar sin él
@@ -117,10 +151,20 @@ export async function POST(request: NextRequest) {
 
       const estadoObjetivo: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
       if (estadoActual !== estadoObjetivo) {
+        if (estadoActual === 'no_apto_legal' && estadoObjetivo === 'habilitada') {
+          const { error: toValidacionErr } = await supabase.rpc('cambiar_estado_propuesta', {
+            p_propuesta_id: propuesta_id,
+            p_estado_nuevo: 'en_validacion',
+            p_usuario_id: user?.id ?? null,
+            p_observacion: observaciones || null,
+            p_metadata: { origen: 're_validacion_legal_reapertura', cumple_requisitos: cumple },
+          })
+          if (toValidacionErr) throw toValidacionErr
+        }
         const { error: rpcErr } = await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta_id,
           p_estado_nuevo: estadoObjetivo,
-          p_usuario_id: null,
+          p_usuario_id: user?.id ?? null,
           p_observacion: observaciones || null,
           p_metadata: { origen: 're_validacion_legal', cumple_requisitos: cumple },
         })
@@ -141,7 +185,7 @@ export async function POST(request: NextRequest) {
       const { error: toValidacionErr } = await supabase.rpc('cambiar_estado_propuesta', {
         p_propuesta_id: propuesta_id,
         p_estado_nuevo: 'en_validacion',
-        p_usuario_id: null,
+        p_usuario_id: user?.id ?? null,
         p_observacion: null,
         p_metadata: { origen: 'validar_legal_pretransicion' },
       })
@@ -151,6 +195,25 @@ export async function POST(request: NextRequest) {
     // Caso 3: Flujo normal (en_validacion) — transición por máquina de estados
     await ejecutarUpdate()
     const { success, estado } = await procesarValidacionLegal(propuesta_id, cumple, observaciones)
+
+    // Registrar quién realizó la validación legal
+    const { ip, userAgent } = getRequestMeta(request)
+    await supabase.from('audit_log').insert({
+      accion: cumple ? 'VALIDACION_LEGAL_APROBADA' : 'VALIDACION_LEGAL_RECHAZADA',
+      entidad: 'propuestas',
+      entidad_id: propuesta_id,
+      conjunto_id: conjuntoId,
+      datos_nuevos: {
+        usuario_id: user?.id ?? null,
+        cumple_requisitos: cumple,
+        observaciones: observaciones || null,
+      },
+      ip_address: ip,
+      user_agent: userAgent,
+    }).then(({ error: auditErr }) => {
+      if (auditErr) console.warn('[validar-legal] Error inserting audit_log:', auditErr)
+    })
+
     return NextResponse.json({ success, estado }, { status: 200 })
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error)

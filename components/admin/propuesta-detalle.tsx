@@ -63,7 +63,87 @@ import type {
   EstadoPropuesta,
   ChecklistLegal,
   TipoDocumentoConfig,
+  DefinicionItemChecklist,
+  ValidacionLegalItemConfig,
 } from '@/lib/types/index'
+
+// ---------------------------------------------------------------------------
+// Helpers de cumplimiento legal (reutilizados desde validacion-legal)
+// ---------------------------------------------------------------------------
+
+function calcularCumplimientoLegal(
+  checklist: ChecklistLegal,
+  tipoPersona: 'juridica' | 'natural'
+): { pct: number; cumplidos: number; total: number; criticosFallidos: number; importantesFallidos: number } {
+  // Solo considerar ítems obligatorios (obligatorio !== false)
+  const items = ITEMS_VALIDACION_LEGAL.filter(
+    (d) => (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
+  )
+  const cumplidos = items.filter((d) => checklist[d.id]?.estado === 'cumple').length
+  const criticosFallidos = items.filter(
+    (d) => d.criticidad === 'critico' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  const importantesFallidos = items.filter(
+    (d) => d.criticidad === 'importante' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  const totalFallidos = items.filter((d) => checklist[d.id]?.estado === 'no_cumple').length
+  return {
+    pct: items.length > 0 ? Math.round(((items.length - totalFallidos) / items.length) * 100) : 0,
+    cumplidos,
+    total: items.length,
+    criticosFallidos,
+    importantesFallidos,
+  }
+}
+
+function BarraCumplimientoLegal({
+  pct,
+  cumplidos,
+  total,
+  criticosFallidos,
+  importantesFallidos,
+}: {
+  pct: number
+  cumplidos: number
+  total: number
+  criticosFallidos: number
+  importantesFallidos: number
+}) {
+  const barColor =
+    criticosFallidos > 0 ? 'bg-destructive' : importantesFallidos > 0 ? 'bg-orange-500' : pct === 100 ? 'bg-green-500' : 'bg-primary'
+  const pctColor =
+    criticosFallidos > 0 ? 'text-destructive' : importantesFallidos > 0 ? 'text-orange-700' : 'text-green-700'
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{cumplidos} de {total} ítems cumplen</span>
+        <span className={`font-semibold tabular-nums ${pctColor}`}>{pct}% cumplimiento legal</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {(criticosFallidos > 0 || importantesFallidos > 0) && (
+        <p className="text-[11px] text-muted-foreground">
+          {criticosFallidos > 0 && (
+            <span className="text-destructive">
+              {criticosFallidos} crítico{criticosFallidos > 1 ? 's' : ''} no cumple
+            </span>
+          )}
+          {criticosFallidos > 0 && importantesFallidos > 0 && ' · '}
+          {importantesFallidos > 0 && (
+            <span className="text-orange-700">
+              {importantesFallidos} importante{importantesFallidos > 1 ? 's' : ''} con observación
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Constantes
@@ -102,6 +182,18 @@ function normalizeTipoPersona(value?: string | null): TipoPersona | 'ambos' {
   const raw = (value ?? '').toString().trim().toLowerCase()
   if (raw === 'juridica' || raw === 'natural' || raw === 'ambos') return raw
   return 'ambos'
+}
+
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +293,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoConfig[]>([])
   const [tiposLoading, setTiposLoading] = useState(false)
   const [tiposError, setTiposError] = useState<string | null>(null)
+  const [validacionItems, setValidacionItems] = useState<DefinicionItemChecklist[]>([])
 
   // Direct upload
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -227,6 +320,10 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       .then((data: TipoDocumentoConfig[]) => setTiposDocumento(data))
       .catch((err) => setTiposError(err instanceof Error ? err.message : 'Error al cargar tipos de documento'))
       .finally(() => setTiposLoading(false))
+    fetch('/api/validacion-legal-items?activos=true', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar ítems legales'))))
+      .then((data: ValidacionLegalItemConfig[]) => setValidacionItems(data.length > 0 ? data.map(mapItemConfigToDef) : ITEMS_VALIDACION_LEGAL))
+      .catch(() => setValidacionItems(ITEMS_VALIDACION_LEGAL))
     fetch(`/api/documentos?propuesta_id=${propuesta.id}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Error al cargar documentos'))))
       .then((data: Documento[]) => setDocs(
@@ -510,10 +607,13 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // Cálculos validación legal
   // ---------------------------------------------------------------------------
 
-  type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente'
+  type EstadoLegal = 'aprobado' | 'apto_con_obs' | 'rechazado' | 'pendiente'
 
   function getEstadoLegal(): EstadoLegal {
-    if (propuesta.estado === 'habilitada' || propuesta.estado === 'en_evaluacion') return 'aprobado'
+    if (propuesta.estado === 'habilitada' || propuesta.estado === 'en_evaluacion') {
+      if (propuesta.observaciones_legales) return 'apto_con_obs'
+      return 'aprobado'
+    }
     if (propuesta.estado === 'no_apto_legal') return 'rechazado'
     return 'pendiente'
   }
@@ -664,7 +764,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
             )}
           </div>
           {propuesta.observaciones_legales && (
-            <p className="text-sm text-muted-foreground mt-1">{propuesta.observaciones_legales}</p>
+            <p className="text-sm text-muted-foreground mt-1 break-words">{propuesta.observaciones_legales}</p>
           )}
         </div>
 
@@ -1165,7 +1265,9 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       incompleto:     { texto: 'Documentación incompleta. El candidato debe subsanar para continuar.', color: 'text-destructive' },
       en_subsanacion: { texto: 'El candidato está subsanando documentación. Esperando correcciones.', color: 'text-amber-700' },
       en_validacion:  { texto: 'Pendiente de validación legal. Realiza el checklist para habilitar o rechazar este candidato.', color: 'text-amber-700' },
-      habilitada:     { texto: 'Habilitado legalmente. Entrará en evaluación automáticamente cuando el proceso avance a la fase de Evaluación.', color: 'text-green-700' },
+      habilitada:     estadoLegal === 'apto_con_obs'
+        ? { texto: 'Habilitado con observaciones. Algunos ítems importantes no fueron cumplidos pero no bloquean la evaluación.', color: 'text-orange-700' }
+        : { texto: 'Habilitado legalmente. Entrará en evaluación automáticamente cuando el proceso avance a la fase de Evaluación.', color: 'text-green-700' },
       en_evaluacion:  { texto: 'Ya está en evaluación. Puedes calificarlo desde el tab Evaluación.', color: 'text-green-700' },
       no_apto_legal:  { texto: 'Rechazado en validación legal. No puede avanzar a evaluación. Puedes editar la decisión si fue un error.', color: 'text-destructive' },
     }
@@ -1173,8 +1275,13 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     const msg = mensajeContextual[estado] ?? { texto: `Estado actual: ${LABEL_ESTADO[estado]}`, color: 'text-muted-foreground' }
 
     // ── Items aplicables del checklist ──────────────────────────────────────
-    const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
+    const itemsAplicables = validacionItems.filter(
       (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+    )
+    const labelsCriticos = new Set(
+      itemsAplicables
+        .filter((d) => d.criticidad === 'critico')
+        .map((d) => d.label.trim().toLowerCase())
     )
     const secciones = Array.from(new Set(itemsAplicables.map((d) => d.seccion)))
 
@@ -1182,27 +1289,40 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
       <div className="space-y-5">
 
         {/* Banner estado legal */}
-        <div className={`flex items-center gap-3 rounded-lg border p-4 ${
+        <div className={`rounded-lg border p-4 ${
           estadoLegal === 'aprobado'
             ? 'border-green-500/30 bg-green-500/10'
+            : estadoLegal === 'apto_con_obs'
+            ? 'border-orange-500/30 bg-orange-500/10'
             : estadoLegal === 'rechazado'
             ? 'border-destructive/30 bg-destructive/10'
             : 'border-amber-500/30 bg-amber-500/10'
         }`}>
-          {estadoLegal === 'aprobado' && <ShieldCheck className="h-6 w-6 text-green-600 shrink-0" />}
-          {estadoLegal === 'rechazado' && <ShieldAlert className="h-6 w-6 text-destructive shrink-0" />}
-          {estadoLegal === 'pendiente' && <ShieldQuestion className="h-6 w-6 text-amber-600 shrink-0" />}
-          <div>
-            <p className={`text-sm font-semibold ${
-              estadoLegal === 'aprobado' ? 'text-green-700' :
-              estadoLegal === 'rechazado' ? 'text-destructive' : 'text-amber-700'
-            }`}>
-              {estadoLegal === 'aprobado' ? 'Habilitado legalmente' :
-               estadoLegal === 'rechazado' ? 'No apto — rechazado en validación legal' :
-               'Pendiente de validación legal'}
-            </p>
-            <p className={`text-xs mt-0.5 ${msg.color}`}>{msg.texto}</p>
+          <div className="flex items-center gap-3 mb-3">
+            {estadoLegal === 'aprobado' && <ShieldCheck className="h-6 w-6 text-green-600 shrink-0" />}
+            {estadoLegal === 'apto_con_obs' && <ShieldCheck className="h-6 w-6 text-orange-600 shrink-0" />}
+            {estadoLegal === 'rechazado' && <ShieldAlert className="h-6 w-6 text-destructive shrink-0" />}
+            {estadoLegal === 'pendiente' && <ShieldQuestion className="h-6 w-6 text-amber-600 shrink-0" />}
+            <div>
+              <p className={`text-sm font-semibold ${
+                estadoLegal === 'aprobado' ? 'text-green-700' :
+                estadoLegal === 'apto_con_obs' ? 'text-orange-700' :
+                estadoLegal === 'rechazado' ? 'text-destructive' : 'text-amber-700'
+              }`}>
+                {estadoLegal === 'aprobado' ? 'Habilitado legalmente' :
+                 estadoLegal === 'apto_con_obs' ? 'Apto legal con observaciones' :
+                 estadoLegal === 'rechazado' ? 'No apto — rechazado en validación legal' :
+                 'Pendiente de validación legal'}
+              </p>
+              <p className={`text-xs mt-0.5 ${msg.color}`}>{msg.texto}</p>
+            </div>
           </div>
+          {/* Barra de cumplimiento — cuando hay checklist guardado */}
+          {checklistGuardado && Object.keys(checklistGuardado).length > 0 && (
+            <BarraCumplimientoLegal
+              {...calcularCumplimientoLegal(checklistGuardado, tipoPersona)}
+            />
+          )}
         </div>
 
         {/* Roadmap — solo si no está en evaluación */}
@@ -1248,10 +1368,40 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         )}
 
         {/* Observaciones del rechazo */}
-        {estadoLegal === 'rechazado' && propuesta.observaciones_legales && (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 space-y-1">
-            <p className="text-xs font-semibold text-destructive/70 uppercase tracking-wide">Motivo de rechazo</p>
-            <p className="text-sm text-destructive/90">{propuesta.observaciones_legales}</p>
+        {(estadoLegal === 'rechazado' || estadoLegal === 'apto_con_obs') && propuesta.observaciones_legales && (
+          <div className={`rounded-lg border p-3 space-y-2 overflow-hidden ${
+            estadoLegal === 'rechazado'
+              ? 'border-destructive/20 bg-destructive/5'
+              : 'border-orange-500/20 bg-orange-500/5'
+          }`}>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${
+              estadoLegal === 'rechazado' ? 'text-destructive/70' : 'text-orange-700/70'
+            }`}>
+              {estadoLegal === 'rechazado' ? 'Motivo de rechazo' : 'Observaciones legales'}
+            </p>
+            <ul className="space-y-1">
+              {propuesta.observaciones_legales.split(' | ').map((item, i) => {
+                const [label] = item.split(':')
+                const esCritico = labelsCriticos.has(label.trim().toLowerCase())
+                return (
+                <li key={i} className={`text-xs flex gap-1.5 min-w-0 ${
+                  estadoLegal === 'rechazado' ? 'text-destructive/90' : 'text-orange-800/90'
+                }`}>
+                  <span className="shrink-0 mt-0.5">·</span>
+                  <span className="break-words min-w-0 flex items-center gap-2 flex-wrap">
+                    <span>{item.trim()}</span>
+                    {estadoLegal === 'rechazado' && esCritico && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-1.5 border-destructive/40 bg-destructive/10 text-destructive"
+                      >
+                        Crítico
+                      </Badge>
+                    )}
+                  </span>
+                </li>
+              )})}
+            </ul>
           </div>
         )}
 

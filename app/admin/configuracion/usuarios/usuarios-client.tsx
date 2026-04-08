@@ -207,80 +207,87 @@ export function UsuariosClient({ initialUsuarios, permisos }: UsuariosClientProp
               <p className="mt-4 text-muted-foreground">No hay usuarios registrados</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Usuario</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Permisos</TableHead>
-                  <TableHead>Conjunto</TableHead>
-                  <TableHead>Último acceso</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="w-[100px]">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {usuarios.map((usuario) => (
-                  <TableRow key={usuario.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{usuario.nombre || '(Sin nombre)'}</span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {usuario.email}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={usuario.rol === 'superadmin' ? 'default' : 'secondary'}
-                        className="flex items-center gap-1 w-fit"
-                      >
-                        <Shield className="h-3 w-3" />
-                        {LABEL_ROL[usuario.rol]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{renderPermisos(usuario)}</TableCell>
-                    <TableCell>
-                      {usuario.conjunto?.nombre ?? (
-                        <span className="text-muted-foreground text-sm">Sin asignar</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(usuario.ultimo_acceso)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={usuario.activo ? 'secondary' : 'outline'}>
-                        {usuario.activo ? 'Activo' : 'Inactivo'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {usuario.rol !== 'superadmin' && (
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openEditDialog(usuario)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => openDeleteDialog(usuario)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Rol</TableHead>
+                    <TableHead className="hidden lg:table-cell">Permisos</TableHead>
+                    <TableHead className="hidden md:table-cell">Conjunto</TableHead>
+                    <TableHead className="hidden sm:table-cell">Último acceso</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="w-[80px]">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {usuarios.map((usuario) => (
+                    <TableRow key={usuario.id}>
+                      <TableCell>
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium truncate">{usuario.nombre || '(Sin nombre)'}</span>
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                            <Mail className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{usuario.email}</span>
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={usuario.rol === 'superadmin' ? 'default' : 'secondary'}
+                          className="flex items-center gap-1 w-fit text-xs"
+                        >
+                          <Shield className="h-3 w-3" />
+                          <span className="hidden sm:inline">{LABEL_ROL[usuario.rol]}</span>
+                          <span className="sm:hidden">{usuario.rol === 'superadmin' ? 'SA' : usuario.rol === 'admin' ? 'Adm' : usuario.rol === 'evaluador' ? 'Eval' : 'Cons'}</span>
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">{renderPermisos(usuario)}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <span className="truncate max-w-[120px] block">
+                          {usuario.conjunto?.nombre ?? (
+                            <span className="text-muted-foreground text-sm">Sin asignar</span>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                          <Calendar className="h-3 w-3" />
+                          {formatDate(usuario.ultimo_acceso)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={usuario.activo ? 'secondary' : 'outline'} className="text-xs">
+                          {usuario.activo ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {usuario.rol !== 'superadmin' && (
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditDialog(usuario)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openDeleteDialog(usuario)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

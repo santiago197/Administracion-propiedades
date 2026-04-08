@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     .single()
 
   return NextResponse.json({
+    id: user.id,
     email: user.email,
     rol: perfil?.rol ?? null,
     nombre: perfil?.nombre ?? null,

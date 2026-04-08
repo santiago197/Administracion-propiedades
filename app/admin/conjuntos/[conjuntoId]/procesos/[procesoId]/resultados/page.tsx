@@ -58,7 +58,7 @@ export default function PaginaResultados() {
     try {
       const datos = await fetchDatosActa()
       const { generarActaPDF } = await import('@/lib/pdf/generar-acta')
-      generarActaPDF(datos)
+      await generarActaPDF(datos)
     } catch (error) {
       console.error('[acta] Error generando PDF:', error)
     } finally {
@@ -71,7 +71,7 @@ export default function PaginaResultados() {
     try {
       const datos = await fetchDatosActa()
       const { previsualizarActaPDF } = await import('@/lib/pdf/generar-acta')
-      const url = previsualizarActaPDF(datos)
+      const url = await previsualizarActaPDF(datos)
       setBlobUrl(url)
     } catch (error) {
       console.error('[acta] Error previsualizando PDF:', error)

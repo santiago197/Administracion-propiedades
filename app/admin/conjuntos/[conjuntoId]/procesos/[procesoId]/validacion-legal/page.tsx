@@ -34,12 +34,13 @@ import type {
   ChecklistLegal,
   EstadoItemChecklist,
   DefinicionItemChecklist,
+  ValidacionLegalItemConfig,
 } from '@/lib/types/index'
 import { ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 
 // ─── Tipos locales ────────────────────────────────────────────────────────────
 
-type EstadoLegal = 'aprobado' | 'rechazado' | 'pendiente' | 'no_disponible'
+type EstadoLegal = 'aprobado' | 'apto_con_obs' | 'rechazado' | 'pendiente' | 'no_disponible'
 
 // ─── Flujo de estados ─────────────────────────────────────────────────────────
 
@@ -87,32 +88,49 @@ function getPasoDestino(estado: string): number {
 const ESTADOS_YA_VALIDADOS = ['habilitada', 'no_apto_legal', 'en_evaluacion']
 // Estados terminales que no pueden validarse
 const ESTADOS_TERMINALES = ['adjudicado', 'descalificada', 'retirada']
+const UMBRAL_APTO_CON_OBS = 70
+
+function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
+  return {
+    id: item.codigo,
+    seccion: item.seccion,
+    label: item.nombre,
+    descripcion: item.descripcion,
+    criticidad: item.categoria,
+    aplica_a: item.aplica_a,
+    obligatorio: item.obligatorio,
+  }
+}
 
 function getEstadoLegal(p: Propuesta): EstadoLegal {
-  if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') return 'aprobado'
+  if (p.estado === 'habilitada' || p.estado === 'en_evaluacion') {
+    if (p.observaciones_legales) return 'apto_con_obs'
+    return 'aprobado'
+  }
   if (p.estado === 'no_apto_legal') return 'rechazado'
-  // Permitir validar cualquier propuesta que no esté en estado terminal
   if (ESTADOS_TERMINALES.includes(p.estado)) return 'no_disponible'
-  // Todos los demás (registro, en_revision, incompleto, en_subsanacion, en_validacion) son pendientes
   return 'pendiente'
 }
 
 function getOrdenEstado(p: Propuesta): number {
   const estado = getEstadoLegal(p)
-  // Orden: pendientes primero, luego aprobados, luego rechazados, luego no disponibles
   if (estado === 'pendiente') return 0
   if (estado === 'aprobado') return 1
-  if (estado === 'rechazado') return 2
-  return 3
+  if (estado === 'apto_con_obs') return 2
+  if (estado === 'rechazado') return 3
+  return 4
 }
 
 /** Calcula si el checklist local permite confirmar */
 function calcularEstadoChecklist(
   checklist: ChecklistLegal,
-  tipoPersona: 'juridica' | 'natural'
-): { cumple: boolean; bloqueantes: string[]; pendientes: string[] } {
-  const items = ITEMS_VALIDACION_LEGAL.filter(
-    (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+  tipoPersona: 'juridica' | 'natural',
+  definiciones: DefinicionItemChecklist[]
+): { cumple: boolean; bloqueantes: string[]; pendientes: string[]; pct: number } {
+  const items = definiciones.filter(
+    (d) =>
+      (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) &&
+      d.obligatorio !== false
   )
   const criticos = items.filter((d) => d.criticidad === 'critico')
 
@@ -120,25 +138,56 @@ function calcularEstadoChecklist(
   const pendientes: string[] = []
 
   for (const def of criticos) {
+    if (def.obligatorio === false) continue
     const estado = checklist[def.id]?.estado ?? 'pendiente'
     if (estado === 'no_cumple') bloqueantes.push(def.label)
     else if (estado === 'pendiente') pendientes.push(def.label)
   }
 
+  const totalFallidos = items.filter((d) => checklist[d.id]?.estado === 'no_cumple').length
+  const pct = items.length > 0 ? Math.round(((items.length - totalFallidos) / items.length) * 100) : 0
+
   return {
-    cumple: bloqueantes.length === 0 && pendientes.length === 0,
+    cumple: pendientes.length === 0 && pct >= UMBRAL_APTO_CON_OBS,
     bloqueantes,
     pendientes,
+    pct,
+  }
+}
+
+function calcularCumplimientoLegal(
+  checklist: ChecklistLegal,
+  tipoPersona: 'juridica' | 'natural'
+): { pct: number; cumplidos: number; total: number; criticosFallidos: number; importantesFallidos: number } {
+  // Solo considerar ítems obligatorios (obligatorio !== false)
+  const items = ITEMS_VALIDACION_LEGAL.filter(
+    (d) => (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
+  )
+  const cumplidos = items.filter((d) => checklist[d.id]?.estado === 'cumple').length
+  const criticosFallidos = items.filter(
+    (d) => d.criticidad === 'critico' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  const importantesFallidos = items.filter(
+    (d) => d.criticidad === 'importante' && checklist[d.id]?.estado === 'no_cumple'
+  ).length
+  const totalFallidos = items.filter((d) => checklist[d.id]?.estado === 'no_cumple').length
+  return {
+    pct: items.length > 0 ? Math.round(((items.length - totalFallidos) / items.length) * 100) : 0,
+    cumplidos,
+    total: items.length,
+    criticosFallidos,
+    importantesFallidos,
   }
 }
 
 function inicializarChecklist(
   propuesta: Propuesta,
-  checklistGuardado: ChecklistLegal | null
+  checklistGuardado: ChecklistLegal | null,
+  definiciones: DefinicionItemChecklist[]
 ): ChecklistLegal {
   const resultado: ChecklistLegal = {}
 
-  for (const def of ITEMS_VALIDACION_LEGAL) {
+  for (const def of definiciones) {
     if (def.aplica_a !== 'ambos' && def.aplica_a !== propuesta.tipo_persona) continue
 
     if (checklistGuardado?.[def.id]) {
@@ -165,6 +214,14 @@ function BadgeEstado({ estado, estadoPropuesta }: { estado: EstadoLegal; estadoP
       <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-700 gap-1.5">
         <CheckCircle2 className="h-3.5 w-3.5" />
         Habilitado legalmente
+      </Badge>
+    )
+  }
+  if (estado === 'apto_con_obs') {
+    return (
+      <Badge variant="outline" className="border-orange-500/30 bg-orange-500/10 text-orange-700 gap-1.5">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        Apto legal con observaciones
       </Badge>
     )
   }
@@ -202,6 +259,55 @@ function BadgeEstado({ estado, estadoPropuesta }: { estado: EstadoLegal; estadoP
       <Clock className="h-3.5 w-3.5" />
       {labelEstadoPendiente[estadoPropuesta ?? ''] ?? 'Pendiente de validación'}
     </Badge>
+  )
+}
+
+function BarraCumplimiento({
+  pct,
+  cumplidos,
+  total,
+  criticosFallidos,
+  importantesFallidos,
+}: {
+  pct: number
+  cumplidos: number
+  total: number
+  criticosFallidos: number
+  importantesFallidos: number
+}) {
+  const barColor =
+    criticosFallidos > 0 ? 'bg-destructive' : importantesFallidos > 0 ? 'bg-orange-500' : pct === 100 ? 'bg-green-500' : 'bg-primary'
+  const pctColor =
+    criticosFallidos > 0 ? 'text-destructive' : importantesFallidos > 0 ? 'text-orange-700' : 'text-green-700'
+
+  return (
+    <div className="mt-2.5 space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{cumplidos} de {total} ítems cumplen</span>
+        <span className={`font-semibold tabular-nums ${pctColor}`}>{pct}% cumplimiento</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {(criticosFallidos > 0 || importantesFallidos > 0) && (
+        <p className="text-[11px] text-muted-foreground">
+          {criticosFallidos > 0 && (
+            <span className="text-destructive">
+              {criticosFallidos} crítico{criticosFallidos > 1 ? 's' : ''} no cumple
+            </span>
+          )}
+          {criticosFallidos > 0 && importantesFallidos > 0 && ' · '}
+          {importantesFallidos > 0 && (
+            <span className="text-orange-700">
+              {importantesFallidos} importante{importantesFallidos > 1 ? 's' : ''} con observación
+            </span>
+          )}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -501,30 +607,26 @@ function ValidacionLegalContent() {
   const [errorPorId, setErrorPorId] = useState<Record<string, string>>({})
   const [panelAbierto, setPanelAbierto] = useState<Record<string, boolean>>({})
   const [checklists, setChecklists] = useState<Record<string, ChecklistLegal>>({})
+  const [definiciones, setDefiniciones] = useState<DefinicionItemChecklist[]>(ITEMS_VALIDACION_LEGAL)
   const [docsRut, setDocsRut] = useState<Record<string, { nombre: string; archivo_url?: string | null }[]>>({})
   const [docsStatus, setDocsStatus] = useState<Record<string, { faltantes: number; nombres_faltantes: string[] }>>({})
   const [panelInicialAbierto, setPanelInicialAbierto] = useState(false)
 
-  // Función para abrir panel (extraída para reutilizar)
-  const abrirPanelPropuesta = useCallback((p: Propuesta, checklists: Record<string, ChecklistLegal>) => {
-    if (!checklists[p.id]) {
-      const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
-      setChecklists((prev) => ({
-        ...prev,
-        [p.id]: inicializarChecklist(p, checklistGuardado),
-      }))
-    }
-    setPanelAbierto((prev) => ({ ...prev, [p.id]: true }))
-    setErrorPorId((prev) => ({ ...prev, [p.id]: '' }))
-  }, [])
-
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [propRes, procRes] = await Promise.all([
+        let defsForInit = definiciones
+        const [propRes, procRes, defsRes] = await Promise.all([
           fetch(`/api/propuestas?proceso_id=${procesoId}`),
           fetch(`/api/procesos?conjunto_id=${conjuntoId}`),
+          fetch('/api/validacion-legal-items?activos=true'),
         ])
+
+        if (defsRes.ok) {
+          const defsData: ValidacionLegalItemConfig[] = await defsRes.json()
+          defsForInit = defsData.length > 0 ? defsData.map(mapItemConfigToDef) : ITEMS_VALIDACION_LEGAL
+          setDefiniciones(defsForInit)
+        }
 
         if (propRes.ok) {
           const data: Propuesta[] = await propRes.json()
@@ -571,7 +673,7 @@ function ValidacionLegalContent() {
                 const checklistGuardado = (propuestaSeleccionada as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
                 setChecklists((prev) => ({
                   ...prev,
-                  [propuestaSeleccionada.id]: inicializarChecklist(propuestaSeleccionada, checklistGuardado),
+                  [propuestaSeleccionada.id]: inicializarChecklist(propuestaSeleccionada, checklistGuardado, defsForInit),
                 }))
                 setPanelAbierto((prev) => ({ ...prev, [propuestaSeleccionada.id]: true }))
                 setPanelInicialAbierto(true)
@@ -606,7 +708,7 @@ function ValidacionLegalContent() {
       const checklistGuardado = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
       setChecklists((prev) => ({
         ...prev,
-        [p.id]: inicializarChecklist(p, checklistGuardado),
+        [p.id]: inicializarChecklist(p, checklistGuardado, definiciones),
       }))
     }
     setPanelAbierto((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
@@ -633,12 +735,12 @@ function ValidacionLegalContent() {
     if (!checklist) return
 
     const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
-    const { pendientes, bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona)
+    const { pendientes, bloqueantes, pct } = calcularEstadoChecklist(checklist, tipoPersona, definiciones)
 
     // Verificar que los no_cumple tienen observación
-    const itemsSinObs = ITEMS_VALIDACION_LEGAL.filter((def) => {
+    const itemsSinObs = definiciones.filter((def) => {
       if (def.aplica_a !== 'ambos' && def.aplica_a !== tipoPersona) return false
-      if (def.criticidad !== 'critico') return false
+      if (def.criticidad !== 'critico' || def.obligatorio === false) return false
       const item = checklist[def.id]
       return item?.estado === 'no_cumple' && !item.observacion.trim()
     })
@@ -675,14 +777,28 @@ function ValidacionLegalContent() {
       const data = await response.json()
 
       if (response.ok) {
-        const cumpleFinal = bloqueantes.length === 0
+        const cumpleFinal = pendientes.length === 0 && pct >= UMBRAL_APTO_CON_OBS
+        const observacionesLegalesLocal: string | undefined = (() => {
+          const fallidos = ITEMS_VALIDACION_LEGAL.filter((d) => {
+            if (d.aplica_a !== 'ambos' && d.aplica_a !== tipoPersona) return false
+            return checklist[d.id]?.estado === 'no_cumple'
+          })
+          if (fallidos.length === 0) return undefined
+          return fallidos
+            .map((d) => {
+              const obs = checklist[d.id]?.observacion?.trim()
+              return obs ? `${d.label}: ${obs}` : `${d.label}: No cumple`
+            })
+            .join(' | ')
+        })()
         setPropuestas((prev) =>
-          prev.map((p) =>
+          prev.map((p): Propuesta =>
             p.id === propuesta.id
               ? {
                   ...p,
-                  estado: data.estado ?? (cumpleFinal ? 'habilitada' : 'no_apto_legal'),
+                  estado: (data.estado ?? (cumpleFinal ? 'habilitada' : 'no_apto_legal')) as Propuesta['estado'],
                   cumple_requisitos_legales: cumpleFinal,
+                  observaciones_legales: observacionesLegalesLocal ?? p.observaciones_legales,
                 }
               : p
           )
@@ -721,9 +837,9 @@ function ValidacionLegalContent() {
       if (response.ok) {
         // Actualizar el estado local
         setPropuestas((prev) =>
-          prev.map((p) =>
+          prev.map((p): Propuesta =>
             p.id === propuesta.id
-              ? { ...p, estado: nuevoEstado }
+              ? { ...p, estado: nuevoEstado as Propuesta['estado'] }
               : p
           )
         )
@@ -748,6 +864,7 @@ function ValidacionLegalContent() {
   // ─── Contadores ─────────────────────────────────────────────────────────────
 
   const aprobadas = propuestas.filter((p) => getEstadoLegal(p) === 'aprobado').length
+  const aptaConObs = propuestas.filter((p) => getEstadoLegal(p) === 'apto_con_obs').length
   const rechazadas = propuestas.filter((p) => getEstadoLegal(p) === 'rechazado').length
   const pendientesValidacion = propuestas.filter((p) => getEstadoLegal(p) === 'pendiente').length
   const noDisponibles = propuestas.filter((p) => getEstadoLegal(p) === 'no_disponible').length
@@ -787,7 +904,7 @@ function ValidacionLegalContent() {
         {/* Leyenda de criticidad */}
         <div className="mb-5 flex flex-wrap gap-3 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-md px-4 py-3">
           <span className="font-medium text-foreground">Leyenda:</span>
-          <span><span className="text-destructive font-medium">Crítico</span> — cualquier incumplimiento descalifica al candidato</span>
+          <span><span className="text-destructive font-medium">Crítico</span> — ítem de alto riesgo legal (si queda en no cumple, reduce el % de cumplimiento)</span>
           <span><span className="text-amber-700 font-medium">Importante</span> — puede condicionar la habilitación</span>
           <span><span className="text-blue-700 font-medium">Pre-firma</span> — exigible antes de firmar contrato, no bloquea evaluación</span>
           <span><span className="text-muted-foreground font-medium">Informativo</span> — para seguimiento</span>
@@ -795,7 +912,7 @@ function ValidacionLegalContent() {
 
         {/* Resumen de estado */}
         {propuestas.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             <Card className="p-3 text-center border border-amber-500/20 bg-amber-500/5">
               <p className="text-2xl font-bold text-amber-700">{pendientesValidacion}</p>
               <p className="text-xs text-amber-700 mt-0.5">Pendientes</p>
@@ -803,6 +920,10 @@ function ValidacionLegalContent() {
             <Card className="p-3 text-center border border-green-500/20 bg-green-500/5">
               <p className="text-2xl font-bold text-green-700">{aprobadas}</p>
               <p className="text-xs text-green-700 mt-0.5">Habilitados</p>
+            </Card>
+            <Card className="p-3 text-center border border-orange-500/20 bg-orange-500/5">
+              <p className="text-2xl font-bold text-orange-700">{aptaConObs}</p>
+              <p className="text-xs text-orange-700 mt-0.5">Con observaciones</p>
             </Card>
             <Card className="p-3 text-center border border-destructive/20 bg-destructive/5">
               <p className="text-2xl font-bold text-destructive">{rechazadas}</p>
@@ -834,8 +955,13 @@ function ValidacionLegalContent() {
               const rutDocs = docsRut[p.id] ?? []
               const errorLocal = errorPorId[p.id] ?? ''
               const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
-              const itemsAplicables = ITEMS_VALIDACION_LEGAL.filter(
+              const itemsAplicables = definiciones.filter(
                 (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
+              )
+              const labelsCriticos = new Set(
+                itemsAplicables
+                  .filter((d) => d.criticidad === 'critico')
+                  .map((d) => d.label.trim().toLowerCase())
               )
               const esValidable = estadoLegal !== 'no_disponible'
 
@@ -856,6 +982,8 @@ function ValidacionLegalContent() {
                   className={`border transition-all ${
                     estadoLegal === 'aprobado'
                       ? 'border-green-500/20 bg-green-500/5'
+                      : estadoLegal === 'apto_con_obs'
+                      ? 'border-orange-500/20 bg-orange-500/5'
                       : estadoLegal === 'rechazado'
                       ? 'border-destructive/20 bg-destructive/5'
                       : estadoLegal === 'no_disponible'
@@ -869,6 +997,7 @@ function ValidacionLegalContent() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start gap-2 flex-wrap mb-2">
                           {estadoLegal === 'aprobado' && <ShieldCheck className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />}
+                          {estadoLegal === 'apto_con_obs' && <ShieldCheck className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />}
                           {estadoLegal === 'rechazado' && <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />}
                           {estadoLegal === 'pendiente' && <ShieldQuestion className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />}
                           {estadoLegal === 'no_disponible' && <Circle className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />}
@@ -879,6 +1008,13 @@ function ValidacionLegalContent() {
                         </div>
 
                         <BadgeEstado estado={estadoLegal} estadoPropuesta={p.estado} />
+
+                        {/* Barra de cumplimiento legal */}
+                        {(() => {
+                          const ckl = checklists[p.id] ?? (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal ?? null
+                          if (!ckl || Object.keys(ckl).length === 0) return null
+                          return <BarraCumplimiento {...calcularCumplimientoLegal(ckl, tipoPersona)} />
+                        })()}
 
                         <p className="text-sm text-muted-foreground mt-2">
                           {p.tipo_persona === 'juridica' ? 'NIT' : 'CC'}: {p.nit_cedula}
@@ -909,13 +1045,41 @@ function ValidacionLegalContent() {
                           </div>
                         )}
 
-                        {/* Resumen de ítems rechazados — solo cuando está cerrado */}
-                        {!abierto && estadoLegal === 'rechazado' && p.observaciones_legales && (
-                          <div className="mt-3 p-3 bg-destructive/5 rounded-md border border-destructive/20 text-sm">
-                            <p className="text-xs font-semibold mb-1 text-destructive/70 uppercase tracking-wide">
-                              Motivo de rechazo
+                        {/* Resumen de ítems rechazados u observaciones — solo cuando está cerrado */}
+                        {!abierto && (estadoLegal === 'rechazado' || estadoLegal === 'apto_con_obs') && p.observaciones_legales && (
+                          <div className={`mt-3 p-3 rounded-md border overflow-hidden ${
+                            estadoLegal === 'rechazado'
+                              ? 'bg-destructive/5 border-destructive/20'
+                              : 'bg-orange-500/5 border-orange-500/20'
+                          }`}>
+                            <p className={`text-xs font-semibold mb-1.5 uppercase tracking-wide ${
+                              estadoLegal === 'rechazado' ? 'text-destructive/70' : 'text-orange-700/70'
+                            }`}>
+                              {estadoLegal === 'rechazado' ? 'Motivo de rechazo' : 'Observaciones legales'}
                             </p>
-                            <p className="text-destructive/90 text-xs">{p.observaciones_legales}</p>
+                            <ul className="space-y-1">
+                              {p.observaciones_legales.split(' | ').map((item, i) => {
+                                const [label] = item.split(':')
+                                const esCritico = labelsCriticos.has(label.trim().toLowerCase())
+                                return (
+                                <li key={i} className={`text-xs flex gap-1.5 min-w-0 ${
+                                  estadoLegal === 'rechazado' ? 'text-destructive/90' : 'text-orange-800/90'
+                                }`}>
+                                  <span className="shrink-0 mt-0.5">·</span>
+                                  <span className="break-words min-w-0 flex items-center gap-2 flex-wrap">
+                                    <span>{item.trim()}</span>
+                                    {estadoLegal === 'rechazado' && esCritico && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] h-5 px-1.5 border-destructive/40 bg-destructive/10 text-destructive"
+                                      >
+                                        Crítico
+                                      </Badge>
+                                    )}
+                                  </span>
+                                </li>
+                              )})}
+                            </ul>
                           </div>
                         )}
 
@@ -957,7 +1121,7 @@ function ValidacionLegalContent() {
                   </div>
 
                   {/* Indicador de flujo — muestra el paso actual y permite avanzar */}
-                  {esValidable && estadoLegal === 'pendiente' && (
+                  {esValidable && (estadoLegal === 'pendiente' || estadoLegal === 'apto_con_obs') && (
                     <div className="border-t border-border/40 px-5 sm:px-6 py-4 bg-background/30">
                       <IndicadorFlujo
                         propuesta={p}
@@ -1019,7 +1183,7 @@ function ValidacionLegalContent() {
                       })}
 
                       {/* Estado calculado */}
-                      <EstadoCalculadoChecklist checklist={checklist} tipoPersona={tipoPersona} />
+                      <EstadoCalculadoChecklist checklist={checklist} tipoPersona={tipoPersona} definiciones={definiciones} />
 
                       {/* Error local */}
                       {errorLocal && (
@@ -1035,8 +1199,8 @@ function ValidacionLegalContent() {
                           size="sm"
                           disabled={processingId === p.id}
                           className={(() => {
-                            const { bloqueantes } = calcularEstadoChecklist(checklist, tipoPersona)
-                            return bloqueantes.length > 0
+                            const { pendientes, pct } = calcularEstadoChecklist(checklist, tipoPersona, definiciones)
+                            return pendientes.length > 0 || pct < UMBRAL_APTO_CON_OBS
                               ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
                               : 'bg-green-600 hover:bg-green-700 text-white'
                           })()}
@@ -1074,31 +1238,70 @@ function ValidacionLegalContent() {
 function EstadoCalculadoChecklist({
   checklist,
   tipoPersona,
+  definiciones,
 }: {
   checklist: ChecklistLegal
   tipoPersona: 'juridica' | 'natural'
+  definiciones: DefinicionItemChecklist[]
 }) {
-  const { cumple, bloqueantes, pendientes } = useMemo(
-    () => calcularEstadoChecklist(checklist, tipoPersona),
-    [checklist, tipoPersona]
+  const { bloqueantes, pendientes, pct } = useMemo(
+    () => calcularEstadoChecklist(checklist, tipoPersona, definiciones),
+    [checklist, tipoPersona, definiciones]
   )
+  const umbralCumplido = pct >= UMBRAL_APTO_CON_OBS
 
-  if (bloqueantes.length === 0 && pendientes.length === 0) {
+  if (pendientes.length === 0 && umbralCumplido) {
+    const importantesFallidos = ITEMS_VALIDACION_LEGAL.filter(
+      (d) =>
+        (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) &&
+        d.criticidad === 'importante' &&
+        checklist[d.id]?.estado === 'no_cumple'
+    ).length
+
+    if (importantesFallidos > 0) {
+      return (
+        <div className="flex items-start gap-2 rounded-md border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700">
+          <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+            Umbral legal alcanzado ({pct}%) — el candidato puede ser <strong>habilitado con observaciones</strong>.{' '}
+            {importantesFallidos} ítem{importantesFallidos > 1 ? 's' : ''} importante{importantesFallidos > 1 ? 's' : ''} sin cumplir (no bloquean habilitación).
+          </span>
+        </div>
+      )
+    }
+
     return (
       <div className="flex items-center gap-2 rounded-md border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-700">
         <ShieldCheck className="h-4 w-4 shrink-0" />
-        <span>Todos los ítems críticos revisados — el candidato puede ser <strong>habilitado</strong>.</span>
+        <span>Todos los ítems revisados — el candidato puede ser <strong>habilitado</strong>.</span>
       </div>
     )
   }
 
   return (
     <div className="space-y-2">
-      {bloqueantes.length > 0 && (
+      {!umbralCumplido && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive space-y-1">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 shrink-0" />
-            <span className="font-medium">El candidato será marcado como <strong>No Apto Legal</strong>.</span>
+            <span className="font-medium">
+              Cumplimiento legal {pct}% (mínimo {UMBRAL_APTO_CON_OBS}%) — será marcado como <strong>No Apto Legal</strong>.
+            </span>
+          </div>
+          {bloqueantes.length > 0 && (
+            <ul className="ml-6 text-xs list-disc space-y-0.5">
+              {bloqueantes.map((b) => <li key={b}>{b}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+      {umbralCumplido && bloqueantes.length > 0 && (
+        <div className="rounded-md border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700 space-y-1">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 shrink-0" />
+            <span className="font-medium">
+              Hay ítems críticos en no cumple, pero el umbral legal ({pct}% / mínimo {UMBRAL_APTO_CON_OBS}%) permite <strong>habilitar con observaciones</strong>.
+            </span>
           </div>
           <ul className="ml-6 text-xs list-disc space-y-0.5">
             {bloqueantes.map((b) => <li key={b}>{b}</li>)}

@@ -187,7 +187,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
       )}
 
       {/* Botón colapsar (solo desktop) */}
-      <div className="hidden md:block p-3 border-t">
+      <div className="hidden lg:block p-3 border-t">
         <Button
           variant="ghost"
           size="sm"
@@ -222,7 +222,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden shrink-0"
+            className="lg:hidden shrink-0"
             onClick={() => setMobileOpen(true)}
             aria-label="Abrir menú"
           >
@@ -230,7 +230,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
           </Button>
 
           {/* Título mobile */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="lg:hidden flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs">
               SA
             </div>
@@ -238,7 +238,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
           </div>
 
           {/* Breadcrumb / título de página (desktop) */}
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <p className="text-sm text-muted-foreground">Bienvenido,</p>
             {loading ? (
               <div className="h-4 w-32 rounded bg-muted animate-pulse mt-0.5" />
@@ -312,7 +312,7 @@ export function ConsejeroShell({ children }: { children: ReactNode }) {
         {/* Sidebar desktop */}
         <aside
           className={cn(
-            'hidden md:block shrink-0 border-r bg-card/50 transition-all duration-300',
+            'hidden lg:block shrink-0 border-r bg-card/50 transition-all duration-300',
             collapsed ? 'w-[72px]' : 'w-64 lg:w-72'
           )}
         >

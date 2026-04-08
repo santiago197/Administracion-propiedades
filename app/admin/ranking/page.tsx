@@ -126,10 +126,10 @@ export default function RankingPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {procesos.length > 1 && (
             <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-44 sm:w-56">
                 <SelectValue placeholder="Selecciona proceso" />
               </SelectTrigger>
               <SelectContent>
@@ -222,11 +222,11 @@ export default function RankingPage() {
                 <TableRow>
                   <TableHead className="w-10">#</TableHead>
                   <TableHead>Candidato</TableHead>
-                  <TableHead className="text-right">Eval. (0–100)</TableHead>
-                  <TableHead className="text-right">Votos</TableHead>
+                  <TableHead className="hidden sm:table-cell text-right">Eval. (0–100)</TableHead>
+                  <TableHead className="hidden sm:table-cell text-right">Votos</TableHead>
                   <TableHead className="text-right">Puntaje final</TableHead>
                   <TableHead>Clasificación</TableHead>
-                  <TableHead className="w-24">Barra</TableHead>
+                  <TableHead className="hidden md:table-cell w-24">Barra</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -240,10 +240,10 @@ export default function RankingPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{r.razon_social}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="hidden sm:table-cell text-right tabular-nums">
                       {r.puntaje_evaluacion.toFixed(1)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{r.votos_recibidos}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-right tabular-nums">{r.votos_recibidos}</TableCell>
                     <TableCell className="text-right">
                       <span className="font-bold text-primary tabular-nums">{r.puntaje_final.toFixed(2)}</span>
                     </TableCell>
@@ -256,7 +256,7 @@ export default function RankingPage() {
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Progress value={(r.puntaje_final / maxPuntaje) * 100} className="h-1.5 w-20" />
                     </TableCell>
                   </TableRow>

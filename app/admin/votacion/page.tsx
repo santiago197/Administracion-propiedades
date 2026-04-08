@@ -153,10 +153,10 @@ export default function VotacionConsejoPage() {
             Resultado de votos y seguimiento de participación. Auditable bajo Ley 675.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {procesos.length > 1 && (
             <Select value={selectedProcesoId} onValueChange={setSelectedProcesoId}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="w-44 sm:w-56">
                 <SelectValue placeholder="Selecciona proceso" />
               </SelectTrigger>
               <SelectContent>
@@ -175,34 +175,34 @@ export default function VotacionConsejoPage() {
 
       {/* Resumen de participación */}
       {filas.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-              <CheckCircle2 className="h-5 w-5 text-primary" />
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10 shrink-0">
+              <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
             </div>
-            <div>
-              <p className="text-xl font-bold">{votaron}</p>
-              <p className="text-xs text-muted-foreground">Votaron</p>
-            </div>
-          </Card>
-          <Card className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
-              <Clock className="h-5 w-5 text-amber-500" />
-            </div>
-            <div>
-              <p className="text-xl font-bold">{pendientes}</p>
-              <p className="text-xs text-muted-foreground">Pendientes</p>
+            <div className="min-w-0">
+              <p className="text-lg sm:text-xl font-bold">{votaron}</p>
+              <p className="text-xs text-muted-foreground truncate">Votaron</p>
             </div>
           </Card>
-          <Card className="p-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-muted shrink-0">
-              <Users className="h-5 w-5 text-muted-foreground" />
+          <Card className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10 shrink-0">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
             </div>
-            <div>
-              <p className="text-xl font-bold">
+            <div className="min-w-0">
+              <p className="text-lg sm:text-xl font-bold">{pendientes}</p>
+              <p className="text-xs text-muted-foreground truncate">Pendientes</p>
+            </div>
+          </Card>
+          <Card className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 rounded-lg bg-muted shrink-0">
+              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg sm:text-xl font-bold">
                 {filas.length > 0 ? Math.round((votaron / filas.length) * 100) : 0}%
               </p>
-              <p className="text-xs text-muted-foreground">Participación</p>
+              <p className="text-xs text-muted-foreground truncate">Participación</p>
             </div>
           </Card>
         </div>
@@ -223,26 +223,28 @@ export default function VotacionConsejoPage() {
           <CardContent className="space-y-3">
             {/* Ganador destacado */}
             {ganador && votaron > 0 && (
-              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-5 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
-                  <Trophy className="h-6 w-6 text-white" />
+              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                  <Trophy className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-amber-700 font-medium uppercase tracking-wide mb-0.5">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wide mb-0.5">
                     Propuesta más votada
                   </p>
-                  <p className="font-bold text-lg truncate">{ganador.razon_social}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {ganador.votos} voto{ganador.votos !== 1 ? 's' : ''}
-                    {' · '}
-                    Puntaje final: {ganador.puntaje_final.toFixed(1)}
+                  <p className="font-bold text-base sm:text-lg truncate">{ganador.razon_social}</p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                    <span className="text-sm text-muted-foreground">
+                      {ganador.votos} voto{ganador.votos !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      Puntaje: {ganador.puntaje_final.toFixed(1)}
+                    </span>
                     {ganador.clasificacion && (
-                      <>
-                        {' · '}
-                        <span className="font-medium">{CLAS_LABEL[ganador.clasificacion] ?? ganador.clasificacion}</span>
-                      </>
+                      <Badge variant="outline" className={`text-xs ${CLAS_CLS[ganador.clasificacion] ?? ''}`}>
+                        {CLAS_LABEL[ganador.clasificacion] ?? ganador.clasificacion}
+                      </Badge>
                     )}
-                  </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -273,8 +275,9 @@ export default function VotacionConsejoPage() {
                         value={maxVotos > 0 ? (r.votos / maxVotos) * 100 : 0}
                         className="h-1.5 flex-1"
                       />
-                      <span className="text-xs text-muted-foreground w-20 text-right">
-                        Eval: {r.puntaje_evaluacion.toFixed(1)} · F: {r.puntaje_final.toFixed(1)}
+                      <span className="text-xs text-muted-foreground shrink-0 text-right tabular-nums">
+                        <span className="hidden sm:inline">Eval: {r.puntaje_evaluacion.toFixed(1)} · </span>
+                        F: {r.puntaje_final.toFixed(1)}
                       </span>
                     </div>
                   </div>
@@ -316,22 +319,27 @@ export default function VotacionConsejoPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Consejero</TableHead>
-                  <TableHead>Cargo</TableHead>
-                  <TableHead>Propuesta votada</TableHead>
+                  <TableHead className="hidden sm:table-cell">Cargo</TableHead>
+                  <TableHead className="hidden sm:table-cell">Propuesta votada</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Fecha</TableHead>
+                  <TableHead className="hidden md:table-cell">Fecha</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filas.map(({ consejero, voto, propuesta }) => (
                   <TableRow key={consejero.id}>
-                    <TableCell className="font-semibold">{consejero.nombre_completo}</TableCell>
-                    <TableCell className="capitalize text-muted-foreground">
+                    <TableCell>
+                      <p className="font-semibold">{consejero.nombre_completo}</p>
+                      <p className="text-xs text-muted-foreground capitalize sm:hidden">
+                        {consejero.cargo?.replace('_', ' ')}
+                      </p>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell capitalize text-muted-foreground">
                       {consejero.cargo?.replace('_', ' ')}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {propuesta ? (
-                        <span>{propuesta.razon_social}</span>
+                        <span className="truncate block max-w-[180px]">{propuesta.razon_social}</span>
                       ) : (
                         <span className="text-muted-foreground italic">—</span>
                       )}
@@ -348,7 +356,7 @@ export default function VotacionConsejoPage() {
                         {voto ? 'Votó' : 'Pendiente'}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
+                    <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
                       {voto
                         ? new Date(voto.created_at).toLocaleDateString('es-CO')
                         : '—'}

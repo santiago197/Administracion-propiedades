@@ -390,7 +390,7 @@ export default function CriteriosPage() {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[900px] w-full">
+              <table className="min-w-[600px] w-full">
                 <thead>
                   <tr className="text-left text-xs uppercase text-muted-foreground">
                     <th className="py-3 pr-4 w-10">Orden</th>

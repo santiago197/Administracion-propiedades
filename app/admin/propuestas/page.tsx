@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -55,8 +55,8 @@ import { es } from 'date-fns/locale'
 import { Spinner } from '@/components/ui/spinner'
 import { PropuestaDetalle } from '@/components/admin/propuesta-detalle'
 import { FormPropuesta } from '@/components/admin/form-propuesta'
-import { LABEL_ESTADO, ESTADOS_TERMINALES } from '@/lib/types/index'
-import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona } from '@/lib/types/index'
+import { LABEL_ESTADO, ESTADOS_TERMINALES, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
+import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona, ChecklistLegal } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
 // Constantes de presentación
@@ -135,6 +135,23 @@ function calcularEstadoAcceso(acceso: AccesoProponente): EstadoAcceso {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: % cumplimiento legal para la tabla
+// ---------------------------------------------------------------------------
+
+function pctCumplimientoLegal(p: Propuesta): number | null {
+  const ckl = (p as Propuesta & { checklist_legal?: ChecklistLegal }).checklist_legal
+  if (!ckl || Object.keys(ckl).length === 0) return null
+  const tipoPersona = p.tipo_persona as 'juridica' | 'natural'
+  // Solo considerar ítems obligatorios (obligatorio !== false)
+  const items = ITEMS_VALIDACION_LEGAL.filter((d) => 
+    (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
+  )
+  if (items.length === 0) return null
+  const noCumple = items.filter((d) => ckl[d.id]?.estado === 'no_cumple').length
+  return Math.round(((items.length - noCumple) / items.length) * 100)
+}
+
+// ---------------------------------------------------------------------------
 // Componente
 // ---------------------------------------------------------------------------
 
@@ -147,6 +164,14 @@ export default function PropuestasPage() {
   const [selectedProceso, setSelectedProceso] = useState<string>('')
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
+
+  // Usuario actual y rol
+  const [userInfo, setUserInfo] = useState<{ id?: string; rol?: string; nombre?: string } | null>(null)
+  const [filterMode, setFilterMode] = useState<'todas' | 'mias'>('todas')
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 10
 
   // Retiro
   const [retiroTarget, setRetiroTarget]   = useState<Propuesta | null>(null)
@@ -164,9 +189,10 @@ export default function PropuestasPage() {
   // Data fetching
   // ---------------------------------------------------------------------------
 
-  const loadPropuestas = useCallback(async (procesoId: string): Promise<Propuesta[]> => {
+  const loadPropuestas = useCallback(async (procesoId: string, filter: 'todas' | 'mias' = 'todas'): Promise<Propuesta[]> => {
     try {
-      const res = await fetch(`/api/propuestas?proceso_id=${procesoId}`)
+      const filterParam = filter === 'mias' ? '&filter=mine' : ''
+      const res = await fetch(`/api/propuestas?proceso_id=${procesoId}${filterParam}`)
       if (!res.ok) throw new Error('Error al obtener propuestas')
       const data: Propuesta[] = await res.json()
       setPropuestas(data)
@@ -209,6 +235,13 @@ export default function PropuestasPage() {
     const init = async () => {
       setLoading(true)
       try {
+        // Obtener información del usuario actual
+        const meRes = await fetch('/api/me')
+        if (meRes.ok) {
+          const meData = await meRes.json()
+          setUserInfo({ id: meData.id, rol: meData.rol, nombre: meData.nombre })
+        }
+
         const conjRes = await fetch('/api/conjuntos')
         if (!conjRes.ok) throw new Error('Error al obtener conjunto')
         const conjunto = await conjRes.json()
@@ -222,7 +255,7 @@ export default function PropuestasPage() {
         if (procesosData.length > 0) {
           const primerProceso = procesosData[0].id
           setSelectedProceso(primerProceso)
-          await loadPropuestas(primerProceso)
+          await loadPropuestas(primerProceso, filterMode)
         }
       } catch (e) {
         console.error('Error fetching data:', e)
@@ -231,22 +264,31 @@ export default function PropuestasPage() {
       }
     }
     init()
-  }, [loadPropuestas])
+  }, [loadPropuestas, filterMode])
 
   async function handleProcesoChange(procesoId: string) {
     setSelectedProceso(procesoId)
     setSelectedPropuesta(null)
-    await loadPropuestas(procesoId)
+    setCurrentPage(1)
+    await loadPropuestas(procesoId, filterMode)
+  }
+
+  async function handleFilterChange(filter: 'todas' | 'mias') {
+    setFilterMode(filter)
+    setCurrentPage(1)
+    if (selectedProceso) {
+      await loadPropuestas(selectedProceso, filter)
+    }
   }
 
   // Refresca la lista y mantiene la selección actualizada
   const handlePropuestaChanged = useCallback(async () => {
-    const data = await loadPropuestas(selectedProceso)
+    const data = await loadPropuestas(selectedProceso, filterMode)
     if (selectedPropuesta) {
       const fresh = data.find((p) => p.id === selectedPropuesta.id)
       setSelectedPropuesta(fresh ?? null)
     }
-  }, [loadPropuestas, selectedProceso, selectedPropuesta])
+  }, [loadPropuestas, selectedProceso, selectedPropuesta, filterMode])
 
   // ---------------------------------------------------------------------------
   // Funciones de Acceso Proponente
@@ -363,7 +405,7 @@ export default function PropuestasPage() {
       if (selectedPropuesta?.id === retiroTarget.id) setSelectedPropuesta(null)
       setRetiroTarget(null)
       setRetiroObs('')
-      await loadPropuestas(selectedProceso)
+      await loadPropuestas(selectedProceso, filterMode)
     } catch (e) {
       setRetiroError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
@@ -378,7 +420,7 @@ export default function PropuestasPage() {
   return (
     <div className="space-y-6">
       {/* Encabezado */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Candidatos</p>
           <h1 className="text-2xl tracking-tight">Propuestas</h1>
@@ -399,7 +441,7 @@ export default function PropuestasPage() {
               <FormPropuesta
                 procesoId={selectedProceso}
                 onSuccess={() => {
-                  loadPropuestas(selectedProceso)
+                  loadPropuestas(selectedProceso, filterMode)
                   handleCloseDialog(false)
                 }}
                 onCancel={() => handleCloseDialog(false)}
@@ -410,18 +452,32 @@ export default function PropuestasPage() {
         </Dialog>
       </div>
 
-      {/* Selector de proceso */}
+      {/* Selector de proceso y filtro */}
       {procesos.length > 0 && (
-        <div className="flex items-center gap-3">
-          <Label>Proceso:</Label>
-          <Select value={selectedProceso} onValueChange={handleProcesoChange}>
-            <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {procesos.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label>Proceso:</Label>
+            <Select value={selectedProceso} onValueChange={handleProcesoChange}>
+              <SelectTrigger className="w-full sm:w-64"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {procesos.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Filtro de propuestas */}
+          <div className="flex items-center gap-2">
+            <Label>Mostrar:</Label>
+            <Select value={filterMode} onValueChange={(v) => handleFilterChange(v as 'todas' | 'mias')}>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas las propuestas</SelectItem>
+                <SelectItem value="mias">Cargadas por mí</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -452,12 +508,15 @@ export default function PropuestasPage() {
                       <TableHead className="hidden md:table-cell text-right">Puntaje</TableHead>
                       <TableHead className="hidden md:table-cell">Clasificación</TableHead>
                       <TableHead className="hidden lg:table-cell">Acceso Proponente</TableHead>
+                      <TableHead className="hidden lg:table-cell">Cargado por</TableHead>
                       <TableHead className="hidden lg:table-cell">Contacto</TableHead>
                       <TableHead className="text-right w-20">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {propuestas.map((p) => (
+                    {propuestas
+                      .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                      .map((p) => (
                       <TableRow
                         key={p.id}
                         className={`cursor-pointer hover:bg-muted/40 transition-colors ${
@@ -473,6 +532,16 @@ export default function PropuestasPage() {
                           <Badge variant="outline" className={`text-xs whitespace-nowrap ${ESTADO_CLS[p.estado]}`}>
                             {LABEL_ESTADO[p.estado]}
                           </Badge>
+                          {(() => {
+                            const pct = pctCumplimientoLegal(p)
+                            if (pct === null) return null
+                            const color = pct === 100 ? 'text-green-600' : pct >= 70 ? 'text-orange-600' : 'text-destructive'
+                            return (
+                              <p className={`text-[10px] tabular-nums mt-0.5 ${color}`}>
+                                {pct}% legal
+                              </p>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right">
                           <span className="font-semibold tabular-nums text-sm">
@@ -551,6 +620,10 @@ export default function PropuestasPage() {
                             )
                           })()}
                         </TableCell>
+                        {/* Cargado por */}
+                        <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                          {p.created_by_nombre ?? '—'}
+                        </TableCell>
                         <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{p.email ?? '—'}</TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -581,6 +654,57 @@ export default function PropuestasPage() {
                   </TableBody>
                 </Table>
               </div>
+              {/* Paginador */}
+              {propuestas.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {Math.min((currentPage - 1) * PAGE_SIZE + 1, propuestas.length)} - {Math.min(currentPage * PAGE_SIZE, propuestas.length)} de {propuestas.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    {Array.from({ length: Math.ceil(propuestas.length / PAGE_SIZE) }, (_, i) => i + 1)
+                      .filter(page => {
+                        const totalPages = Math.ceil(propuestas.length / PAGE_SIZE)
+                        if (totalPages <= 5) return true
+                        if (page === 1 || page === totalPages) return true
+                        if (Math.abs(page - currentPage) <= 1) return true
+                        return false
+                      })
+                      .map((page, idx, arr) => (
+                        <span key={page} className="flex items-center">
+                          {idx > 0 && arr[idx - 1] !== page - 1 && (
+                            <span className="px-1 text-muted-foreground">...</span>
+                          )}
+                          <Button
+                            size="sm"
+                            variant={currentPage === page ? 'default' : 'outline'}
+                            className="h-8 w-8 p-0"
+                            onClick={() => setCurrentPage(page)}
+                          >
+                            {page}
+                          </Button>
+                        </span>
+                      ))}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(propuestas.length / PAGE_SIZE), p + 1))}
+                      disabled={currentPage >= Math.ceil(propuestas.length / PAGE_SIZE)}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <p className="mt-2 text-xs text-muted-foreground">
                 Haz clic en una fila para ver el detalle. No avanza a Evaluación si la documentación es incompleta o la validación legal es No Apto.
               </p>
