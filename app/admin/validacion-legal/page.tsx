@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Loader2, AlertCircle, ExternalLink } from 'lucide-react'
+import { Loader2, AlertCircle, ExternalLink, RefreshCw } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 import type { Propuesta, Proceso, ChecklistLegal } from '@/lib/types/index'
@@ -14,7 +14,7 @@ import type { Propuesta, Proceso, ChecklistLegal } from '@/lib/types/index'
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   habilitada:    { label: 'Apto legal',        cls: 'bg-emerald-500/10 text-emerald-700' },
   en_evaluacion: { label: 'Apto legal',        cls: 'bg-emerald-500/10 text-emerald-700' },
-  no_apto_legal: { label: 'No apto (bloquea)', cls: 'bg-destructive/10 text-destructive' },
+  no_apto_legal: { label: 'No apto legal', cls: 'bg-destructive/10 text-destructive' },
   en_revision:   { label: 'Pendiente',         cls: 'bg-amber-500/10 text-amber-700' },
   en_validacion: { label: 'En validación',     cls: 'bg-blue-500/10 text-blue-700' },
   incompleto:    { label: 'Incompleto',        cls: 'bg-amber-500/10 text-amber-700' },
@@ -33,8 +33,8 @@ function calcularPctCumplimiento(p: Propuesta): number | null {
     (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
   )
   if (items.length === 0) return null
-  const cumplidos = items.filter((d) => ckl[d.id]?.estado === 'cumple').length
-  return Math.round((cumplidos / items.length) * 100)
+  const noCumple = items.filter((d) => ckl[d.id]?.estado === 'no_cumple').length
+  return Math.round(((items.length - noCumple) / items.length) * 100)
 }
 
 export default function ValidacionLegalAdmin() {
@@ -44,6 +44,8 @@ export default function ValidacionLegalAdmin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedProceso, setSelectedProceso] = useState<Proceso | null>(null)
+  const [recalculando, setRecalculando] = useState(false)
+  const [recalculoMsg, setRecalculoMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (procesos.length > 0 && !selectedProcesoId) {
@@ -82,6 +84,36 @@ export default function ValidacionLegalAdmin() {
     fetchPropuestas()
   }, [selectedProcesoId])
 
+  const recalcularNoAptos = async () => {
+    if (!selectedProcesoId) return
+    setRecalculando(true)
+    setRecalculoMsg(null)
+    try {
+      const res = await fetch('/api/propuestas/recalcular-validacion-legal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proceso_id: selectedProcesoId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Error al recalcular estado legal')
+      }
+
+      setRecalculoMsg(
+        `Recalculado: ${data.promovidas} propuesta(s) pasaron de No Apto a Apto legal con observaciones (umbral ${data.umbral}%).`
+      )
+
+      const refresh = await fetch(`/api/propuestas?proceso_id=${selectedProcesoId}`)
+      if (refresh.ok) {
+        setPropuestas(await refresh.json())
+      }
+    } catch (e) {
+      setRecalculoMsg(e instanceof Error ? e.message : 'Error al recalcular estado legal')
+    } finally {
+      setRecalculando(false)
+    }
+  }
+
   if (loadingProceso) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -106,8 +138,21 @@ export default function ValidacionLegalAdmin() {
           <p className="text-sm text-muted-foreground">Control legal</p>
           <h1 className="text-2xl tracking-tight">Validación Legal</h1>
           <p className="text-sm text-muted-foreground">
-            SARLAFT, antecedentes, pólizas y paz y salvo. Bloqueo de avance si es No Apto.
+            SARLAFT, antecedentes, pólizas y paz y salvo. Umbral legal activo: 70%.
           </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={recalcularNoAptos}
+            disabled={recalculando || !selectedProcesoId}
+            className="gap-2"
+          >
+            {recalculando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Recalcular No Apto por nuevo umbral
+          </Button>
+          {recalculoMsg && <p className="text-xs text-muted-foreground">{recalculoMsg}</p>}
         </div>
         {procesos.length > 1 && (
           <Select value={selectedProcesoId} onValueChange={handleProcesosChange}>
@@ -219,7 +264,7 @@ export default function ValidacionLegalAdmin() {
             </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Transparencia: registre quién validó, fecha y observaciones. Si es No Apto, la propuesta no continúa a Evaluación ni Votación.
+            Transparencia: registre quién validó, fecha y observaciones. El estado legal se define por umbral de cumplimiento.
           </p>
         </CardContent>
       </Card>

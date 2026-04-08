@@ -1278,6 +1278,11 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
     const itemsAplicables = validacionItems.filter(
       (d) => d.aplica_a === 'ambos' || d.aplica_a === tipoPersona
     )
+    const labelsCriticos = new Set(
+      itemsAplicables
+        .filter((d) => d.criticidad === 'critico')
+        .map((d) => d.label.trim().toLowerCase())
+    )
     const secciones = Array.from(new Set(itemsAplicables.map((d) => d.seccion)))
 
     return (
@@ -1375,14 +1380,27 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
               {estadoLegal === 'rechazado' ? 'Motivo de rechazo' : 'Observaciones legales'}
             </p>
             <ul className="space-y-1">
-              {propuesta.observaciones_legales.split(' | ').map((item, i) => (
+              {propuesta.observaciones_legales.split(' | ').map((item, i) => {
+                const [label] = item.split(':')
+                const esCritico = labelsCriticos.has(label.trim().toLowerCase())
+                return (
                 <li key={i} className={`text-xs flex gap-1.5 min-w-0 ${
                   estadoLegal === 'rechazado' ? 'text-destructive/90' : 'text-orange-800/90'
                 }`}>
                   <span className="shrink-0 mt-0.5">·</span>
-                  <span className="break-words min-w-0">{item.trim()}</span>
+                  <span className="break-words min-w-0 flex items-center gap-2 flex-wrap">
+                    <span>{item.trim()}</span>
+                    {estadoLegal === 'rechazado' && esCritico && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-1.5 border-destructive/40 bg-destructive/10 text-destructive"
+                      >
+                        Crítico
+                      </Badge>
+                    )}
+                  </span>
                 </li>
-              ))}
+              )})}
             </ul>
           </div>
         )}

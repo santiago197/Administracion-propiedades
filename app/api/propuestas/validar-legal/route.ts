@@ -14,6 +14,7 @@ const ESTADOS_SOLO_ACTUALIZAR: EstadoPropuesta[] = [
   'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado',
 ]
 const ESTADOS_PREVALIDACION: EstadoPropuesta[] = ['en_revision', 'en_subsanacion']
+const UMBRAL_APTO_CON_OBS = 70
 
 function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChecklist {
   return {
@@ -27,27 +28,31 @@ function mapItemConfigToDef(item: ValidacionLegalItemConfig): DefinicionItemChec
   }
 }
 
-/**
- * Dado un checklist completo, calcula si la propuesta cumple o no.
- * Un ítem crítico en 'no_cumple' = no aprueba.
- * Todos los críticos en 'cumple' = aprueba (importants/condicionantes no bloquean).
- */
-function calcularCumpleDesdeChecklist(
+function calcularResultadoChecklist(
   checklist: ChecklistLegal,
   tipoPersona: 'juridica' | 'natural',
   items: DefinicionItemChecklist[]
-): boolean {
-  const itemsCriticos = items.filter(
-    (def: DefinicionItemChecklist) =>
-      def.criticidad === 'critico' &&
+): { cumple: boolean; pct: number } {
+  const itemsObligatorios = items.filter(
+    (def) =>
       def.obligatorio !== false &&
       (def.aplica_a === 'ambos' || def.aplica_a === tipoPersona)
   )
+  const totalNoCumple = itemsObligatorios.filter(
+    (def) => checklist[def.id]?.estado === 'no_cumple'
+  ).length
+  const pct =
+    itemsObligatorios.length > 0
+      ? Math.round(((itemsObligatorios.length - totalNoCumple) / itemsObligatorios.length) * 100)
+      : 0
+  const criticosPendientes = itemsObligatorios.some(
+    (def) => def.criticidad === 'critico' && (checklist[def.id]?.estado ?? 'pendiente') === 'pendiente'
+  )
 
-  return itemsCriticos.every((def) => {
-    const item = checklist[def.id]
-    return item?.estado === 'cumple'
-  })
+  return {
+    cumple: !criticosPendientes && pct >= UMBRAL_APTO_CON_OBS,
+    pct,
+  }
 }
 
 /**
@@ -104,8 +109,11 @@ export async function POST(request: NextRequest) {
 
     // Calcular cumple y observaciones desde el checklist si viene, si no usar los manuales
     const tipoPersona = propuesta.tipo_persona as 'juridica' | 'natural'
-    const cumple: boolean = checklist
-      ? calcularCumpleDesdeChecklist(checklist as ChecklistLegal, tipoPersona, definiciones)
+    const resultadoChecklist = checklist
+      ? calcularResultadoChecklist(checklist as ChecklistLegal, tipoPersona, definiciones)
+      : null
+    const cumple: boolean = resultadoChecklist
+      ? resultadoChecklist.cumple
       : (cumpleManual ?? false)
     const observaciones: string = checklist
       ? consolidarObservaciones(checklist as ChecklistLegal, tipoPersona, definiciones)
@@ -143,6 +151,16 @@ export async function POST(request: NextRequest) {
 
       const estadoObjetivo: EstadoPropuesta = cumple ? 'habilitada' : 'no_apto_legal'
       if (estadoActual !== estadoObjetivo) {
+        if (estadoActual === 'no_apto_legal' && estadoObjetivo === 'habilitada') {
+          const { error: toValidacionErr } = await supabase.rpc('cambiar_estado_propuesta', {
+            p_propuesta_id: propuesta_id,
+            p_estado_nuevo: 'en_validacion',
+            p_usuario_id: user?.id ?? null,
+            p_observacion: observaciones || null,
+            p_metadata: { origen: 're_validacion_legal_reapertura', cumple_requisitos: cumple },
+          })
+          if (toValidacionErr) throw toValidacionErr
+        }
         const { error: rpcErr } = await supabase.rpc('cambiar_estado_propuesta', {
           p_propuesta_id: propuesta_id,
           p_estado_nuevo: estadoObjetivo,
