@@ -203,6 +203,8 @@ export interface Propuesta {
   puntaje_evaluacion: number
   votos_recibidos: number
   puntaje_final: number
+  created_by?: string
+  created_by_nombre?: string
   created_at: string
   updated_at: string
 }
@@ -444,6 +446,7 @@ export interface PropuestaRutDatos {
 
 export type EstadoItemChecklist = 'pendiente' | 'cumple' | 'no_cumple'
 export type CriticidadItem = 'critico' | 'importante' | 'condicionante' | 'informativo'
+export type AplicaAItemChecklist = 'ambos' | 'juridica' | 'natural'
 
 export interface ItemChecklistLegal {
   id: string
@@ -461,7 +464,23 @@ export interface DefinicionItemChecklist {
   label: string
   descripcion: string
   criticidad: CriticidadItem
-  aplica_a: 'ambos' | 'juridica' | 'natural'
+  aplica_a: AplicaAItemChecklist
+  obligatorio?: boolean
+}
+
+export interface ValidacionLegalItemConfig {
+  id: string
+  codigo: string
+  seccion: string
+  nombre: string
+  categoria: CriticidadItem
+  descripcion: string
+  aplica_a: AplicaAItemChecklist
+  activo: boolean
+  obligatorio: boolean
+  orden: number
+  created_at: string
+  updated_at: string
 }
 
 export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [
@@ -469,11 +488,11 @@ export const ITEMS_VALIDACION_LEGAL: DefinicionItemChecklist[] = [
   { id: 'procuraduria',    seccion: 'Antecedentes',           label: 'Procuraduría',                         descripcion: 'Sin antecedentes disciplinarios activos.',            criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'contraloria',     seccion: 'Antecedentes',           label: 'Contraloría',                          descripcion: 'Sin antecedentes fiscales activos.',                  criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'policia',         seccion: 'Antecedentes',           label: 'Policía Nacional',                     descripcion: 'Sin antecedentes judiciales.',                        criticidad: 'critico',       aplica_a: 'ambos'     },
-  { id: 'personeria',      seccion: 'Antecedentes',           label: 'Personería',                           descripcion: 'Sin antecedentes ante la Personería.',                criticidad: 'critico',       aplica_a: 'ambos'     },
+  { id: 'personeria',      seccion: 'Antecedentes',           label: 'Personería',                           descripcion: 'Sin antecedentes ante la Personería.',                criticidad: 'importante',    aplica_a: 'ambos',    obligatorio: false },
   { id: 'medidas',         seccion: 'Antecedentes',           label: 'Medidas correctivas',                  descripcion: 'Sin medidas correctivas vigentes.',                   criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'redam',           seccion: 'Antecedentes',           label: 'REDAM',                                descripcion: 'No inscrito en el Registro de Deudores Alimentarios Morosos.', criticidad: 'critico', aplica_a: 'ambos'   },
-  { id: 'delitos_sexuales',seccion: 'Antecedentes',           label: 'Inhabilidades por delitos sexuales',   descripcion: 'Sin inhabilidades por delitos sexuales o contra menores.', criticidad: 'critico', aplica_a: 'ambos'     },
-  { id: 'procesos_legales',seccion: 'Antecedentes',           label: 'Sin procesos legales activos',         descripcion: 'No se encuentra incurso en procesos legales (penales, civiles o administrativos) vigentes que comprometan su idoneidad. Soportar con declaración bajo juramento o certificación de secretaría de juzgados.', criticidad: 'critico', aplica_a: 'ambos' },
+  { id: 'delitos_sexuales',seccion: 'Antecedentes',           label: 'Inhabilidades por delitos sexuales',   descripcion: 'Sin inhabilidades por delitos sexuales o contra menores.', criticidad: 'importante', aplica_a: 'ambos', obligatorio: false },
+  { id: 'procesos_legales',seccion: 'Antecedentes',           label: 'Sin procesos legales activos',         descripcion: 'No se encuentra incurso en procesos legales (penales, civiles o administrativos) vigentes que comprometan su idoneidad. Soportar con declaración bajo juramento o certificación de secretaría de juzgados.', criticidad: 'importante', aplica_a: 'ambos', obligatorio: false },
   // ── SARLAFT y documentación básica ──────────────────────────────────────────
   { id: 'sarlaft',         seccion: 'SARLAFT y documentación',label: 'SARLAFT / Listas restrictivas',        descripcion: 'No aparece en listas Clinton, OFACs ni UIAF.',       criticidad: 'critico',       aplica_a: 'ambos'     },
   { id: 'rut',             seccion: 'SARLAFT y documentación',label: 'RUT actualizado',                      descripcion: 'RUT vigente y coincidente con datos registrados.',    criticidad: 'critico',       aplica_a: 'ambos'     },

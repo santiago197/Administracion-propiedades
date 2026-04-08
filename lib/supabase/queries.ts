@@ -22,6 +22,7 @@ import type {
   CriterioEvaluacion,
   TipoDocumentoConfig,
   TipoPersona,
+  ValidacionLegalItemConfig,
 } from '../types/index'
 import { CRITERIOS_MATRIZ } from '../types/index'
 import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
@@ -236,9 +237,33 @@ export async function existePropuestaPorDocumento(proceso_id: string, nit_cedula
   return { existe: !!data, error }
 }
 
-export async function getPropuestas(proceso_id: string) {
+export async function getPropuestas(proceso_id: string, created_by?: string) {
   const supabase = await createServerClient()
-  return supabase.from('propuestas').select('*').eq('proceso_id', proceso_id)
+  
+  // Query con join a usuarios para obtener el nombre de quien creó la propuesta
+  let query = supabase
+    .from('propuestas')
+    .select('*, usuarios:created_by(nombre)')
+    .eq('proceso_id', proceso_id)
+    .order('created_at', { ascending: false })
+  
+  // Filtrar por created_by si se proporciona
+  if (created_by) {
+    query = query.eq('created_by', created_by)
+  }
+  
+  const { data, error } = await query
+  
+  if (error) return { data: null, error }
+  
+  // Aplanar el resultado para incluir created_by_nombre
+  const propuestas = data?.map((p) => ({
+    ...p,
+    created_by_nombre: (p.usuarios as { nombre: string } | null)?.nombre ?? null,
+    usuarios: undefined,
+  })) ?? []
+  
+  return { data: propuestas, error: null }
 }
 
 export async function getPropuestaConjunto(id: string, conjunto_id: string) {
@@ -774,11 +799,13 @@ export interface DatosActa {
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
+  participacion: { total_consejeros: number; votaron: number; porcentaje: number }
+  generado_por?: string
   fecha_generacion: string
   numero_acta?: string
 }
 
-export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
+export async function getDatosActa(proceso_id: string, generado_por?: string): Promise<DatosActa> {
   const supabase = await createServerClient()
 
   // Proceso + conjunto
@@ -809,12 +836,25 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     puntaje_final_propuesta: Number(v.propuestas?.puntaje_final ?? 0),
   })).sort((a, b) => b.puntaje_final_propuesta - a.puntaje_final_propuesta)
 
-  const [matriz, ranking] = await Promise.all([
+  const conjuntoId = (proceso as any)?.conjunto_id
+
+  const [matriz, ranking, { count: totalConsejeros }, { count: votaron }] = await Promise.all([
     getMatrizEvaluacionAdmin(proceso_id),
     getResultadosFinales(proceso_id),
+    supabase
+      .from('consejeros')
+      .select('id', { count: 'exact', head: true })
+      .eq('conjunto_id', conjuntoId)
+      .eq('activo', true),
+    supabase
+      .from('votos')
+      .select('id', { count: 'exact', head: true })
+      .eq('proceso_id', proceso_id),
   ])
 
   const conjunto = (proceso as any)?.conjuntos
+  const total = totalConsejeros ?? 0
+  const votaronCount = votaron ?? 0
 
   return {
     proceso: {
@@ -839,6 +879,12 @@ export async function getDatosActa(proceso_id: string): Promise<DatosActa> {
     matriz,
     ranking,
     votos,
+    participacion: {
+      total_consejeros: total,
+      votaron: votaronCount,
+      porcentaje: total > 0 ? Math.round((votaronCount / total) * 100) : 0,
+    },
+    generado_por,
     fecha_generacion: new Date().toISOString(),
   }
 }
@@ -883,6 +929,42 @@ export async function updateTipoDocumento(
 export async function deleteTipoDocumento(id: string) {
   const supabase = await createServerClient()
   return supabase.from('tipos_documento').delete().eq('id', id)
+}
+
+// VALIDACIÓN LEGAL ITEMS — CRUD
+export async function getValidacionLegalItems(onlyActive = false) {
+  const supabase = await createServerClient()
+  let query = supabase
+    .from('validacion_legal_items')
+    .select('*')
+    .order('seccion', { ascending: true })
+    .order('orden', { ascending: true })
+
+  if (onlyActive) {
+    query = query.eq('activo', true)
+  }
+
+  return query
+}
+
+export async function createValidacionLegalItem(
+  data: Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').insert([data]).select().single()
+}
+
+export async function updateValidacionLegalItem(
+  id: string,
+  data: Partial<Omit<ValidacionLegalItemConfig, 'id' | 'created_at' | 'updated_at'>>
+) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').update(data).eq('id', id).select().single()
+}
+
+export async function deleteValidacionLegalItem(id: string) {
+  const supabase = await createServerClient()
+  return supabase.from('validacion_legal_items').delete().eq('id', id)
 }
 
 /**
@@ -1616,7 +1698,7 @@ export async function obtenerAccesoProponente(propuesta_id: string) {
     .from('acceso_proponentes')
     .select('*')
     .eq('propuesta_id', propuesta_id)
-    .single()
+    .maybeSingle()
 
   return { data, error }
 }

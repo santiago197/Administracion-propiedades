@@ -77,7 +77,7 @@ export default function ProcesosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">Gestión de procesos</p>
           <h1 className="text-2xl font-semibold tracking-tight">Procesos de Selección</h1>
@@ -107,9 +107,9 @@ export default function ProcesosPage() {
                 <TableRow>
                   <TableHead>Proceso</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Ponderación</TableHead>
-                  <TableHead>Inicio</TableHead>
-                  <TableHead>Timeline</TableHead>
+                  <TableHead className="hidden sm:table-cell">Ponderación</TableHead>
+                  <TableHead className="hidden sm:table-cell">Inicio</TableHead>
+                  <TableHead className="hidden md:table-cell">Timeline</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -133,9 +133,9 @@ export default function ProcesosPage() {
                         {proceso.estado.charAt(0).toUpperCase() + proceso.estado.slice(1)}
                       </Badge>
                     </TableCell>
-                    <TableCell>{proceso.peso_evaluacion}% / {proceso.peso_votacion}%</TableCell>
-                    <TableCell>{estadoToDateLabel(proceso)}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">{proceso.peso_evaluacion}% / {proceso.peso_votacion}%</TableCell>
+                    <TableCell className="hidden sm:table-cell">{estadoToDateLabel(proceso)}</TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                         {etapas.map((etapa, index) => {
                           const activeIndex =
