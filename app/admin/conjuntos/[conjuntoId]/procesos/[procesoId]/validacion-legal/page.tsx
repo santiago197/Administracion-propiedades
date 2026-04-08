@@ -27,7 +27,9 @@ import {
   Circle,
   FileCheck,
   Play,
+  ClipboardList,
 } from 'lucide-react'
+import { PanelEvaluacion } from '@/components/admin/panel-evaluacion'
 import type {
   Propuesta,
   Proceso,
@@ -350,9 +352,9 @@ function IndicadorFlujo({
   const siguiente = SIGUIENTE_ESTADO[propuesta.estado]
   const estadoLegal = getEstadoLegal(propuesta)
 
-  if (estadoLegal === 'aprobado' || estadoLegal === 'rechazado') {
-    return null
-  }
+  if (estadoLegal === 'rechazado') return null
+  // 'aprobado' sin siguiente paso (en_evaluacion ya no tiene botón aquí)
+  if (estadoLegal === 'aprobado' && !siguiente) return null
 
   const puedeAvanzar = propuesta.estado !== 'en_revision' || docsRevisados
 
@@ -611,6 +613,8 @@ function ValidacionLegalContent() {
   const [docsRut, setDocsRut] = useState<Record<string, { nombre: string; archivo_url?: string | null }[]>>({})
   const [docsStatus, setDocsStatus] = useState<Record<string, { faltantes: number; nombres_faltantes: string[] }>>({})
   const [panelInicialAbierto, setPanelInicialAbierto] = useState(false)
+  const [evalTarget, setEvalTarget] = useState<Propuesta | null>(null)
+  const [evalPanelOpen, setEvalPanelOpen] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -835,14 +839,14 @@ function ValidacionLegalContent() {
       const data = await response.json()
 
       if (response.ok) {
-        // Actualizar el estado local
+        const propuestaActualizada: Propuesta = { ...propuesta, estado: nuevoEstado as Propuesta['estado'] }
         setPropuestas((prev) =>
-          prev.map((p): Propuesta =>
-            p.id === propuesta.id
-              ? { ...p, estado: nuevoEstado as Propuesta['estado'] }
-              : p
-          )
+          prev.map((p): Propuesta => p.id === propuesta.id ? propuestaActualizada : p)
         )
+        if (nuevoEstado === 'en_evaluacion') {
+          setEvalTarget(propuestaActualizada)
+          setEvalPanelOpen(true)
+        }
       } else {
         // Mostrar mensaje de error específico si hay documentos faltantes
         let mensaje = data.error ?? 'Error al cambiar estado'
@@ -1105,7 +1109,18 @@ function ValidacionLegalContent() {
                           </Button>
                         </Link>
 
-                        {esValidable && (
+                        {p.estado === 'en_evaluacion' && (
+                          <Button
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => { setEvalTarget(p); setEvalPanelOpen(true) }}
+                          >
+                            <ClipboardList className="h-4 w-4" />
+                            Abrir evaluación
+                          </Button>
+                        )}
+
+                        {esValidable && p.estado !== 'en_evaluacion' && (
                           <Button
                             variant={estadoLegal === 'pendiente' ? 'default' : 'outline'}
                             size="sm"
@@ -1121,7 +1136,7 @@ function ValidacionLegalContent() {
                   </div>
 
                   {/* Indicador de flujo — muestra el paso actual y permite avanzar */}
-                  {esValidable && (estadoLegal === 'pendiente' || estadoLegal === 'apto_con_obs') && (
+                  {esValidable && (estadoLegal === 'pendiente' || estadoLegal === 'apto_con_obs' || p.estado === 'habilitada') && (
                     <div className="border-t border-border/40 px-5 sm:px-6 py-4 bg-background/30">
                       <IndicadorFlujo
                         propuesta={p}
@@ -1229,6 +1244,21 @@ function ValidacionLegalContent() {
           </div>
         )}
       </main>
+
+      <PanelEvaluacion
+        propuesta={evalTarget}
+        open={evalPanelOpen}
+        onOpenChange={setEvalPanelOpen}
+        onSaved={() => {
+          setEvalPanelOpen(false)
+          // Refrescar la propuesta evaluada en el estado local
+          if (evalTarget) {
+            setPropuestas((prev) => prev.map((p) =>
+              p.id === evalTarget.id ? { ...p, estado: 'en_evaluacion' as Propuesta['estado'] } : p
+            ))
+          }
+        }}
+      />
     </div>
   )
 }
