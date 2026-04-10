@@ -30,7 +30,7 @@ export async function GET(
 
   const { data, error } = await supabase
     .from('evaluaciones_admin')
-    .select('id, puntaje_total, clasificacion, puntajes_criterio(criterio_codigo, puntaje)')
+    .select('id, puntaje_total, clasificacion, puntajes_criterio(criterio_codigo, puntaje, valor_original)')
     .eq('propuesta_id', id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -45,14 +45,24 @@ export async function GET(
   }
 
   const detalles: Record<string, number> = {}
+  const observaciones: Record<string, string> = {}
   for (const p of data.puntajes_criterio ?? []) {
     detalles[p.criterio_codigo] = p.puntaje
+    if (p.valor_original) {
+      try {
+        const parsed = JSON.parse(p.valor_original)
+        if (typeof parsed === 'string' && parsed.trim()) {
+          observaciones[p.criterio_codigo] = parsed
+        }
+      } catch { /* valor_original no es JSON válido, ignorar */ }
+    }
   }
 
   return NextResponse.json({
     puntaje_total: data.puntaje_total,
     clasificacion: data.clasificacion,
     detalles,
+    observaciones,
   })
 }
 
@@ -78,7 +88,7 @@ export async function POST(
       )
     }
 
-    const { puntaje_total, clasificacion, detalles } = body ?? {}
+    const { puntaje_total, clasificacion, detalles, observaciones } = body ?? {}
 
     if (typeof puntaje_total !== 'number' || !clasificacion) {
       return NextResponse.json(
@@ -137,6 +147,9 @@ export async function POST(
     }
 
     // 2. Insertar puntajes por criterio
+    const obsMap: Record<string, string> =
+      observaciones && typeof observaciones === 'object' ? observaciones : {}
+
     const puntajesParaInsertar = Object.entries(detalles).map(([key, value]) => ({
       evaluacion_id: evalId,
       criterio_codigo: key,
@@ -146,7 +159,7 @@ export async function POST(
           : Array.isArray(value)
             ? value.length
             : 0,
-      valor_original: JSON.stringify(value),
+      valor_original: JSON.stringify(obsMap[key] ?? ''),
     }))
 
     const { error: puntajesError } = await supabase

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sheet'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -35,6 +36,7 @@ import {
   Info,
   AlertCircle,
   HelpCircle,
+  MessageSquare,
 } from 'lucide-react'
 import type { Propuesta, ClasificacionPropuesta } from '@/lib/types/index'
 
@@ -216,6 +218,8 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
   const [criterios, setCriterios] = useState<CriterioConfig[]>([])
   const [criteriosLoading, setCriteriosLoading] = useState(true)
   const [evalData, setEvalData] = useState<EvalData>({})
+  const [obsData, setObsData] = useState<Record<string, string>>({})
+  const [obsVisible, setObsVisible] = useState<Record<string, boolean>>({})
   const [guardando, setGuardando] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -266,12 +270,20 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
         if (res.ok) {
           const data = await res.json()
           if (data?.detalles) {
-            // Mapear los detalles guardados a evalData
             const dataFromServer: EvalData = {}
             for (const c of criterios) {
               dataFromServer[c.codigo] = data.detalles[c.codigo] ?? null
             }
             setEvalData(dataFromServer)
+            if (data.observaciones) {
+              setObsData(data.observaciones)
+              // Mostrar campos que ya tienen observación guardada
+              const visible: Record<string, boolean> = {}
+              for (const codigo of Object.keys(data.observaciones)) {
+                if (data.observaciones[codigo]) visible[codigo] = true
+              }
+              setObsVisible(visible)
+            }
             return
           }
         }
@@ -306,6 +318,12 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
   const set = (codigo: string, value: number) =>
     setEvalData((prev) => ({ ...prev, [codigo]: value }))
 
+  const setObs = (codigo: string, value: string) =>
+    setObsData((prev) => ({ ...prev, [codigo]: value }))
+
+  const toggleObs = (codigo: string) =>
+    setObsVisible((prev) => ({ ...prev, [codigo]: !prev[codigo] }))
+
   const handleGuardar = async () => {
     if (!propuesta || !completo) return
     setGuardando(true)
@@ -318,6 +336,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
           puntaje_total: total,
           clasificacion,
           detalles: evalData,
+          observaciones: obsData,
         }),
       })
       if (!res.ok) {
@@ -404,6 +423,33 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
                       value={evalData[criterio.codigo] ?? null}
                       onChange={(v) => set(criterio.codigo, v)}
                     />
+                    {evalData[criterio.codigo] !== null && evalData[criterio.codigo] !== undefined && (
+                      <div className="mt-2 space-y-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                          onClick={() => toggleObs(criterio.codigo)}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          {obsVisible[criterio.codigo]
+                            ? 'Ocultar observación'
+                            : obsData[criterio.codigo]
+                              ? 'Ver observación'
+                              : 'Agregar observación'}
+                        </Button>
+                        {obsVisible[criterio.codigo] && (
+                          <Textarea
+                            placeholder="Observación sobre este criterio..."
+                            value={obsData[criterio.codigo] ?? ''}
+                            onChange={(e) => setObs(criterio.codigo, e.target.value)}
+                            rows={2}
+                            className="text-sm resize-none"
+                          />
+                        )}
+                      </div>
+                    )}
                   </CriterioBloque>
                 </div>
               ))}

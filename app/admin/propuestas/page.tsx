@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -195,6 +195,12 @@ export default function PropuestasPage() {
   const [legalObs, setLegalObs]           = useState('')
   const [rechazandoLegal, setRechazandoLegal] = useState(false)
   const [legalError, setLegalError]       = useState<string | null>(null)
+
+  // No apto por entrevista
+  const [entrevistaTarget, setEntrevistaTarget]     = useState<Propuesta | null>(null)
+  const [entrevistaObs, setEntrevistaObs]           = useState('')
+  const [rechazandoEntrevista, setRechazandoEntrevista] = useState(false)
+  const [entrevistaError, setEntrevistaError]       = useState<string | null>(null)
 
   // Acceso Proponente
   const [accesosMap, setAccesosMap] = useState<Map<string, AccesoProponente>>(new Map())
@@ -487,6 +493,31 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handleRechazarEntrevista() {
+    if (!entrevistaTarget || !entrevistaObs.trim()) return
+    setRechazandoEntrevista(true)
+    setEntrevistaError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${entrevistaTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'descalificada', observacion: entrevistaObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al marcar propuesta')
+      }
+      if (selectedPropuesta?.id === entrevistaTarget.id) setSelectedPropuesta(null)
+      setEntrevistaTarget(null)
+      setEntrevistaObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setEntrevistaError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazandoEntrevista(false)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -758,6 +789,15 @@ export default function PropuestasPage() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-7 w-7 text-rose-600 hover:text-rose-700"
+                                  title="No apto por entrevista"
+                                  onClick={() => { setEntrevistaTarget(p); setEntrevistaObs(''); setEntrevistaError(null) }}
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
                                   className="h-7 w-7 text-destructive hover:text-destructive/80"
                                   title="Retirar propuesta"
                                   onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
@@ -1003,6 +1043,57 @@ export default function PropuestasPage() {
             >
               {rechazandoLegal && <Loader2 className="h-4 w-4 animate-spin" />}
               Marcar como No apto legal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: no apto por entrevista */}
+      <Dialog
+        open={entrevistaTarget !== null}
+        onOpenChange={(open) => { if (!open) { setEntrevistaTarget(null); setEntrevistaObs(''); setEntrevistaError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>No apto por entrevista</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{entrevistaTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>Descalificada</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {entrevistaError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {entrevistaError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="entrevista-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="entrevista-obs"
+                placeholder="Ej: No demostró conocimiento suficiente en gestión de propiedad horizontal de alta densidad..."
+                value={entrevistaObs}
+                onChange={(e) => setEntrevistaObs(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEntrevistaTarget(null); setEntrevistaObs(''); setEntrevistaError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarEntrevista}
+              disabled={rechazandoEntrevista || !entrevistaObs.trim()}
+              className="gap-2"
+            >
+              {rechazandoEntrevista && <Loader2 className="h-4 w-4 animate-spin" />}
+              Marcar como No apto
             </Button>
           </DialogFooter>
         </DialogContent>
