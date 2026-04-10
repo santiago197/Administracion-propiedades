@@ -1612,11 +1612,15 @@ export async function validarCodigoProponente(codigo: string) {
     return coincidePersona && estaEnNoCumple
   })
 
-  // Calcular estadísticas en base a ítems legales
-  const totalObligatorios = itemsFiltrados.filter((i) => i.obligatorio).length
-  const completados = Math.min((documentos ?? []).length, totalObligatorios)
-  const porcentaje = totalObligatorios > 0
-    ? Math.round((completados / totalObligatorios) * 100)
+  // Calcular estadísticas en base a todos los ítems filtrados (obligatorios y no obligatorios)
+  const totalItems = itemsFiltrados.length
+  const idsItemsFiltrados = new Set(itemsFiltrados.map((i) => i.id))
+  const completados = (documentos ?? []).filter((d) =>
+    d.observaciones?.startsWith('legal_item:') &&
+    idsItemsFiltrados.has(d.observaciones.replace('legal_item:', ''))
+  ).length
+  const porcentaje = totalItems > 0
+    ? Math.round((completados / totalItems) * 100)
     : 100
 
   // Verificar documentos vencidos
@@ -1643,7 +1647,7 @@ export async function validarCodigoProponente(codigo: string) {
       nit_cedula: acceso.propuestas.nit_cedula,
       email: acceso.propuestas.email,
       estadisticas: {
-        total_obligatorios: totalObligatorios,
+        total_obligatorios: totalItems,
         completados,
         faltantes: itemsFiltrados.length,
         porcentaje,

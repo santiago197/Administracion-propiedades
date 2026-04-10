@@ -202,21 +202,32 @@ function ProponenteDocumentosContent() {
       vencidos: data.estadisticas.vencidos,
     })
 
-    // Cruzar documentos cargados con sus tipos para mostrar nombre legible
+    // Mapa de tipos de documento del catálogo
     const tiposMap: Record<string, string> = {}
     for (const t of data.tipos_cubiertos ?? []) tiposMap[t.id] = t.nombre
 
+    // Mapa de ítems legales para resolver nombre de documentos subidos por proponente
+    const legalItemsMap: Record<string, string> = {}
+    for (const t of data.tipos_faltantes ?? []) legalItemsMap[t.id] = t.nombre
+
     setDocumentosCargados(
-      (data.documentos ?? []).map((d: any) => ({
-        id: d.id,
-        nombre: d.nombre,
-        tipoNombre: tiposMap[d.tipo_documento_id] ?? d.tipo ?? 'Documento',
-        tipoDocumentoId: d.tipo_documento_id ?? null,
-        estado: d.estado,
-        creadoEn: d.created_at,
-        archivoUrl: d.archivo_url ?? null,
-        motivoRechazo: d.observaciones ?? undefined,
-      }))
+      (data.documentos ?? []).map((d: any) => {
+        let tipoNombre = tiposMap[d.tipo_documento_id] ?? 'Documento'
+        if (d.observaciones?.startsWith('legal_item:')) {
+          const itemId = d.observaciones.replace('legal_item:', '')
+          tipoNombre = legalItemsMap[itemId] ?? tipoNombre
+        }
+        return {
+          id: d.id,
+          nombre: d.nombre,
+          tipoNombre,
+          tipoDocumentoId: d.tipo_documento_id ?? null,
+          estado: d.estado,
+          creadoEn: d.created_at,
+          archivoUrl: d.archivo_url ?? null,
+          motivoRechazo: d.observaciones ?? undefined,
+        }
+      })
     )
   }
 
@@ -399,7 +410,7 @@ function ProponenteDocumentosContent() {
               <div>
                 <CardTitle className="text-xl">Estado de documentación</CardTitle>
                 <CardDescription className="mt-1">
-                  {completados} de {totalObligatorios} documentos obligatorios entregados
+                  {completados} de {totalObligatorios} documentos entregados
                 </CardDescription>
               </div>
               {porcentaje === 100 && (
