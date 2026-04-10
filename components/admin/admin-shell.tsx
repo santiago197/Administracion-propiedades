@@ -13,6 +13,7 @@ import {
   Flag,
   LayoutDashboard,
   LogOut,
+  Mail,
   Menu,
   ScrollText,
   Settings,
@@ -71,6 +72,7 @@ const navItems: NavItem[] = [
       { title: 'Criterios de evaluación', href: '/admin/configuracion/criterios', icon: ClipboardList },
       { title: 'Validación legal', href: '/admin/configuracion/validacion-legal', icon: ShieldCheck },
       { title: 'Consulta Pública', href: '/admin/configuracion/consulta-publica', icon: Globe },
+      { title: 'Correos', href: '/admin/configuracion/correos', icon: Mail },
     ],
   },
 ]
