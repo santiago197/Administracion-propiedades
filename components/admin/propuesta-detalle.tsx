@@ -632,6 +632,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   function getDefaultTab(): string {
     const estado = propuesta.estado as EstadoPropuesta
     if (estado === 'en_validacion' || estado === 'no_apto_legal' || estado === 'habilitada') return 'legal'
+    if (['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto'].includes(estado)) return 'evaluacion'
     return 'info'
   }
 
@@ -640,7 +641,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
   // ---------------------------------------------------------------------------
 
   const canEdit   = propuesta.estado === 'registro'
-  const canEvaluar = propuesta.estado === 'en_evaluacion' || propuesta.estado === 'habilitada'
+  const canEvaluar = ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado'].includes(propuesta.estado)
 
   // ----- INFO -----
   function renderInfo() {
@@ -1206,16 +1207,12 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
         {canEvaluar ? (
           <Button onClick={() => setEvalPanelOpen(true)} className="gap-2">
-            Abrir panel de evaluación
+            {propuesta.puntaje_evaluacion > 0 ? 'Editar calificación' : 'Abrir panel de evaluación'}
             <ArrowRight className="h-4 w-4" />
           </Button>
-        ) : propuesta.puntaje_evaluacion === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            La evaluación estará disponible cuando la propuesta esté en estado <strong>Habilitada</strong> o <strong>En Evaluación</strong>.
-          </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Evaluación completada. Estado actual: <strong>{LABEL_ESTADO[propuesta.estado]}</strong>.
+            La evaluación estará disponible cuando la propuesta esté en estado <strong>Habilitada</strong> o <strong>En Evaluación</strong>.
           </p>
         )}
 

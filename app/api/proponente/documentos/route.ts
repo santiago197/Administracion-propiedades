@@ -14,11 +14,11 @@ import { validarCodigoProponente, createDocumento, getDocumentosFaltantes } from
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { codigo, tipo_documento_id, nombre, archivo_url, archivo_pathname } = body
+    const { codigo, tipo_documento_id, validacion_legal_item_id, nombre, archivo_url, archivo_pathname } = body
 
-    if (!codigo || !tipo_documento_id || !nombre || !archivo_url) {
+    if (!codigo || !nombre || !archivo_url) {
       return NextResponse.json(
-        { error: 'Faltan campos requeridos: codigo, tipo_documento_id, nombre, archivo_url' },
+        { error: 'Faltan campos requeridos: codigo, nombre, archivo_url' },
         { status: 400 }
       )
     }
@@ -35,9 +35,10 @@ export async function POST(request: NextRequest) {
     const propuesta_id = acceso.propuesta_id
 
     // 2. Crear registro de documento
+    // tipo_documento_id puede ser null cuando se sube para un ítem de validación legal
     const { data: documento, error: docError } = await createDocumento({
       propuesta_id,
-      tipo_documento_id,
+      tipo_documento_id: tipo_documento_id ?? null,
       tipo: 'CARGADO_POR_PROPONENTE',
       nombre,
       archivo_url,
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       es_obligatorio: true,
       estado: 'pendiente',
       fecha_vencimiento: null,
-      observaciones: null,
+      observaciones: validacion_legal_item_id ? `legal_item:${validacion_legal_item_id}` : null,
     })
 
     if (docError) {

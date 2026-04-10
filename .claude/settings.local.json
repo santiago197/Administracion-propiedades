@@ -42,7 +42,8 @@
       "Bash(grep -r w-[.*px] /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
       "Bash(grep -r min-w-[.*px] /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
       "Bash(grep -r 'hidden sm:' /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
-      "Bash(grep -r 'hidden md:' /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)"
+      "Bash(grep -r 'hidden md:' /c/Users/santi/Desktop/DESARROLLOS/Administracion-propiedades/app --include=*.tsx)",
+      "Bash(grep:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

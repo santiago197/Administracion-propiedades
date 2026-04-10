@@ -169,6 +169,132 @@ function piePagina(doc: jsPDF, generadoPor?: string) {
   }
 }
 
+function seccionDecisionJustificacion(doc: jsPDF, datos: DatosActa, y: number): number {
+  const pageW = doc.internal.pageSize.getWidth()
+  if (y > 200) { doc.addPage(); y = 16 }
+  y = titulo(doc, '7. DECISIÓN Y JUSTIFICACIÓN DE LA SELECCIÓN', y)
+
+  const primero = datos.ranking[0]
+  const adjudicado = datos.candidatos.find(c => c.estado === 'adjudicado')
+  const nombreSeleccionado = adjudicado?.razon_social ?? primero?.razon_social
+
+  if (nombreSeleccionado && primero) {
+    const segundo = datos.ranking[1]
+    const diferencia = segundo
+      ? (Number(primero.puntaje_final ?? 0) - Number(segundo.puntaje_final ?? 0)).toFixed(1)
+      : null
+
+    const lineas: string[] = [
+      `Candidato seleccionado: ${nombreSeleccionado}`,
+      `Puntaje final obtenido: ${Number(primero.puntaje_final ?? 0).toFixed(1)} puntos — Evaluación técnica: ${Number(primero.puntaje_evaluacion ?? 0).toFixed(1)} | Votos del consejo: ${primero.votos_recibidos ?? 0}`,
+    ]
+    if (diferencia !== null && segundo) {
+      lineas.push(`Diferencia frente al segundo lugar (${segundo.razon_social}): ${diferencia} puntos`)
+    }
+    lineas.push(
+      `La selección se fundamenta en que el candidato obtuvo el mayor puntaje final ponderado del proceso, resultado de la evaluación técnica realizada por el equipo administrativo y la votación directa de los miembros del Consejo de Administración, aplicando los criterios y pesos previamente definidos para el proceso.`,
+    )
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(30, 41, 59)
+
+    for (const linea of lineas) {
+      const wrapped = doc.splitTextToSize(linea, pageW - 28) as string[]
+      if (y + wrapped.length * 5 > 270) { doc.addPage(); y = 16 }
+      doc.text(wrapped, 14, y)
+      y += wrapped.length * 5 + 3
+    }
+  } else {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(...COLOR_GRIS_MEDIO)
+    doc.text('No se ha registrado un candidato adjudicado ni datos de ranking para este proceso.', 14, y)
+    doc.setTextColor(0, 0, 0)
+    y += 8
+  }
+
+  return y + 4
+}
+
+function seccionDeclaraciones(doc: jsPDF, y: number): number {
+  const pageW = doc.internal.pageSize.getWidth()
+  if (y > 210) { doc.addPage(); y = 16 }
+  y = titulo(doc, '8. DECLARACIONES', y)
+
+  const parrafos = [
+    'DECLARACIÓN DE OBJETIVIDAD: Los miembros del Consejo de Administración declaran expresamente que el presente proceso de selección se desarrolló de forma objetiva, imparcial y transparente, sin que mediaran intereses personales, familiares, económicos o de cualquier otra índole que pudieran comprometer la integridad de la decisión adoptada.',
+    'DECLARACIÓN DE CUMPLIMIENTO: El proceso de selección se adelantó en estricto cumplimiento de los criterios, pesos y procedimientos previamente aprobados por el Consejo de Administración, en observancia de las disposiciones de la Ley 675 de 2001 (Régimen de Propiedad Horizontal) y del Reglamento de Propiedad Horizontal del conjunto.',
+  ]
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(30, 41, 59)
+
+  for (const parrafo of parrafos) {
+    const wrapped = doc.splitTextToSize(parrafo, pageW - 28) as string[]
+    if (y + wrapped.length * 5 > 270) { doc.addPage(); y = 16 }
+    doc.text(wrapped, 14, y)
+    y += wrapped.length * 5 + 5
+  }
+
+  return y + 4
+}
+
+type CandidatoActa = DatosActa['candidatos'][number]
+
+function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
+  const hayObs = candidatos.some((c) => c.observaciones)
+
+  autoTable(doc, {
+    startY: y,
+    head: [hayObs
+      ? ['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica', 'Observaciones']
+      : ['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']
+    ],
+    body: candidatos.map((c, i) => {
+      const fila: (string | number)[] = [
+        i + 1,
+        c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
+        labelTipoPersona(c.tipo_persona),
+        labelEstado(c.estado),
+        labelClasificacion(c.clasificacion),
+      ]
+      if (hayObs) fila.push(c.observaciones ?? '—')
+      return fila
+    }),
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+    columnStyles: hayObs
+      ? { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 48 }, 2: { cellWidth: 22 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 }, 5: { cellWidth: 54 } }
+      : { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
+    margin: { left: 14, right: 14 },
+    didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const c = candidatos[hookData.row.index]
+        if (c?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        } else if (c?.estado === 'descalificada') {
+          hookData.cell.styles.textColor = COLOR_ROJO
+        } else if (c?.estado === 'retirada') {
+          hookData.cell.styles.textColor = COLOR_GRIS_MEDIO
+        }
+      }
+      if (hookData.section === 'body' && hookData.column.index === 4) {
+        const val = String(hookData.cell.text)
+        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
+        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
+        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
+      }
+      if (hayObs && hookData.section === 'body' && hookData.column.index === 5) {
+        hookData.cell.styles.fontSize = 7
+        hookData.cell.styles.fontStyle = 'italic'
+      }
+    },
+  })
+}
+
 export async function generarActaPDF(datos: DatosActa): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
@@ -179,37 +305,7 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
   // ── 1. CANDIDATOS EVALUADOS ───────────────────────────────────────────────
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
 
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
-    body: datos.candidatos.map((c, i) => [
-      i + 1,
-      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
-      labelTipoPersona(c.tipo_persona),
-      labelEstado(c.estado),
-      labelClasificacion(c.clasificacion),
-    ]),
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
-    margin: { left: 14, right: 14 },
-    didParseCell: (hookData) => {
-      if (hookData.section === 'body') {
-        const candidato = datos.candidatos[hookData.row.index]
-        if (candidato?.estado === 'adjudicado') {
-          hookData.cell.styles.fillColor = [236, 253, 245]
-          hookData.cell.styles.fontStyle = 'bold'
-        }
-      }
-      if (hookData.section === 'body' && hookData.column.index === 4) {
-        const val = String(hookData.cell.text)
-        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
-        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
-        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
-      }
-    },
-  })
-
+  tablaCandidatos(doc, y, datos.candidatos)
   y = (doc as any).lastAutoTable.finalY + 8
 
   // ── 2. CRITERIOS DE SELECCIÓN ─────────────────────────────────────────────
@@ -408,7 +504,13 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  // ── 7. FIRMAS ─────────────────────────────────────────────────────────────
+  // ── 7. DECISIÓN Y JUSTIFICACIÓN ──────────────────────────────────────────
+  y = seccionDecisionJustificacion(doc, datos, y)
+
+  // ── 8. DECLARACIONES ─────────────────────────────────────────────────────
+  y = seccionDeclaraciones(doc, y)
+
+  // ── FIRMAS ────────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
 
   doc.setFontSize(8)
@@ -448,36 +550,7 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
   await encabezado(doc, datos)
 
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
-    body: datos.candidatos.map((c, i) => [
-      i + 1,
-      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
-      labelTipoPersona(c.tipo_persona),
-      labelEstado(c.estado),
-      labelClasificacion(c.clasificacion),
-    ]),
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
-    margin: { left: 14, right: 14 },
-    didParseCell: (hookData) => {
-      if (hookData.section === 'body') {
-        const candidato = datos.candidatos[hookData.row.index]
-        if (candidato?.estado === 'adjudicado') {
-          hookData.cell.styles.fillColor = [236, 253, 245]
-          hookData.cell.styles.fontStyle = 'bold'
-        }
-      }
-      if (hookData.section === 'body' && hookData.column.index === 4) {
-        const val = String(hookData.cell.text)
-        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
-        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
-        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
-      }
-    },
-  })
+  tablaCandidatos(doc, y, datos.candidatos)
   y = (doc as any).lastAutoTable.finalY + 8
 
   const criteriosRef = datos.matriz[0]?.criterios ?? []
@@ -624,6 +697,13 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
+  // ── 7. DECISIÓN Y JUSTIFICACIÓN ──────────────────────────────────────────
+  y = seccionDecisionJustificacion(doc, datos, y)
+
+  // ── 8. DECLARACIONES ─────────────────────────────────────────────────────
+  y = seccionDeclaraciones(doc, y)
+
+  // ── FIRMAS ────────────────────────────────────────────────────────────────
   if (y > 230) { doc.addPage(); y = 16 }
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')

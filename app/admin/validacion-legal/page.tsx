@@ -202,7 +202,11 @@ export default function ValidacionLegalAdmin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {propuestas.map((p) => {
+                  {[...propuestas].sort((a, b) => {
+                    const pctA = calcularPctCumplimiento(a) ?? -1
+                    const pctB = calcularPctCumplimiento(b) ?? -1
+                    return pctB - pctA
+                  }).map((p) => {
                     const badge = badgeForPropuesta(p)
                     const isValidable = !['adjudicado', 'descalificada', 'retirada'].includes(p.estado)
                     const pct = calcularPctCumplimiento(p)
