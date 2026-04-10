@@ -1567,7 +1567,7 @@ export async function validarCodigoProponente(codigo: string) {
     .select(`
       *,
       propuestas:propuesta_id(
-        id, razon_social, nit_cedula, email, proceso_id, tipo_persona
+        id, razon_social, nit_cedula, email, proceso_id, tipo_persona, checklist_legal
       )
     `)
     .eq('codigo', codigo)
@@ -1595,10 +1595,22 @@ export async function validarCodigoProponente(codigo: string) {
     .eq('activo', true)
     .order('orden', { ascending: true })
 
-  const itemsFiltrados = (legalItems ?? []).filter((item) =>
-    item.aplica_a === 'ambos' ||
-    item.aplica_a === tipoPersona
+  // Extraer IDs/códigos de ítems marcados como no_cumple en el checklist de la propuesta
+  const checklistLegal = (acceso.propuestas.checklist_legal ?? {}) as Record<string, { id: string; estado: string; observacion: string }>
+  const noCumpleKeys = new Set(
+    Object.entries(checklistLegal)
+      .filter(([, val]) => val.estado === 'no_cumple')
+      .map(([key]) => key)
   )
+
+  const itemsFiltrados = (legalItems ?? []).filter((item) => {
+    const coincidePersona = item.aplica_a === 'ambos' || item.aplica_a === tipoPersona
+    // Si no hay ningún ítem marcado como no_cumple, no mostrar nada
+    if (noCumpleKeys.size === 0) return false
+    // Coincidir por UUID (id) o por código semántico (codigo)
+    const estaEnNoCumple = noCumpleKeys.has(item.id) || noCumpleKeys.has(item.codigo)
+    return coincidePersona && estaEnNoCumple
+  })
 
   // Calcular estadísticas en base a ítems legales
   const totalObligatorios = itemsFiltrados.filter((i) => i.obligatorio).length
