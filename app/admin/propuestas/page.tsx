@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -180,6 +180,12 @@ export default function PropuestasPage() {
   const [retiroObs, setRetiroObs]         = useState('')
   const [retirando, setRetirando]         = useState(false)
   const [retiroError, setRetiroError]     = useState<string | null>(null)
+
+  // Rechazo por tope económico
+  const [topeTarget, setTopeTarget]   = useState<Propuesta | null>(null)
+  const [topeObs, setTopeObs]         = useState('')
+  const [rechazando, setRechazando]   = useState(false)
+  const [topeError, setTopeError]     = useState<string | null>(null)
 
   // Acceso Proponente
   const [accesosMap, setAccesosMap] = useState<Map<string, AccesoProponente>>(new Map())
@@ -422,6 +428,31 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handleRechazarTope() {
+    if (!topeTarget || !topeObs.trim()) return
+    setRechazando(true)
+    setTopeError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${topeTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'descalificada', observacion: topeObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al descalificar propuesta')
+      }
+      if (selectedPropuesta?.id === topeTarget.id) setSelectedPropuesta(null)
+      setTopeTarget(null)
+      setTopeObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setTopeError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazando(false)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -523,7 +554,12 @@ export default function PropuestasPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {propuestas
+                    {[...propuestas]
+                      .sort((a, b) => {
+                        const pctA = pctCumplimientoLegal(a) ?? -1
+                        const pctB = pctCumplimientoLegal(b) ?? -1
+                        return pctB - pctA
+                      })
                       .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
                       .map((p) => (
                       <TableRow
@@ -646,15 +682,26 @@ export default function PropuestasPage() {
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             {!ESTADOS_TERMINALES.includes(p.estado) && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 text-destructive hover:text-destructive/80"
-                                title="Retirar propuesta"
-                                onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-orange-600 hover:text-orange-700"
+                                  title="Rechazar por tope económico"
+                                  onClick={() => { setTopeTarget(p); setTopeObs(''); setTopeError(null) }}
+                                >
+                                  <CircleDollarSign className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-destructive hover:text-destructive/80"
+                                  title="Retirar propuesta"
+                                  onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
                             )}
                           </div>
                         </TableCell>
@@ -731,6 +778,65 @@ export default function PropuestasPage() {
           conjuntoId={conjuntoId}
         />
       )}
+
+      {/* Dialog: rechazo por tope económico */}
+      <Dialog
+        open={topeTarget !== null}
+        onOpenChange={(open) => { if (!open) { setTopeTarget(null); setTopeObs(''); setTopeError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar por tope económico</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{topeTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>Descalificada</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {topeTarget?.valor_honorarios && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Honorarios propuestos: </span>
+                <span className="tabular-nums">
+                  {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(topeTarget.valor_honorarios)}
+                </span>
+              </div>
+            )}
+            {topeError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {topeError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="tope-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="tope-obs"
+                placeholder="Ej: Honorarios propuestos superan el tope de $X definido en la convocatoria..."
+                value={topeObs}
+                onChange={(e) => setTopeObs(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setTopeTarget(null); setTopeObs(''); setTopeError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarTope}
+              disabled={rechazando || !topeObs.trim()}
+              className="gap-2"
+            >
+              {rechazando && <Loader2 className="h-4 w-4 animate-spin" />}
+              Descalificar propuesta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de retiro */}
       <Dialog
