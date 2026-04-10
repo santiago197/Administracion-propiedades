@@ -1590,7 +1590,7 @@ export async function validarCodigoProponente(codigo: string) {
   // Calcular estadísticas
   const totalObligatorios = faltantes.length + cubiertos.filter(t => t.es_obligatorio).length
   const completados = cubiertos.filter(t => t.es_obligatorio).length
-  const porcentaje = totalObligatorios > 0 
+  const porcentaje = totalObligatorios > 0
     ? Math.round((completados / totalObligatorios) * 100)
     : 100
 
@@ -1600,6 +1600,16 @@ export async function validarCodigoProponente(codigo: string) {
     if (!d.fecha_vencimiento) return false
     return new Date(d.fecha_vencimiento) < hoy
   }).length
+
+  // Obtener el motivo de rechazo más reciente del historial de estados
+  const { data: historialRechazo } = await supabase
+    .from('historial_estados_propuesta')
+    .select('observacion, estado_nuevo')
+    .eq('propuesta_id', acceso.propuesta_id)
+    .in('estado_nuevo', ['no_apto_legal', 'incompleto', 'en_subsanacion'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
   return {
     data: {
@@ -1617,6 +1627,7 @@ export async function validarCodigoProponente(codigo: string) {
       tipos_faltantes: faltantes,
       tipos_cubiertos: cubiertos,
       documentos: documentos ?? [],
+      motivo_rechazo_legal: historialRechazo?.observacion ?? null,
     },
     error: null,
   }

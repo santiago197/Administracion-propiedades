@@ -27,6 +27,70 @@ import type { Propuesta } from '@/lib/types/index'
 
 // ─────────────────────────────────────────────────────────────────────
 
+interface ItemRechazo {
+  texto: string
+  critico: boolean
+  notaCritico?: string
+}
+
+function parsearMotivoRechazo(texto: string): ItemRechazo[] {
+  const lineas = texto
+    .split('\n')
+    .map((l) => l.replace(/^[·•\-\s]+/, '').trim())
+    .filter(Boolean)
+
+  const items: ItemRechazo[] = []
+
+  for (const linea of lineas) {
+    const lower = linea.toLowerCase()
+    const esCritico = lower.startsWith('crítico') || lower.startsWith('critico')
+
+    if (esCritico) {
+      if (items.length > 0) {
+        const ultimo = items[items.length - 1]
+        ultimo.critico = true
+        if (lower !== 'crítico' && lower !== 'critico') {
+          ultimo.notaCritico = linea
+        }
+      }
+    } else {
+      items.push({ texto: linea, critico: false })
+    }
+  }
+
+  return items
+}
+
+function MotivoRechazo({ texto }: { texto: string }) {
+  const items = parsearMotivoRechazo(texto)
+
+  return (
+    <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2.5 space-y-1.5">
+      <p className="text-xs text-destructive font-medium">Motivo de rechazo</p>
+      <ul className="space-y-1.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="text-destructive/50 text-xs leading-4 mt-0.5 shrink-0">·</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-destructive/80">{item.texto}</span>
+              {item.critico && (
+                <Badge
+                  variant="outline"
+                  className="ml-2 text-[10px] py-0 px-1.5 border-red-400 text-red-700 bg-red-50 align-middle"
+                >
+                  {item.notaCritico ?? 'Crítico'}
+                </Badge>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+
 interface TipoFaltante {
   id: string
   nombre: string
@@ -71,12 +135,13 @@ function ProponenteDocumentosContent() {
   const codigo = searchParams.get('codigo')
   const { toast } = useToast()
 
-  const [validando, setValidando]           = useState(true)
-  const [propuesta, setPropuesta]           = useState<Propuesta | null>(null)
+  const [validando, setValidando]             = useState(true)
+  const [propuesta, setPropuesta]             = useState<Propuesta | null>(null)
   const [estadoDocumentos, setEstadoDocumentos] = useState<EstadoDocumentos | null>(null)
   const [documentosCargados, setDocumentosCargados] = useState<DocumentoCargado[]>([])
-  const [error, setError]                   = useState<string | null>(null)
-  const [uploading, setUploading]           = useState(false)
+  const [motivoRechazoLegal, setMotivoRechazoLegal] = useState<string | null>(null)
+  const [error, setError]                     = useState<string | null>(null)
+  const [uploading, setUploading]             = useState(false)
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<string | null>(null)
 
   // ── Validación inicial ──────────────────────────────────────────────
@@ -118,6 +183,8 @@ function ProponenteDocumentosContent() {
 
   // ── Helpers de estado ───────────────────────────────────────────────
   function aplicarEstado(data: any) {
+    setMotivoRechazoLegal(data.motivo_rechazo_legal ?? null)
+
     setEstadoDocumentos({
       total: data.estadisticas.total_obligatorios,
       completados: data.estadisticas.completados,
@@ -280,8 +347,35 @@ function ProponenteDocumentosContent() {
   const completados       = estadoDocumentos?.completados ?? 0
   const totalObligatorios = estadoDocumentos?.total ?? 0
 
-  const rechazados = documentosCargados.filter((d) => d.estado === 'rechazado')
+  const rechazados   = documentosCargados.filter((d) => d.estado === 'rechazado')
   const noRechazados = documentosCargados.filter((d) => d.estado !== 'rechazado')
+
+  // Cuando hay motivo de rechazo legal, derivar los ítems a cargar desde ese texto
+  // en lugar del catálogo genérico. Cada ítem se intenta cruzar con tipos_faltantes
+  // por coincidencia de nombre (insensible a mayúsculas).
+  const itemsRechazoLegal: { item: ItemRechazo; tipo: TipoFaltante | null }[] =
+    motivoRechazoLegal
+      ? parsearMotivoRechazo(motivoRechazoLegal).map((item) => {
+          const nombreDoc = item.texto.split(':')[0].trim().toLowerCase()
+          const tipo =
+            faltantes.find((f) =>
+              f.nombre.toLowerCase().includes(nombreDoc) ||
+              nombreDoc.includes(f.nombre.toLowerCase().split(' ')[0])
+            ) ?? null
+          return { item, tipo }
+        })
+      : []
+
+  // Faltantes del catálogo que NO están cubiertos por el motivo de rechazo
+  // (para mostrarlos cuando no hay motivo, o evitar duplicados cuando sí hay)
+  const faltantesNoEnMotivo = motivoRechazoLegal
+    ? faltantes.filter(
+        (f) =>
+          !itemsRechazoLegal.some(
+            (ir) => ir.tipo?.id === f.id
+          )
+      )
+    : faltantes
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background py-6 sm:py-8 px-4 pb-safe">
@@ -321,15 +415,102 @@ function ProponenteDocumentosContent() {
           </CardContent>
         </Card>
 
-        {/* Documentos pendientes de cargar */}
-        {faltantes.length > 0 && (
+        {/* Ítems del motivo de rechazo legal — guía de lo que hay que presentar */}
+        {itemsRechazoLegal.length > 0 && (
+          <Card className="border-indigo-200 shadow-lg">
+            <CardHeader className="pb-3 bg-indigo-500/5 rounded-t-lg">
+              <div className="flex items-center gap-2">
+                <div className="rounded-full bg-indigo-500/10 p-1.5 shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-indigo-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-base text-indigo-700">Documentos requeridos por el administrador</CardTitle>
+                  <CardDescription>Carga los documentos señalados en el motivo de rechazo</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-4">
+              {itemsRechazoLegal.map(({ item, tipo }, idx) => {
+                const nombreMostrar = item.texto.split(':')[0].trim()
+                if (tipo) {
+                  // Tiene tipo en el catálogo → mostrar como upload card
+                  return (
+                    <label
+                      key={idx}
+                      className="block p-4 sm:p-5 rounded-lg border-2 border-dashed border-indigo-200 hover:border-indigo-400 hover:bg-indigo-500/5 active:bg-indigo-500/10 transition-all cursor-pointer group touch-manipulation"
+                    >
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        onChange={(e) => handleSubirDocumento(e, tipo)}
+                        disabled={uploading}
+                      />
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-indigo-500/10 p-2.5 group-hover:bg-indigo-500/20 transition-colors shrink-0">
+                          {uploading && documentoSeleccionado === tipo.id ? (
+                            <Loader2 className="h-5 w-5 text-indigo-600 animate-spin" />
+                          ) : (
+                            <UploadCloud className="h-5 w-5 text-indigo-600" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-sm group-hover:text-indigo-700 transition-colors">
+                              {nombreMostrar}
+                              <span className="ml-1 text-destructive">*</span>
+                            </p>
+                            {item.critico && (
+                              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-red-400 text-red-700 bg-red-50">
+                                {item.notaCritico ?? 'Crítico'}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {uploading && documentoSeleccionado === tipo.id ? 'Subiendo...' : 'Toca para seleccionar archivo'}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  )
+                }
+
+                // Sin tipo en catálogo → informativo, no se puede cargar
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-3 p-4 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30"
+                  >
+                    <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-muted-foreground">{nombreMostrar}</p>
+                        {item.critico && (
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-red-400 text-red-700 bg-red-50">
+                            {item.notaCritico ?? 'Crítico'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        Comunícate con el administrador para presentar este documento
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pendientes del catálogo (cuando NO hay motivo de rechazo, o son faltantes adicionales) */}
+        {faltantesNoEnMotivo.length > 0 && (
           <Card className="border-0 shadow-lg">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Pendientes de entrega</CardTitle>
-              <CardDescription>{faltantes.length} documento{faltantes.length !== 1 ? 's' : ''} por cargar</CardDescription>
+              <CardDescription>{faltantesNoEnMotivo.length} documento{faltantesNoEnMotivo.length !== 1 ? 's' : ''} por cargar</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {faltantes.map((doc) => (
+              {faltantesNoEnMotivo.map((doc) => (
                 <label
                   key={doc.id}
                   className="block p-4 sm:p-5 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 transition-all cursor-pointer group touch-manipulation"
@@ -406,12 +587,7 @@ function ProponenteDocumentosContent() {
                     )}
                   </div>
 
-                  {doc.motivoRechazo && (
-                    <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
-                      <p className="text-xs text-destructive font-medium mb-0.5">Motivo de rechazo</p>
-                      <p className="text-xs text-destructive/80">{doc.motivoRechazo}</p>
-                    </div>
-                  )}
+                  {doc.motivoRechazo && <MotivoRechazo texto={doc.motivoRechazo} />}
 
                   {doc.tipoDocumentoId && (
                     <label className="block w-full cursor-pointer touch-manipulation">

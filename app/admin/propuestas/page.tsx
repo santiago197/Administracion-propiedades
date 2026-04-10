@@ -171,6 +171,9 @@ export default function PropuestasPage() {
   const [userInfo, setUserInfo] = useState<{ id?: string; rol?: string; nombre?: string } | null>(null)
   const [filterMode, setFilterMode] = useState<'todas' | 'mias'>('todas')
 
+  // Filtro tipo persona
+  const [filterTipoPersona, setFilterTipoPersona] = useState<'todas' | 'juridica' | 'natural'>('todas')
+
   // Paginación
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 10
@@ -549,6 +552,25 @@ export default function PropuestasPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Filtro tipo persona */}
+          <div className="flex items-center gap-2">
+            <Label>Tipo:</Label>
+            <Select
+              value={filterTipoPersona}
+              onValueChange={(v) => {
+                setFilterTipoPersona(v as 'todas' | 'juridica' | 'natural')
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos</SelectItem>
+                <SelectItem value="juridica">Jurídica</SelectItem>
+                <SelectItem value="natural">Natural</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -586,6 +608,7 @@ export default function PropuestasPage() {
                   </TableHeader>
                   <TableBody>
                     {[...propuestas]
+                      .filter((p) => filterTipoPersona === 'todas' || p.tipo_persona === filterTipoPersona)
                       .sort((a, b) => {
                         const pctA = pctCumplimientoLegal(a) ?? -1
                         const pctB = pctCumplimientoLegal(b) ?? -1
@@ -751,56 +774,63 @@ export default function PropuestasPage() {
                 </Table>
               </div>
               {/* Paginador */}
-              {propuestas.length > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Mostrando {Math.min((currentPage - 1) * PAGE_SIZE + 1, propuestas.length)} - {Math.min(currentPage * PAGE_SIZE, propuestas.length)} de {propuestas.length}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    {Array.from({ length: Math.ceil(propuestas.length / PAGE_SIZE) }, (_, i) => i + 1)
-                      .filter(page => {
-                        const totalPages = Math.ceil(propuestas.length / PAGE_SIZE)
-                        if (totalPages <= 5) return true
-                        if (page === 1 || page === totalPages) return true
-                        if (Math.abs(page - currentPage) <= 1) return true
-                        return false
-                      })
-                      .map((page, idx, arr) => (
-                        <span key={page} className="flex items-center">
-                          {idx > 0 && arr[idx - 1] !== page - 1 && (
-                            <span className="px-1 text-muted-foreground">...</span>
-                          )}
-                          <Button
-                            size="sm"
-                            variant={currentPage === page ? 'default' : 'outline'}
-                            className="h-8 w-8 p-0"
-                            onClick={() => setCurrentPage(page)}
-                          >
-                            {page}
-                          </Button>
-                        </span>
-                      ))}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(propuestas.length / PAGE_SIZE), p + 1))}
-                      disabled={currentPage >= Math.ceil(propuestas.length / PAGE_SIZE)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
+              {(() => {
+                const propuestasFiltradas = propuestas.filter(
+                  (p) => filterTipoPersona === 'todas' || p.tipo_persona === filterTipoPersona
+                )
+                const total = propuestasFiltradas.length
+                if (total === 0) return null
+                return (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Mostrando {Math.min((currentPage - 1) * PAGE_SIZE + 1, total)} - {Math.min(currentPage * PAGE_SIZE, total)} de {total}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => i + 1)
+                        .filter(page => {
+                          const totalPages = Math.ceil(total / PAGE_SIZE)
+                          if (totalPages <= 5) return true
+                          if (page === 1 || page === totalPages) return true
+                          if (Math.abs(page - currentPage) <= 1) return true
+                          return false
+                        })
+                        .map((page, idx, arr) => (
+                          <span key={page} className="flex items-center">
+                            {idx > 0 && arr[idx - 1] !== page - 1 && (
+                              <span className="px-1 text-muted-foreground">...</span>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={currentPage === page ? 'default' : 'outline'}
+                              className="h-8 w-8 p-0"
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </Button>
+                          </span>
+                        ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.min(Math.ceil(total / PAGE_SIZE), p + 1))}
+                        disabled={currentPage >= Math.ceil(total / PAGE_SIZE)}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
               <p className="mt-2 text-xs text-muted-foreground">
                 Haz clic en una fila para ver el detalle. No avanza a Evaluación si la documentación es incompleta o la validación legal es No Apto.
               </p>
