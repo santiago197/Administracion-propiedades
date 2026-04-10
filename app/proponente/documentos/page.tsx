@@ -272,26 +272,15 @@ function ProponenteDocumentosContent() {
         })
         if (!docRes.ok) throw new Error('Error al registrar documento')
 
-        const { documento, estadisticas, tipos_faltantes, tipos_cubiertos } = await docRes.json()
-
         toast({ title: 'Documento cargado', description: 'Tu documento se subió correctamente' })
 
-        // Actualizar estado de progreso y faltantes
-        aplicarEstado({ estadisticas, tipos_faltantes, tipos_cubiertos, documentos: undefined })
-
-        // Agregar el nuevo documento a la lista de cargados
-        setDocumentosCargados((prev) => [
-          {
-            id: documento.id,
-            nombre: archivo.name,
-            tipoNombre: tipoDoc.nombre,
-            tipoDocumentoId: tipoDoc.id,
-            estado: documento.estado ?? 'pendiente',
-            creadoEn: documento.created_at ?? new Date().toISOString(),
-            archivoUrl: url,
-          },
-          ...prev,
-        ])
+        // Re-consultar el estado completo para obtener los faltantes reales
+        // (el POST usa getDocumentosFaltantes del catálogo, no el checklist no_cumple)
+        const refreshRes = await fetch(`/api/proponente/validar?codigo=${codigo}`)
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json()
+          aplicarEstado(refreshData)
+        }
 
         setDocumentoSeleccionado(null)
         // Limpiar el input para permitir re-subida
@@ -355,6 +344,17 @@ function ProponenteDocumentosContent() {
   const rechazados   = documentosCargados.filter((d) => d.estado === 'rechazado')
   const noRechazados = documentosCargados.filter((d) => d.estado !== 'rechazado')
 
+  // IDs de ítems legales que ya tienen documento cargado
+  // (los documentos de ítems legales guardan observaciones = 'legal_item:<id>')
+  const itemsLegalesCubiertos = new Set(
+    documentosCargados
+      .filter((d) => d.motivoRechazo?.startsWith('legal_item:'))
+      .map((d) => d.motivoRechazo!.replace('legal_item:', ''))
+  )
+
+  // Faltantes reales = los del checklist no_cumple que aún no tienen documento cargado
+  const faltantesSinCubrir = faltantes.filter((f) => !itemsLegalesCubiertos.has(f.id))
+
   // Cuando hay motivo de rechazo legal, derivar los ítems a cargar desde ese texto
   // en lugar del catálogo genérico. Cada ítem se intenta cruzar con tipos_faltantes
   // por coincidencia de nombre (insensible a mayúsculas).
@@ -363,7 +363,7 @@ function ProponenteDocumentosContent() {
       ? parsearMotivoRechazo(motivoRechazoLegal).map((item) => {
           const nombreDoc = item.texto.split(':')[0].trim().toLowerCase()
           const tipo =
-            faltantes.find((f) =>
+            faltantesSinCubrir.find((f) =>
               f.nombre.toLowerCase().includes(nombreDoc) ||
               nombreDoc.includes(f.nombre.toLowerCase().split(' ')[0])
             ) ?? null
@@ -371,16 +371,16 @@ function ProponenteDocumentosContent() {
         })
       : []
 
-  // Faltantes del catálogo que NO están cubiertos por el motivo de rechazo
+  // Faltantes que NO están cubiertos por el motivo de rechazo
   // (para mostrarlos cuando no hay motivo, o evitar duplicados cuando sí hay)
   const faltantesNoEnMotivo = motivoRechazoLegal
-    ? faltantes.filter(
+    ? faltantesSinCubrir.filter(
         (f) =>
           !itemsRechazoLegal.some(
             (ir) => ir.tipo?.id === f.id
           )
       )
-    : faltantes
+    : faltantesSinCubrir
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background py-6 sm:py-8 px-4 pb-safe">
@@ -710,7 +710,7 @@ function ProponenteDocumentosContent() {
         )}
 
         {/* Completado */}
-        {faltantes.length === 0 && documentosCargados.length > 0 && (
+        {faltantesSinCubrir.length === 0 && documentosCargados.length > 0 && (
           <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4 text-center space-y-1">
             <Check className="h-6 w-6 text-emerald-600 mx-auto" />
             <p className="font-medium text-emerald-700">¡Documentación completa!</p>
