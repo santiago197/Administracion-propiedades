@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -186,6 +186,12 @@ export default function PropuestasPage() {
   const [topeObs, setTopeObs]         = useState('')
   const [rechazando, setRechazando]   = useState(false)
   const [topeError, setTopeError]     = useState<string | null>(null)
+
+  // Rechazo por validación legal
+  const [legalTarget, setLegalTarget]     = useState<Propuesta | null>(null)
+  const [legalObs, setLegalObs]           = useState('')
+  const [rechazandoLegal, setRechazandoLegal] = useState(false)
+  const [legalError, setLegalError]       = useState<string | null>(null)
 
   // Acceso Proponente
   const [accesosMap, setAccesosMap] = useState<Map<string, AccesoProponente>>(new Map())
@@ -453,6 +459,31 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handleRechazarLegal() {
+    if (!legalTarget || !legalObs.trim()) return
+    setRechazandoLegal(true)
+    setLegalError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${legalTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'no_apto_legal', observacion: legalObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al rechazar propuesta')
+      }
+      if (selectedPropuesta?.id === legalTarget.id) setSelectedPropuesta(null)
+      setLegalTarget(null)
+      setLegalObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setLegalError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazandoLegal(false)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -695,6 +726,15 @@ export default function PropuestasPage() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-7 w-7 text-indigo-600 hover:text-indigo-700"
+                                  title="Rechazar por validación legal"
+                                  onClick={() => { setLegalTarget(p); setLegalObs(''); setLegalError(null) }}
+                                >
+                                  <ShieldX className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
                                   className="h-7 w-7 text-destructive hover:text-destructive/80"
                                   title="Retirar propuesta"
                                   onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
@@ -882,6 +922,57 @@ export default function PropuestasPage() {
             >
               {retirando && <Loader2 className="h-4 w-4 animate-spin" />}
               Retirar propuesta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: rechazo por validación legal */}
+      <Dialog
+        open={legalTarget !== null}
+        onOpenChange={(open) => { if (!open) { setLegalTarget(null); setLegalObs(''); setLegalError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar por validación legal</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{legalTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>No apto legal</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {legalError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {legalError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="legal-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="legal-obs"
+                placeholder="Ej: No cumple con los requisitos legales: antecedentes disciplinarios activos en Procuraduría..."
+                value={legalObs}
+                onChange={(e) => setLegalObs(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setLegalTarget(null); setLegalObs(''); setLegalError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarLegal}
+              disabled={rechazandoLegal || !legalObs.trim()}
+              className="gap-2"
+            >
+              {rechazandoLegal && <Loader2 className="h-4 w-4 animate-spin" />}
+              Marcar como No apto legal
             </Button>
           </DialogFooter>
         </DialogContent>

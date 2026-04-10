@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   CheckCircle2,
   Clock,
@@ -37,9 +38,11 @@ interface DocumentoCargado {
   id: string
   nombre: string
   tipoNombre: string
+  tipoDocumentoId: string | null
   estado: string
   creadoEn: string
   archivoUrl: string | null
+  motivoRechazo?: string
 }
 
 interface EstadoDocumentos {
@@ -137,9 +140,11 @@ function ProponenteDocumentosContent() {
         id: d.id,
         nombre: d.nombre,
         tipoNombre: tiposMap[d.tipo_documento_id] ?? d.tipo ?? 'Documento',
+        tipoDocumentoId: d.tipo_documento_id ?? null,
         estado: d.estado,
         creadoEn: d.created_at,
         archivoUrl: d.archivo_url ?? null,
+        motivoRechazo: d.observaciones ?? undefined,
       }))
     )
   }
@@ -208,6 +213,7 @@ function ProponenteDocumentosContent() {
             id: documento.id,
             nombre: archivo.name,
             tipoNombre: tipoDoc.nombre,
+            tipoDocumentoId: tipoDoc.id,
             estado: documento.estado ?? 'pendiente',
             creadoEn: documento.created_at ?? new Date().toISOString(),
             archivoUrl: url,
@@ -269,10 +275,13 @@ function ProponenteDocumentosContent() {
   }
 
   // ── Pantalla principal ──────────────────────────────────────────────
-  const porcentaje       = estadoDocumentos?.porcentaje ?? 0
-  const faltantes        = estadoDocumentos?.faltantes ?? []
-  const completados      = estadoDocumentos?.completados ?? 0
+  const porcentaje        = estadoDocumentos?.porcentaje ?? 0
+  const faltantes         = estadoDocumentos?.faltantes ?? []
+  const completados       = estadoDocumentos?.completados ?? 0
   const totalObligatorios = estadoDocumentos?.total ?? 0
+
+  const rechazados = documentosCargados.filter((d) => d.estado === 'rechazado')
+  const noRechazados = documentosCargados.filter((d) => d.estado !== 'rechazado')
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background py-6 sm:py-8 px-4 pb-safe">
@@ -360,15 +369,95 @@ function ProponenteDocumentosContent() {
           </Card>
         )}
 
-        {/* Documentos ya cargados */}
-        {documentosCargados.length > 0 && (
+        {/* Documentos rechazados — requieren corrección */}
+        {rechazados.length > 0 && (
+          <Card className="border-destructive/30 shadow-lg">
+            <CardHeader className="pb-3 bg-destructive/5 rounded-t-lg">
+              <div className="flex items-center gap-2">
+                <div className="rounded-full bg-destructive/10 p-1.5 shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                </div>
+                <div>
+                  <CardTitle className="text-base text-destructive">Documentos rechazados</CardTitle>
+                  <CardDescription>
+                    {rechazados.length} documento{rechazados.length !== 1 ? 's' : ''} requiere{rechazados.length !== 1 ? 'n' : ''} corrección
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-4">
+              {rechazados.map((doc) => (
+                <div key={doc.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-destructive">{doc.tipoNombre}</p>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{doc.nombre}</p>
+                    </div>
+                    {doc.archivoUrl && (
+                      <a
+                        href={doc.archivoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5"
+                        title="Ver archivo anterior"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+
+                  {doc.motivoRechazo && (
+                    <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
+                      <p className="text-xs text-destructive font-medium mb-0.5">Motivo de rechazo</p>
+                      <p className="text-xs text-destructive/80">{doc.motivoRechazo}</p>
+                    </div>
+                  )}
+
+                  {doc.tipoDocumentoId && (
+                    <label className="block w-full cursor-pointer touch-manipulation">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        onChange={(e) =>
+                          handleSubirDocumento(e, {
+                            id: doc.tipoDocumentoId!,
+                            nombre: doc.tipoNombre,
+                            descripcion: '',
+                            esObligatorio: true,
+                          })
+                        }
+                        disabled={uploading}
+                      />
+                      <div className="flex items-center justify-center gap-2 rounded-md border border-destructive/30 bg-background hover:bg-destructive/5 active:bg-destructive/10 transition-colors px-3 py-2.5">
+                        {uploading && documentoSeleccionado === doc.tipoDocumentoId ? (
+                          <Loader2 className="h-4 w-4 text-destructive animate-spin" />
+                        ) : (
+                          <UploadCloud className="h-4 w-4 text-destructive" />
+                        )}
+                        <span className="text-xs font-medium text-destructive">
+                          {uploading && documentoSeleccionado === doc.tipoDocumentoId
+                            ? 'Subiendo...'
+                            : 'Cargar documento corregido'}
+                        </span>
+                      </div>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Documentos ya cargados (no rechazados) */}
+        {noRechazados.length > 0 && (
           <Card className="border-0 shadow-lg">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Documentos entregados</CardTitle>
-              <CardDescription>{documentosCargados.length} archivo{documentosCargados.length !== 1 ? 's' : ''} cargado{documentosCargados.length !== 1 ? 's' : ''}</CardDescription>
+              <CardDescription>{noRechazados.length} archivo{noRechazados.length !== 1 ? 's' : ''} cargado{noRechazados.length !== 1 ? 's' : ''}</CardDescription>
             </CardHeader>
             <CardContent className="divide-y">
-              {documentosCargados.map((doc) => {
+              {noRechazados.map((doc) => {
                 const cfg = estadoDocConfig(doc.estado)
                 return (
                   <div key={doc.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
