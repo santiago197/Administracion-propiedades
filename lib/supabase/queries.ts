@@ -1567,7 +1567,7 @@ export async function validarCodigoProponente(codigo: string) {
     .select(`
       *,
       propuestas:propuesta_id(
-        id, razon_social, nit_cedula, email, proceso_id
+        id, razon_social, nit_cedula, email, proceso_id, tipo_persona
       )
     `)
     .eq('codigo', codigo)
@@ -1583,13 +1583,26 @@ export async function validarCodigoProponente(codigo: string) {
     return { data: null, error: new Error('Código expirado') }
   }
 
-  // Obtener documentos y tipos faltantes
-  const { faltantes, cubiertos } = await getDocumentosFaltantes(acceso.propuesta_id)
+  const tipoPersona = acceso.propuestas.tipo_persona as string | null
+
+  // Obtener documentos ya cargados
   const { data: documentos } = await getDocumentos(acceso.propuesta_id)
 
-  // Calcular estadísticas
-  const totalObligatorios = faltantes.length + cubiertos.filter(t => t.es_obligatorio).length
-  const completados = cubiertos.filter(t => t.es_obligatorio).length
+  // Ítems de validación legal activos filtrados por tipo de persona → se usan como tipos_faltantes
+  const { data: legalItems } = await supabase
+    .from('validacion_legal_items')
+    .select('id, codigo, seccion, nombre, descripcion, categoria, aplica_a, obligatorio, orden')
+    .eq('activo', true)
+    .order('orden', { ascending: true })
+
+  const itemsFiltrados = (legalItems ?? []).filter((item) =>
+    item.aplica_a === 'ambos' ||
+    item.aplica_a === tipoPersona
+  )
+
+  // Calcular estadísticas en base a ítems legales
+  const totalObligatorios = itemsFiltrados.filter((i) => i.obligatorio).length
+  const completados = Math.min((documentos ?? []).length, totalObligatorios)
   const porcentaje = totalObligatorios > 0
     ? Math.round((completados / totalObligatorios) * 100)
     : 100
@@ -1620,12 +1633,21 @@ export async function validarCodigoProponente(codigo: string) {
       estadisticas: {
         total_obligatorios: totalObligatorios,
         completados,
-        faltantes: faltantes.length,
+        faltantes: itemsFiltrados.length,
         porcentaje,
         vencidos,
       },
-      tipos_faltantes: faltantes,
-      tipos_cubiertos: cubiertos,
+      tipos_faltantes: itemsFiltrados.map((item) => ({
+        id: item.id,
+        codigo: item.codigo,
+        seccion: item.seccion,
+        nombre: item.nombre,
+        descripcion: item.descripcion,
+        categoria: item.categoria,
+        aplica_a: item.aplica_a,
+        es_obligatorio: item.obligatorio,
+      })),
+      tipos_cubiertos: [],
       documentos: documentos ?? [],
       motivo_rechazo_legal: historialRechazo?.observacion ?? null,
     },

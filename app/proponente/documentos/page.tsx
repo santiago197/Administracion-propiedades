@@ -96,6 +96,8 @@ interface TipoFaltante {
   nombre: string
   descripcion: string
   esObligatorio: boolean
+  seccion?: string
+  categoria?: string  // criticidad: 'critico' | 'importante' | 'condicionante' | 'informativo'
 }
 
 interface DocumentoCargado {
@@ -194,6 +196,8 @@ function ProponenteDocumentosContent() {
         nombre: t.nombre,
         descripcion: t.descripcion,
         esObligatorio: t.es_obligatorio,
+        seccion: t.seccion ?? undefined,
+        categoria: t.categoria ?? undefined,
       })),
       vencidos: data.estadisticas.vencidos,
     })
@@ -254,12 +258,13 @@ function ProponenteDocumentosContent() {
         const pathname = path
 
         // 3. Registrar documento (endpoint público)
+        // Los ítems de validación legal se envían como validacion_legal_item_id (sin FK a tipos_documento)
         const docRes = await fetch('/api/proponente/documentos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             codigo,
-            tipo_documento_id: tipoDoc.id,
+            validacion_legal_item_id: tipoDoc.id,
             nombre: archivo.name,
             archivo_url: url,
             archivo_pathname: pathname,
@@ -502,53 +507,84 @@ function ProponenteDocumentosContent() {
           </Card>
         )}
 
-        {/* Pendientes del catálogo (cuando NO hay motivo de rechazo, o son faltantes adicionales) */}
-        {faltantesNoEnMotivo.length > 0 && (
-          <Card className="border-0 shadow-lg">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Pendientes de entrega</CardTitle>
-              <CardDescription>{faltantesNoEnMotivo.length} documento{faltantesNoEnMotivo.length !== 1 ? 's' : ''} por cargar</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {faltantesNoEnMotivo.map((doc) => (
-                <label
-                  key={doc.id}
-                  className="block p-4 sm:p-5 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 transition-all cursor-pointer group touch-manipulation"
-                >
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    onChange={(e) => handleSubirDocumento(e, doc)}
-                    disabled={uploading}
-                  />
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-lg bg-primary/10 p-2.5 group-hover:bg-primary/20 transition-colors shrink-0">
-                      {uploading && documentoSeleccionado === doc.id ? (
-                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                      ) : (
-                        <UploadCloud className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm group-hover:text-primary transition-colors">
-                        {doc.nombre}
-                        {doc.esObligatorio && <span className="ml-1 text-destructive">*</span>}
-                      </p>
-                      {doc.descripcion && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{doc.descripcion}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {uploading && documentoSeleccionado === doc.id ? 'Subiendo...' : 'Toca para seleccionar archivo'}
-                      </p>
-                    </div>
-                    <UploadCloud className="h-4 w-4 text-muted-foreground shrink-0 sm:hidden" />
-                  </div>
-                </label>
+        {/* Ítems de validación legal pendientes de subsanar */}
+        {faltantesNoEnMotivo.length > 0 && (() => {
+          // Agrupar por sección
+          const porSeccion = faltantesNoEnMotivo.reduce<Record<string, TipoFaltante[]>>((acc, doc) => {
+            const sec = doc.seccion ?? 'General'
+            if (!acc[sec]) acc[sec] = []
+            acc[sec].push(doc)
+            return acc
+          }, {})
+
+          const CATEGORIA_CLS: Record<string, string> = {
+            critico:      'border-red-400 text-red-700 bg-red-50',
+            importante:   'border-orange-400 text-orange-700 bg-orange-50',
+            condicionante:'border-amber-400 text-amber-700 bg-amber-50',
+            informativo:  'border-blue-300 text-blue-700 bg-blue-50',
+          }
+
+          return (
+            <div className="space-y-4">
+              {Object.entries(porSeccion).map(([seccion, items]) => (
+                <Card key={seccion} className="border-0 shadow-lg">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">{seccion}</CardTitle>
+                    <CardDescription>{items.length} ítem{items.length !== 1 ? 's' : ''} por subsanar</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {items.map((doc) => (
+                      <label
+                        key={doc.id}
+                        className="block p-4 sm:p-5 rounded-lg border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 active:bg-primary/10 transition-all cursor-pointer group touch-manipulation"
+                      >
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                          onChange={(e) => handleSubirDocumento(e, doc)}
+                          disabled={uploading}
+                        />
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-primary/10 p-2.5 group-hover:bg-primary/20 transition-colors shrink-0">
+                            {uploading && documentoSeleccionado === doc.id ? (
+                              <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                            ) : (
+                              <UploadCloud className="h-5 w-5 text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-sm group-hover:text-primary transition-colors">
+                                {doc.nombre}
+                                {doc.esObligatorio && <span className="ml-1 text-destructive">*</span>}
+                              </p>
+                              {doc.categoria && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] py-0 px-1.5 ${CATEGORIA_CLS[doc.categoria] ?? ''}`}
+                                >
+                                  {doc.categoria.charAt(0).toUpperCase() + doc.categoria.slice(1)}
+                                </Badge>
+                              )}
+                            </div>
+                            {doc.descripcion && (
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{doc.descripcion}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {uploading && documentoSeleccionado === doc.id ? 'Subiendo...' : 'Toca para seleccionar archivo'}
+                            </p>
+                          </div>
+                          <UploadCloud className="h-4 w-4 text-muted-foreground shrink-0 sm:hidden" />
+                        </div>
+                      </label>
+                    ))}
+                  </CardContent>
+                </Card>
               ))}
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          )
+        })()}
 
         {/* Documentos rechazados — requieren corrección */}
         {rechazados.length > 0 && (
