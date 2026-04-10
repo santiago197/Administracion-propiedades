@@ -241,6 +241,60 @@ function seccionDeclaraciones(doc: jsPDF, y: number): number {
   return y + 4
 }
 
+type CandidatoActa = DatosActa['candidatos'][number]
+
+function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
+  const hayObs = candidatos.some((c) => c.observaciones)
+
+  autoTable(doc, {
+    startY: y,
+    head: [hayObs
+      ? ['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica', 'Observaciones']
+      : ['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']
+    ],
+    body: candidatos.map((c, i) => {
+      const fila: (string | number)[] = [
+        i + 1,
+        c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
+        labelTipoPersona(c.tipo_persona),
+        labelEstado(c.estado),
+        labelClasificacion(c.clasificacion),
+      ]
+      if (hayObs) fila.push(c.observaciones ?? '—')
+      return fila
+    }),
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
+    columnStyles: hayObs
+      ? { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 48 }, 2: { cellWidth: 22 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 }, 5: { cellWidth: 54 } }
+      : { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
+    margin: { left: 14, right: 14 },
+    didParseCell: (hookData) => {
+      if (hookData.section === 'body') {
+        const c = candidatos[hookData.row.index]
+        if (c?.estado === 'adjudicado') {
+          hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        } else if (c?.estado === 'descalificada') {
+          hookData.cell.styles.textColor = COLOR_ROJO
+        } else if (c?.estado === 'retirada') {
+          hookData.cell.styles.textColor = COLOR_GRIS_MEDIO
+        }
+      }
+      if (hookData.section === 'body' && hookData.column.index === 4) {
+        const val = String(hookData.cell.text)
+        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
+        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
+        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
+      }
+      if (hayObs && hookData.section === 'body' && hookData.column.index === 5) {
+        hookData.cell.styles.fontSize = 7
+        hookData.cell.styles.fontStyle = 'italic'
+      }
+    },
+  })
+}
+
 export async function generarActaPDF(datos: DatosActa): Promise<void> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const pageW = doc.internal.pageSize.getWidth()
@@ -251,37 +305,7 @@ export async function generarActaPDF(datos: DatosActa): Promise<void> {
   // ── 1. CANDIDATOS EVALUADOS ───────────────────────────────────────────────
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
 
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
-    body: datos.candidatos.map((c, i) => [
-      i + 1,
-      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
-      labelTipoPersona(c.tipo_persona),
-      labelEstado(c.estado),
-      labelClasificacion(c.clasificacion),
-    ]),
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
-    margin: { left: 14, right: 14 },
-    didParseCell: (hookData) => {
-      if (hookData.section === 'body') {
-        const candidato = datos.candidatos[hookData.row.index]
-        if (candidato?.estado === 'adjudicado') {
-          hookData.cell.styles.fillColor = [236, 253, 245]
-          hookData.cell.styles.fontStyle = 'bold'
-        }
-      }
-      if (hookData.section === 'body' && hookData.column.index === 4) {
-        const val = String(hookData.cell.text)
-        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
-        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
-        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
-      }
-    },
-  })
-
+  tablaCandidatos(doc, y, datos.candidatos)
   y = (doc as any).lastAutoTable.finalY + 8
 
   // ── 2. CRITERIOS DE SELECCIÓN ─────────────────────────────────────────────
@@ -526,36 +550,7 @@ export async function previsualizarActaPDF(datos: DatosActa): Promise<string> {
   await encabezado(doc, datos)
 
   y = titulo(doc, '1. CANDIDATOS EVALUADOS', y)
-  autoTable(doc, {
-    startY: y,
-    head: [['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']],
-    body: datos.candidatos.map((c, i) => [
-      i + 1,
-      c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
-      labelTipoPersona(c.tipo_persona),
-      labelEstado(c.estado),
-      labelClasificacion(c.clasificacion),
-    ]),
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: COLOR_GRIS_CLARO, textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 7.5 },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 65 }, 2: { cellWidth: 28 }, 3: { cellWidth: 28 }, 4: { cellWidth: 38 } },
-    margin: { left: 14, right: 14 },
-    didParseCell: (hookData) => {
-      if (hookData.section === 'body') {
-        const candidato = datos.candidatos[hookData.row.index]
-        if (candidato?.estado === 'adjudicado') {
-          hookData.cell.styles.fillColor = [236, 253, 245]
-          hookData.cell.styles.fontStyle = 'bold'
-        }
-      }
-      if (hookData.section === 'body' && hookData.column.index === 4) {
-        const val = String(hookData.cell.text)
-        if (val === 'Cumple') hookData.cell.styles.textColor = COLOR_VERDE
-        else if (val === 'Rechazado') hookData.cell.styles.textColor = COLOR_ROJO
-        else if (val === 'Cumple, con observaciones') hookData.cell.styles.textColor = COLOR_AMARILLO
-      }
-    },
-  })
+  tablaCandidatos(doc, y, datos.candidatos)
   y = (doc as any).lastAutoTable.finalY + 8
 
   const criteriosRef = datos.matriz[0]?.criterios ?? []

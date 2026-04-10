@@ -796,7 +796,7 @@ export interface VotoDetallado {
 export interface DatosActa {
   proceso: { nombre: string; fecha_inicio: string; fecha_fin?: string; peso_evaluacion: number; peso_votacion: number }
   conjunto: { nombre: string; direccion: string; ciudad: string; logo_url?: string }
-  candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null }>
+  candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null; observaciones?: string }>
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
@@ -819,7 +819,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
   // Candidatos del proceso
   const { data: propuestas } = await supabase
     .from('propuestas')
-    .select('razon_social, tipo_persona, estado, clasificacion')
+    .select('id, razon_social, tipo_persona, estado, clasificacion')
     .eq('proceso_id', proceso_id)
     .order('razon_social', { ascending: true })
 
@@ -853,6 +853,28 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .eq('proceso_id', proceso_id),
   ])
 
+  // Observaciones de descalificación / retiro desde el historial de estados
+  const idsConObservacion = (propuestas ?? [])
+    .filter((p: any) => ['descalificada', 'retirada'].includes(p.estado))
+    .map((p: any) => p.id as string)
+
+  const observacionesMap: Record<string, string> = {}
+
+  if (idsConObservacion.length > 0) {
+    const { data: historial } = await supabase
+      .from('historial_estados_propuesta')
+      .select('propuesta_id, observacion, created_at')
+      .in('propuesta_id', idsConObservacion)
+      .in('estado_nuevo', ['descalificada', 'retirada'])
+      .order('created_at', { ascending: false })
+
+    for (const h of historial ?? []) {
+      if (!observacionesMap[h.propuesta_id] && h.observacion) {
+        observacionesMap[h.propuesta_id] = h.observacion
+      }
+    }
+  }
+
   const conjunto = (proceso as any)?.conjuntos
   const total = totalConsejeros ?? 0
   const votaronCount = votaron ?? 0
@@ -876,6 +898,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       tipo_persona: p.tipo_persona,
       estado: p.estado,
       clasificacion: p.clasificacion ?? null,
+      observaciones: observacionesMap[p.id] ?? undefined,
     })),
     matriz,
     ranking,
