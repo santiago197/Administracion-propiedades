@@ -33,6 +33,7 @@ function labelEstado(estado: string): string {
     destacado:       'Destacado',
     condicionado:    'Condicionado',
     no_apto:         'No apto',
+    no_apto_legal:   'No apto legal',
     entrevistado:    'Entrevistado',
     preseleccionado: 'Preseleccionado',
     adjudicado:      'Adjudicado',
@@ -288,6 +289,9 @@ function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
         } else if (c?.estado === 'entrevistado') {
           hookData.cell.styles.fillColor = [236, 254, 255]
           hookData.cell.styles.textColor = [14, 116, 144]
+        } else if (c?.estado === 'no_apto_legal') {
+          hookData.cell.styles.fillColor = [255, 245, 245]
+          hookData.cell.styles.textColor = COLOR_ROJO
         } else if (c?.estado === 'descalificada') {
           hookData.cell.styles.textColor = COLOR_ROJO
         } else if (c?.estado === 'retirada') {

@@ -25,7 +25,7 @@ import type {
   TipoPersona,
   ValidacionLegalItemConfig,
 } from '../types/index'
-import { CRITERIOS_MATRIZ } from '../types/index'
+import { CRITERIOS_MATRIZ, ITEMS_VALIDACION_LEGAL } from '../types/index'
 import { normalizeEstadoDocumentoApp, normalizeEstadoDocumentoDb } from './documentos'
 
 // CONJUNTOS
@@ -687,7 +687,7 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'entrevistado', 'adjudicado', 'preseleccionado'])
+    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'entrevistado', 'adjudicado', 'preseleccionado', 'descalificada'])
 
   if (!propuestas || propuestas.length === 0) return []
 
@@ -709,15 +709,39 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     }
   }
 
+  // Detectar descalificadas "por entrevista" (origen = entrevistado en el historial)
+  const idsDescalificadas = propuestas.filter((p) => p.estado === 'descalificada').map((p) => p.id)
+  const noAptoEntrevistaSet = new Set<string>()
+  if (idsDescalificadas.length > 0) {
+    const { data: histDescal } = await supabase
+      .from('historial_estados_propuesta')
+      .select('propuesta_id, estado_anterior')
+      .in('propuesta_id', idsDescalificadas)
+      .eq('estado_nuevo', 'descalificada')
+      .order('created_at', { ascending: false })
+    for (const h of histDescal ?? []) {
+      if (!noAptoEntrevistaSet.has(h.propuesta_id) && h.estado_anterior === 'entrevistado') {
+        noAptoEntrevistaSet.add(h.propuesta_id)
+      }
+    }
+  }
+
+  // Orden: preseleccionado=0, entrevistado=1, no_apto_entrevista=2, resto=3
+  const ORDEN_ESTADO: Record<string, number> = { preseleccionado: 0, entrevistado: 1 }
+  function ordenFila(p: { id: string; estado: string }): number {
+    if (p.estado === 'preseleccionado') return 0
+    if (p.estado === 'entrevistado') return 1
+    if (noAptoEntrevistaSet.has(p.id)) return 2
+    return 3
+  }
+
   const filtradas = propuestas
     .filter((p) => evalPorPropuesta.has(p.id))
+    .filter((p) => p.estado !== 'descalificada' || noAptoEntrevistaSet.has(p.id))
     .sort((a, b) => {
-      // Preseleccionados → entrevistados → resto
-      const ORDEN: Record<string, number> = { preseleccionado: 0, entrevistado: 1 }
-      const aO = ORDEN[a.estado] ?? 2
-      const bO = ORDEN[b.estado] ?? 2
+      const aO = ordenFila(a)
+      const bO = ordenFila(b)
       if (aO !== bO) return aO - bO
-      // Luego ordenar por puntaje admin (fuente de verdad)
       const pa = evalPorPropuesta.get(a.id) ?? 0
       const pb = evalPorPropuesta.get(b.id) ?? 0
       return pb - pa
@@ -725,7 +749,6 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
 
   return filtradas.map((p, index) => {
     const puntajeAdmin = evalPorPropuesta.get(p.id) ?? 0
-    // puntaje_final puede ser 0 si recalcular_resultados no se ha ejecutado con datos de admin
     const pf = Number(p.puntaje_final ?? 0)
 
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
@@ -753,7 +776,10 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       posicion: index + 1,
       estado_semaforo,
       clasificacion,
+      estado: p.estado,
       preseleccionado_entrevista: p.estado === 'preseleccionado',
+      entrevistado: p.estado === 'entrevistado',
+      no_apto_entrevista: noAptoEntrevistaSet.has(p.id),
     }
   })
 }
@@ -867,7 +893,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
   // Candidatos del proceso
   const { data: propuestas } = await supabase
     .from('propuestas')
-    .select('id, razon_social, tipo_persona, estado, clasificacion')
+    .select('id, razon_social, tipo_persona, estado, clasificacion, checklist_legal, observaciones_legales')
     .eq('proceso_id', proceso_id)
     .order('razon_social', { ascending: true })
 
@@ -901,9 +927,10 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .eq('proceso_id', proceso_id),
   ])
 
-  // Observaciones de entrevista (preseleccionado, descalificada, retirada) desde el historial de estados
+  // Observaciones desde el historial de estados
+  const ESTADOS_CON_OBS = ['descalificada', 'retirada', 'preseleccionado', 'entrevistado', 'no_apto_legal']
   const idsConObservacion = (propuestas ?? [])
-    .filter((p: any) => ['descalificada', 'retirada', 'preseleccionado', 'entrevistado'].includes(p.estado))
+    .filter((p: any) => ESTADOS_CON_OBS.includes(p.estado))
     .map((p: any) => p.id as string)
 
   const observacionesMap: Record<string, string> = {}
@@ -911,9 +938,9 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
   if (idsConObservacion.length > 0) {
     const { data: historial } = await supabase
       .from('historial_estados_propuesta')
-      .select('propuesta_id, observacion, created_at')
+      .select('propuesta_id, estado_nuevo, observacion, created_at')
       .in('propuesta_id', idsConObservacion)
-      .in('estado_nuevo', ['descalificada', 'retirada', 'preseleccionado', 'entrevistado'])
+      .in('estado_nuevo', ESTADOS_CON_OBS)
       .order('created_at', { ascending: false })
 
     for (const h of historial ?? []) {
@@ -941,13 +968,48 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       ciudad: conjunto?.ciudad ?? '',
       logo_url: (conjunto as any)?.logo_url ?? undefined,
     },
-    candidatos: (propuestas ?? []).map((p: any) => ({
-      razon_social: p.razon_social,
-      tipo_persona: p.tipo_persona,
-      estado: p.estado,
-      clasificacion: p.clasificacion ?? null,
-      observaciones: observacionesMap[p.id] ?? undefined,
-    })),
+    candidatos: (propuestas ?? []).map((p: any) => {
+      let observaciones: string | undefined = observacionesMap[p.id] ?? undefined
+
+      if (p.estado === 'no_apto_legal') {
+        const ckl = p.checklist_legal as Record<string, { estado: string; observacion?: string }> | null
+        const tipoPersona: 'juridica' | 'natural' = p.tipo_persona === 'juridica' ? 'juridica' : 'natural'
+        const ORDEN: Record<string, number> = { critico: 0, importante: 1, condicionante: 2, informativo: 3 }
+
+        const partes: string[] = []
+
+        if (ckl && Object.keys(ckl).length > 0) {
+          const aplicables = ITEMS_VALIDACION_LEGAL.filter(
+            (d) => (d.aplica_a === 'ambos' || d.aplica_a === tipoPersona) && d.obligatorio !== false
+          )
+          const noCumple = aplicables
+            .filter((d) => ckl[d.id]?.estado === 'no_cumple')
+            .sort((a, b) => (ORDEN[a.criticidad] ?? 9) - (ORDEN[b.criticidad] ?? 9))
+
+          const pct = Math.round(((aplicables.length - noCumple.length) / aplicables.length) * 100)
+          partes.push(`Cumplimiento legal: ${pct}%`)
+
+          const criticos = noCumple.filter((d) => d.criticidad === 'critico').map((d) => d.label)
+          const importantes = noCumple.filter((d) => d.criticidad === 'importante').map((d) => d.label)
+
+          if (criticos.length > 0) partes.push(`[CRÍTICO] ${criticos.join(', ')}`)
+          if (importantes.length > 0) partes.push(`[IMPORTANTE] ${importantes.join(', ')}`)
+        }
+
+        const motivo = observacionesMap[p.id] ?? p.observaciones_legales
+        if (motivo) partes.push(`Motivo: ${motivo}`)
+
+        observaciones = partes.length > 0 ? partes.join('\n') : 'No apto por validación legal'
+      }
+
+      return {
+        razon_social: p.razon_social,
+        tipo_persona: p.tipo_persona,
+        estado: p.estado,
+        clasificacion: p.clasificacion ?? null,
+        observaciones,
+      }
+    }),
     matriz,
     ranking,
     votos,
@@ -1413,7 +1475,33 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
 
   if (error) throw error
 
-  return (data ?? []).map((row) => {
+  const procesoCriterios = data ?? []
+
+  // Si el proceso no tiene criterios configurados, usar el catálogo global como fallback
+  if (procesoCriterios.length === 0) {
+    const { data: catalogo } = await supabase
+      .from('criterios_evaluacion')
+      .select('id, codigo, nombre, descripcion, peso, tipo, orden, activo')
+      .eq('activo', true)
+      .order('orden', { ascending: true })
+
+    return (catalogo ?? []).map((c) => ({
+      id: c.id,
+      proceso_id: procesoId,
+      criterio_evaluacion_id: c.id,
+      codigo: c.codigo,           // código legacy ('expPH', etc.) para compatibilidad con la matriz
+      nombre: c.nombre,
+      descripcion: c.descripcion ?? null,
+      tipo: (c.tipo ?? 'binario') as TipoCriterio,
+      peso: c.peso,
+      valor_minimo: 0,
+      valor_maximo: c.peso,
+      orden: c.orden ?? 0,
+      activo: c.activo ?? true,
+    }))
+  }
+
+  return procesoCriterios.map((row) => {
     const catalogo = row.criterios_evaluacion as { id?: string; nombre?: string; descripcion?: string; tipo?: string; orden?: number; activo?: boolean } | null
     return {
       id: row.id,

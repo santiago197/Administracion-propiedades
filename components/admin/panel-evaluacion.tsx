@@ -333,7 +333,7 @@ export function PanelEvaluacion({ propuesta, open, onOpenChange, onSaved }: Pane
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          puntaje_total: total,
+          puntaje_total: Math.round(pctScore),
           clasificacion,
           detalles: evalData,
           observaciones: obsData,

@@ -695,7 +695,6 @@ export default function PropuestasPage() {
                       <TableHead className="hidden md:table-cell">Clasificación</TableHead>
                       <TableHead className="hidden lg:table-cell">Acceso Proponente</TableHead>
                       <TableHead className="hidden lg:table-cell">Cargado por</TableHead>
-                      <TableHead className="hidden lg:table-cell">Contacto</TableHead>
                       <TableHead className="text-right w-20">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -825,7 +824,6 @@ export default function PropuestasPage() {
                         <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
                           {p.created_by_nombre ?? '—'}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{p.email ?? '—'}</TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button

@@ -331,7 +331,10 @@ export interface ResultadoFinal {
   posicion: number
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
   clasificacion?: string | null
+  estado: string
   preseleccionado_entrevista: boolean
+  entrevistado: boolean
+  no_apto_entrevista: boolean
 }
 
 /** Detalle de un criterio de la matriz de evaluación para una propuesta */

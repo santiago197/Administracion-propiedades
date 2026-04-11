@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Trophy, AlertCircle, RefreshCw, CheckCircle2, Star } from 'lucide-react'
+import { Loader2, Trophy, AlertCircle, RefreshCw, CheckCircle2, Star, ClipboardCheck, XCircle } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import type { ResultadoFinal } from '@/lib/types/index'
 
@@ -23,6 +23,34 @@ const CLAS_LABEL: Record<string, string> = {
   apto:         'Apto',
   condicionado: 'Condicionado',
   no_apto:      'No apto',
+}
+
+function ChipEntrevista({ r }: { r: ResultadoFinal }) {
+  if (r.preseleccionado_entrevista) {
+    return (
+      <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 shrink-0" variant="outline">
+        <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
+        Preseleccionado
+      </Badge>
+    )
+  }
+  if (r.entrevistado) {
+    return (
+      <Badge className="bg-cyan-500/10 text-cyan-700 border-cyan-200 shrink-0" variant="outline">
+        <ClipboardCheck className="h-3 w-3 mr-1" />
+        Entrevistado
+      </Badge>
+    )
+  }
+  if (r.no_apto_entrevista) {
+    return (
+      <Badge className="bg-red-500/10 text-red-700 border-red-200 shrink-0" variant="outline">
+        <XCircle className="h-3 w-3 mr-1" />
+        No apto por entrevista
+      </Badge>
+    )
+  }
+  return null
 }
 
 export default function RankingPage() {
@@ -117,7 +145,7 @@ export default function RankingPage() {
           <p className="text-sm text-muted-foreground">Resultado ponderado</p>
           <h1 className="text-2xl tracking-tight">Ranking</h1>
           <p className="text-sm text-muted-foreground">
-            Clasificación automática por puntaje de evaluación + votos del consejo. Los candidatos preseleccionados por entrevista aparecen primero.
+            Orden: Preseleccionado → Entrevistado → No apto por entrevista · luego por puntaje.
           </p>
           {ultimoCalculo && !ocupado && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
@@ -171,14 +199,9 @@ export default function RankingPage() {
                     {i === 0 ? <Trophy className="h-5 w-5" /> : `#${i + 1}`}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-semibold truncate">{r.razon_social}</p>
-                      {r.preseleccionado_entrevista && (
-                        <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 shrink-0" variant="outline">
-                          <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
-                          Preseleccionado
-                        </Badge>
-                      )}
+                      <ChipEntrevista r={r} />
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
                       <p className="text-2xl font-black text-primary tabular-nums">{r.puntaje_final.toFixed(1)}</p>
@@ -239,7 +262,12 @@ export default function RankingPage() {
               </TableHeader>
               <TableBody>
                 {resultados.map((r, idx) => (
-                  <TableRow key={r.propuesta_id} className={idx === 0 ? 'bg-amber-500/5' : ''}>
+                  <TableRow key={r.propuesta_id} className={
+                    r.no_apto_entrevista ? 'bg-red-500/5 opacity-70' :
+                    r.preseleccionado_entrevista ? 'bg-violet-500/5' :
+                    r.entrevistado ? 'bg-cyan-500/5' :
+                    idx === 0 ? 'bg-amber-500/5' : ''
+                  }>
                     <TableCell>
                       {idx === 0 ? (
                         <Trophy className="h-4 w-4 text-amber-500" />
@@ -248,14 +276,11 @@ export default function RankingPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        {r.razon_social}
-                        {r.preseleccionado_entrevista && (
-                          <Badge className="bg-violet-500/10 text-violet-700 border-violet-200" variant="outline">
-                            <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
-                            Preseleccionado
-                          </Badge>
-                        )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={r.no_apto_entrevista ? 'text-muted-foreground line-through' : ''}>
+                          {r.razon_social}
+                        </span>
+                        <ChipEntrevista r={r} />
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-right tabular-nums">

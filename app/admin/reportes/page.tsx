@@ -5,13 +5,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Progress } from '@/components/ui/progress'
 import {
   Loader2, AlertCircle, Trophy, FileDown, FileText,
-  ChevronDown, ChevronUp, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw, ShieldX, ShieldAlert,
 } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import type { ResultadoFinal, Proceso } from '@/lib/types/index'
 import { Button } from '@/components/ui/button'
+
+interface NoAptoLegalItem {
+  propuesta_id: string
+  razon_social: string
+  tipo_persona: string
+  observaciones_legales: string | null
+  razon_rechazo: string | null
+  pct_cumplimiento: number | null
+  items_fallidos: { id: string; label: string; criticidad: string; observacion: string }[]
+}
 
 export default function ReportesPage() {
   const { procesos, loading: loadingProceso, error: errorProceso } = useActiveProceso()
@@ -21,6 +32,9 @@ export default function ReportesPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadingPdf, setLoadingPdf] = useState(false)
+  const [noAptoLegal, setNoAptoLegal] = useState<NoAptoLegalItem[]>([])
+  const [loadingNoApto, setLoadingNoApto] = useState(false)
+  const [showNoApto, setShowNoApto] = useState(false)
 
   // Borrador PDF
   const [showBorrador, setShowBorrador] = useState(false)
@@ -77,7 +91,19 @@ export default function ReportesPage() {
         setLoading(false)
       }
     }
+    const fetchNoAptoLegal = async () => {
+      setLoadingNoApto(true)
+      try {
+        const res = await fetch(`/api/resultados?type=no_apto_legal&proceso_id=${selectedProcesoId}`)
+        if (res.ok) setNoAptoLegal(await res.json())
+      } catch {
+        // non-blocking
+      } finally {
+        setLoadingNoApto(false)
+      }
+    }
     fetchResultados()
+    fetchNoAptoLegal()
   }, [selectedProcesoId])
 
   const handleDescargarActa = async () => {
@@ -319,6 +345,138 @@ export default function ReportesPage() {
                   </TableBody>
                 </Table>
               </CardContent>
+            </Card>
+          )}
+
+          {/* No aptos por validación legal */}
+          {(loadingNoApto || noAptoLegal.length > 0) && (
+            <Card>
+              <CardHeader
+                className="cursor-pointer select-none"
+                onClick={() => setShowNoApto((v) => !v)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldX className="h-4 w-4 text-destructive" />
+                    <div>
+                      <CardTitle>No aptos por validación legal</CardTitle>
+                      <CardDescription>
+                        Candidatos descartados en la fase de validación legal con detalle de incumplimientos.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!loadingNoApto && noAptoLegal.length > 0 && (
+                      <Badge variant="outline" className="text-xs bg-destructive/10 text-destructive border-destructive/30">
+                        {noAptoLegal.length} candidato{noAptoLegal.length !== 1 ? 's' : ''}
+                      </Badge>
+                    )}
+                    {loadingNoApto
+                      ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      : showNoApto
+                      ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    }
+                  </div>
+                </div>
+              </CardHeader>
+              {showNoApto && <CardContent>
+                {loadingNoApto ? (
+                  <div className="flex items-center gap-2 py-6 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Cargando…</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {noAptoLegal.map((item) => (
+                      <div
+                        key={item.propuesta_id}
+                        className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3"
+                      >
+                        {/* Header */}
+                        <div className="flex flex-wrap items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2">
+                            <ShieldX className="h-4 w-4 text-destructive shrink-0" />
+                            <span className="font-semibold">{item.razon_social}</span>
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {item.tipo_persona === 'juridica' ? 'Jurídica' : 'Natural'}
+                            </Badge>
+                          </div>
+                          {item.pct_cumplimiento !== null && (
+                            <div className="flex items-center gap-2 min-w-[140px]">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                Cumplimiento legal:
+                              </span>
+                              <span className={`text-sm font-bold tabular-nums ${
+                                item.pct_cumplimiento >= 80
+                                  ? 'text-amber-600'
+                                  : 'text-destructive'
+                              }`}>
+                                {item.pct_cumplimiento}%
+                              </span>
+                              <Progress
+                                value={item.pct_cumplimiento}
+                                className="h-1.5 w-16"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Razón de rechazo */}
+                        {(item.razon_rechazo || item.observaciones_legales) && (
+                          <div className="text-sm text-muted-foreground bg-background/60 rounded px-3 py-2 border border-border/60">
+                            <span className="font-medium text-foreground">Motivo: </span>
+                            {item.razon_rechazo ?? item.observaciones_legales}
+                          </div>
+                        )}
+
+                        {/* Items fallidos */}
+                        {item.items_fallidos.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Ítems incumplidos
+                            </p>
+                            {item.items_fallidos.map((f) => (
+                              <div
+                                key={f.id}
+                                className="flex items-start gap-2 text-sm"
+                              >
+                                {f.criticidad === 'critico' ? (
+                                  <Badge variant="outline" className="text-xs shrink-0 bg-red-500/10 text-red-700 border-red-200">
+                                    <ShieldX className="h-3 w-3 mr-1" />
+                                    Crítico
+                                  </Badge>
+                                ) : f.criticidad === 'importante' ? (
+                                  <Badge variant="outline" className="text-xs shrink-0 bg-orange-500/10 text-orange-700 border-orange-200">
+                                    <ShieldAlert className="h-3 w-3 mr-1" />
+                                    Importante
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs shrink-0">
+                                    {f.criticidad}
+                                  </Badge>
+                                )}
+                                <div>
+                                  <span className="font-medium">{f.label}</span>
+                                  {f.observacion && (
+                                    <span className="text-muted-foreground"> — {f.observacion}</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {item.items_fallidos.length === 0 && item.pct_cumplimiento === null && (
+                          <p className="text-xs text-muted-foreground italic">
+                            No se registraron ítems del checklist legal para este candidato.
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>}
             </Card>
           )}
 
