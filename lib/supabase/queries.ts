@@ -886,9 +886,9 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .eq('proceso_id', proceso_id),
   ])
 
-  // Observaciones de descalificación / retiro desde el historial de estados
+  // Observaciones de entrevista (preseleccionado, descalificada, retirada) desde el historial de estados
   const idsConObservacion = (propuestas ?? [])
-    .filter((p: any) => ['descalificada', 'retirada'].includes(p.estado))
+    .filter((p: any) => ['descalificada', 'retirada', 'preseleccionado'].includes(p.estado))
     .map((p: any) => p.id as string)
 
   const observacionesMap: Record<string, string> = {}
@@ -898,7 +898,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .from('historial_estados_propuesta')
       .select('propuesta_id, observacion, created_at')
       .in('propuesta_id', idsConObservacion)
-      .in('estado_nuevo', ['descalificada', 'retirada'])
+      .in('estado_nuevo', ['descalificada', 'retirada', 'preseleccionado'])
       .order('created_at', { ascending: false })
 
     for (const h of historial ?? []) {

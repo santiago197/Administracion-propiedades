@@ -28,14 +28,15 @@ function labelTipoPersona(tipo: string): string {
 
 function labelEstado(estado: string): string {
   const map: Record<string, string> = {
-    en_evaluacion: 'En evaluación',
-    apto: 'Apto',
-    destacado: 'Destacado',
-    condicionado: 'Condicionado',
-    no_apto: 'No apto',
-    adjudicado: 'Adjudicado',
-    descalificada: 'Descalificada',
-    retirada: 'Retirada',
+    en_evaluacion:  'En evaluación',
+    apto:           'Apto',
+    destacado:      'Destacado',
+    condicionado:   'Condicionado',
+    no_apto:        'No apto',
+    preseleccionado: 'Preseleccionado',
+    adjudicado:     'Adjudicado',
+    descalificada:  'Descalificada',
+    retirada:       'Retirada',
   }
   return map[estado] ?? estado
 }
@@ -253,9 +254,12 @@ function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
       : ['#', 'Candidato', 'Tipo', 'Estado', 'Clasificación Técnica']
     ],
     body: candidatos.map((c, i) => {
+      let nombreCandidato = c.razon_social
+      if (c.estado === 'adjudicado') nombreCandidato = `★ ${c.razon_social}`
+      else if (c.estado === 'preseleccionado') nombreCandidato = `● ${c.razon_social}`
       const fila: (string | number)[] = [
         i + 1,
-        c.estado === 'adjudicado' ? `★ ${c.razon_social}` : c.razon_social,
+        nombreCandidato,
         labelTipoPersona(c.tipo_persona),
         labelEstado(c.estado),
         labelClasificacion(c.clasificacion),
@@ -274,6 +278,10 @@ function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
         const c = candidatos[hookData.row.index]
         if (c?.estado === 'adjudicado') {
           hookData.cell.styles.fillColor = [236, 253, 245]
+          hookData.cell.styles.fontStyle = 'bold'
+        } else if (c?.estado === 'preseleccionado') {
+          hookData.cell.styles.fillColor = [245, 243, 255]
+          hookData.cell.styles.textColor = [109, 40, 217]
           hookData.cell.styles.fontStyle = 'bold'
         } else if (c?.estado === 'descalificada') {
           hookData.cell.styles.textColor = COLOR_ROJO

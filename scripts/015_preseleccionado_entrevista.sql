@@ -25,3 +25,26 @@ VALUES
   ('preseleccionado', 'descalificada', true,  'Candidato preseleccionado descalificado en etapa posterior'),
   ('preseleccionado', 'retirada',      true,  'Candidato preseleccionado retirado del proceso')
 ON CONFLICT (estado_origen, estado_destino) DO NOTHING;
+
+-- 3. Ampliar el CHECK constraint de la tabla propuestas
+--    para incluir el nuevo estado
+ALTER TABLE propuestas DROP CONSTRAINT IF EXISTS propuestas_estado_check;
+ALTER TABLE propuestas ADD CONSTRAINT propuestas_estado_check
+  CHECK (estado IN (
+    'registro',
+    'en_revision',
+    'incompleto',
+    'en_subsanacion',
+    'en_validacion',
+    'no_apto_legal',
+    'habilitada',
+    'en_evaluacion',
+    'condicionado',
+    'apto',
+    'destacado',
+    'no_apto',
+    'preseleccionado',
+    'adjudicado',
+    'descalificada',
+    'retirada'
+  ));
