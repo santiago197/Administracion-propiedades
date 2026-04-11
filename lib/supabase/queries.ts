@@ -675,25 +675,51 @@ export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta)
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
-  // Leer directamente de propuestas para incluir clasificacion (la vista no la expone)
+  // 1. Propuestas del proceso en estados relevantes
   const { data: propuestas } = await supabase
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
     .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
-    .not('puntaje_evaluacion', 'is', null)
-    .gt('puntaje_evaluacion', 0)
-    .order('puntaje_final', { ascending: false, nullsFirst: false })
 
-  if (!propuestas) return []
+  if (!propuestas || propuestas.length === 0) return []
 
-  return propuestas.map((p, index) => {
-    let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+  // 2. Leer evaluaciones_admin — fuente de verdad del puntaje del admin.
+  //    recalcular_resultados sobreescribe puntaje_evaluacion con el score de consejeros,
+  //    por eso se lee directo de evaluaciones_admin.puntaje_total.
+  const propuestaIds = propuestas.map((p) => p.id)
+  const { data: evaluadas } = await supabase
+    .from('evaluaciones_admin')
+    .select('propuesta_id, puntaje_total, created_at')
+    .in('propuesta_id', propuestaIds)
+    .order('created_at', { ascending: false })
+
+  // Por propuesta: quedarse con la evaluación más reciente
+  const evalPorPropuesta = new Map<string, number>()
+  for (const e of (evaluadas ?? [])) {
+    if (!evalPorPropuesta.has(e.propuesta_id)) {
+      evalPorPropuesta.set(e.propuesta_id, Number(e.puntaje_total ?? 0))
+    }
+  }
+
+  const filtradas = propuestas
+    .filter((p) => evalPorPropuesta.has(p.id))
+    .sort((a, b) => {
+      // Ordenar por puntaje admin (fuente de verdad)
+      const pa = evalPorPropuesta.get(a.id) ?? 0
+      const pb = evalPorPropuesta.get(b.id) ?? 0
+      return pb - pa
+    })
+
+  return filtradas.map((p, index) => {
+    const puntajeAdmin = evalPorPropuesta.get(p.id) ?? 0
+    // puntaje_final puede ser 0 si recalcular_resultados no se ha ejecutado con datos de admin
     const pf = Number(p.puntaje_final ?? 0)
 
-    if (pf >= 70) {
+    let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+    if (puntajeAdmin >= 70) {
       estado_semaforo = 'verde'
-    } else if (pf >= 55) {
+    } else if (puntajeAdmin >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
@@ -702,9 +728,9 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     return {
       propuesta_id: p.id,
       razon_social: p.razon_social,
-      puntaje_evaluacion: Number(p.puntaje_evaluacion ?? 0),
+      puntaje_evaluacion: puntajeAdmin,
       votos_recibidos: Number(p.votos_recibidos ?? 0),
-      puntaje_final: pf,
+      puntaje_final: pf > 0 ? pf : puntajeAdmin,
       posicion: index + 1,
       estado_semaforo,
       clasificacion: p.clasificacion ?? null,
