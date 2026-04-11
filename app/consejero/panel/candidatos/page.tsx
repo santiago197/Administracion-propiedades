@@ -30,6 +30,8 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  Star,
+  MessageSquare,
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -49,6 +51,7 @@ interface Propuesta {
   estado: string
   cumple_requisitos_legales?: boolean | null
   observaciones_legales?: string | null
+  observacion_entrevista?: string | null
   puntaje_evaluacion?: number | null
 }
 
@@ -111,7 +114,13 @@ export default function CandidatosPage() {
         return r.json()
       })
       .then((d) => {
-        setPropuestas(d.propuestas ?? [])
+        const sorted = (d.propuestas ?? []).slice().sort((a: Propuesta, b: Propuesta) => {
+          const aP = a.estado === 'preseleccionado' ? 0 : 1
+          const bP = b.estado === 'preseleccionado' ? 0 : 1
+          if (aP !== bP) return aP - bP
+          return a.razon_social.localeCompare(b.razon_social, 'es')
+        })
+        setPropuestas(sorted)
         setDocumentos(d.documentos ?? [])
       })
       .catch((e) => setError(e.message))
@@ -190,8 +199,14 @@ export default function CandidatosPage() {
               >
                 <AccordionTrigger className="px-4 py-4 hover:no-underline">
                   <div className="flex flex-1 items-center gap-3 text-left">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-sm">
-                      {idx + 1}
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-bold text-sm ${
+                      propuesta.estado === 'preseleccionado'
+                        ? 'bg-violet-100 text-violet-700'
+                        : 'bg-primary/10 text-primary'
+                    }`}>
+                      {propuesta.estado === 'preseleccionado'
+                        ? <Star className="h-4 w-4 fill-violet-500 text-violet-500" />
+                        : idx + 1}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold truncate">{propuesta.razon_social}</p>
@@ -199,7 +214,12 @@ export default function CandidatosPage() {
                         <span className="text-xs text-muted-foreground">
                           {propuesta.tipo_persona === 'juridica' ? 'NIT' : 'C.C.'}: {propuesta.nit_cedula}
                         </span>
-                        {propuesta.cumple_requisitos_legales === true ? (
+                        {propuesta.estado === 'preseleccionado' ? (
+                          <Badge variant="outline" className="text-violet-700 border-violet-300 bg-violet-50 text-xs">
+                            <Star className="mr-1 h-3 w-3 fill-violet-500 text-violet-500" />
+                            Preseleccionado
+                          </Badge>
+                        ) : propuesta.cumple_requisitos_legales === true ? (
                           <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50 text-xs">
                             <CheckCircle2 className="mr-1 h-3 w-3" />
                             Habilitado
@@ -294,6 +314,15 @@ export default function CandidatosPage() {
                         )}
                       </div>
 
+                      {propuesta.estado === 'preseleccionado' && propuesta.observacion_entrevista && (
+                        <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 flex items-start gap-2">
+                          <MessageSquare className="h-4 w-4 text-violet-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="text-xs font-medium text-violet-800 mb-1">Observación de entrevista</p>
+                            <p className="text-sm text-violet-700 italic">{propuesta.observacion_entrevista}</p>
+                          </div>
+                        </div>
+                      )}
                       {propuesta.observaciones_legales && (
                         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                           <p className="text-xs font-medium text-amber-800 mb-1">Observaciones legales</p>

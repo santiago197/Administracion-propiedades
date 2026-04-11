@@ -28,15 +28,16 @@ function labelTipoPersona(tipo: string): string {
 
 function labelEstado(estado: string): string {
   const map: Record<string, string> = {
-    en_evaluacion:  'En evaluación',
-    apto:           'Apto',
-    destacado:      'Destacado',
-    condicionado:   'Condicionado',
-    no_apto:        'No apto',
+    en_evaluacion:   'En evaluación',
+    apto:            'Apto',
+    destacado:       'Destacado',
+    condicionado:    'Condicionado',
+    no_apto:         'No apto',
+    entrevistado:    'Entrevistado',
     preseleccionado: 'Preseleccionado',
-    adjudicado:     'Adjudicado',
-    descalificada:  'Descalificada',
-    retirada:       'Retirada',
+    adjudicado:      'Adjudicado',
+    descalificada:   'Descalificada',
+    retirada:        'Retirada',
   }
   return map[estado] ?? estado
 }
@@ -257,6 +258,7 @@ function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
       let nombreCandidato = c.razon_social
       if (c.estado === 'adjudicado') nombreCandidato = `★ ${c.razon_social}`
       else if (c.estado === 'preseleccionado') nombreCandidato = `● ${c.razon_social}`
+      else if (c.estado === 'entrevistado') nombreCandidato = `◆ ${c.razon_social}`
       const fila: (string | number)[] = [
         i + 1,
         nombreCandidato,
@@ -283,6 +285,9 @@ function tablaCandidatos(doc: jsPDF, y: number, candidatos: CandidatoActa[]) {
           hookData.cell.styles.fillColor = [245, 243, 255]
           hookData.cell.styles.textColor = [109, 40, 217]
           hookData.cell.styles.fontStyle = 'bold'
+        } else if (c?.estado === 'entrevistado') {
+          hookData.cell.styles.fillColor = [236, 254, 255]
+          hookData.cell.styles.textColor = [14, 116, 144]
         } else if (c?.estado === 'descalificada') {
           hookData.cell.styles.textColor = COLOR_ROJO
         } else if (c?.estado === 'retirada') {

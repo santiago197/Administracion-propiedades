@@ -10,10 +10,11 @@
 INSERT INTO transiciones_estado
   (estado_origen, estado_destino, requiere_observacion, descripcion)
 VALUES
-  ('apto',           'preseleccionado', false, 'Candidato preseleccionado tras entrevista exitosa'),
-  ('destacado',      'preseleccionado', false, 'Candidato preseleccionado tras entrevista exitosa (clasificación destacada)'),
+  ('habilitada',     'preseleccionado', false, 'Candidato preseleccionado tras entrevista (desde habilitado)'),
+  ('en_evaluacion',  'preseleccionado', false, 'Candidato preseleccionado durante proceso de evaluación'),
   ('condicionado',   'preseleccionado', false, 'Candidato preseleccionado tras entrevista, pese a clasificación condicionada'),
-  ('en_evaluacion',  'preseleccionado', false, 'Candidato preseleccionado durante proceso de evaluación')
+  ('apto',           'preseleccionado', false, 'Candidato preseleccionado tras entrevista exitosa'),
+  ('destacado',      'preseleccionado', false, 'Candidato preseleccionado tras entrevista exitosa (clasificación destacada)')
 ON CONFLICT (estado_origen, estado_destino) DO NOTHING;
 
 -- 2. Transiciones desde "preseleccionado"

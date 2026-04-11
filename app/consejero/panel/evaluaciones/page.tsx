@@ -41,6 +41,8 @@ interface Propuesta {
   nit_cedula: string
   anios_experiencia: number
   unidades_administradas: number
+  estado?: string
+  observacion_entrevista?: string | null
 }
 
 interface EvaluacionItem {
@@ -399,14 +401,21 @@ export default function EvaluacionesPage() {
             onClick={() => setCurrentIdx(idx)}
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
               idx === currentIdx
-                ? 'border-primary bg-primary text-primary-foreground'
+                ? p.estado === 'preseleccionado'
+                  ? 'border-violet-600 bg-violet-600 text-white'
+                  : 'border-primary bg-primary text-primary-foreground'
+                : p.estado === 'preseleccionado'
+                ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
                 : 'border-border bg-card hover:bg-accent'
             }`}
           >
-            {isGuardado(p.id) && (
+            {p.estado === 'preseleccionado' && (
+              <Star className="h-3.5 w-3.5 fill-current shrink-0" />
+            )}
+            {isGuardado(p.id) && p.estado !== 'preseleccionado' && (
               <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
             )}
-            {changedPropuestas.has(p.id) && !isGuardado(p.id) && (
+            {changedPropuestas.has(p.id) && !isGuardado(p.id) && p.estado !== 'preseleccionado' && (
               <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
             )}
             <span className="truncate max-w-[120px]">{p.razon_social}</span>
@@ -419,8 +428,16 @@ export default function EvaluacionesPage() {
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle className="text-lg">{current.razon_social}</CardTitle>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <CardTitle className="text-lg">{current.razon_social}</CardTitle>
+                  {current.estado === 'preseleccionado' && (
+                    <Badge className="bg-violet-100 text-violet-700 border-violet-300">
+                      <Star className="mr-1 h-3 w-3 fill-violet-500 text-violet-500" />
+                      Preseleccionado por entrevista
+                    </Badge>
+                  )}
+                </div>
                 <CardDescription>
                   {current.tipo_persona === 'juridica' ? 'NIT' : 'C.C.'}: {current.nit_cedula}
                   {' · '}
@@ -428,6 +445,12 @@ export default function EvaluacionesPage() {
                   {current.unidades_administradas > 0 &&
                     ` · ${current.unidades_administradas.toLocaleString('es-CO')} unidades`}
                 </CardDescription>
+                {current.estado === 'preseleccionado' && current.observacion_entrevista && (
+                  <div className="flex items-start gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 mt-2">
+                    <MessageSquare className="h-3.5 w-3.5 mt-0.5 text-violet-500 shrink-0" />
+                    <p className="text-xs text-violet-700 italic">{current.observacion_entrevista}</p>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {guardadoCurrent ? (

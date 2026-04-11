@@ -61,6 +61,7 @@ const ESTADO_CLS: Record<EstadoPropuesta, string> = {
   apto:            'bg-yellow-500/10 text-yellow-700',
   destacado:       'bg-green-500/10 text-green-700',
   no_apto:         'bg-destructive/10 text-destructive',
+  entrevistado:    'bg-cyan-500/10 text-cyan-700',
   preseleccionado: 'bg-violet-500/10 text-violet-700',
   adjudicado:      'bg-emerald-600/10 text-emerald-700',
   descalificada:   'bg-destructive/10 text-destructive',

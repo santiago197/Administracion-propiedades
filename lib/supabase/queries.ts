@@ -240,30 +240,37 @@ export async function existePropuestaPorDocumento(proceso_id: string, nit_cedula
 
 export async function getPropuestas(proceso_id: string, created_by?: string) {
   const supabase = await createServerClient()
-  
-  // Query con join a usuarios para obtener el nombre de quien creó la propuesta
+
+  // Query con join a usuarios y a evaluaciones_admin (puntaje del admin)
   let query = supabase
     .from('propuestas')
-    .select('*, usuarios:created_by(nombre)')
+    .select('*, usuarios:created_by(nombre), evaluaciones_admin(puntaje_total, created_at)')
     .eq('proceso_id', proceso_id)
     .order('created_at', { ascending: false })
-  
-  // Filtrar por created_by si se proporciona
+
   if (created_by) {
     query = query.eq('created_by', created_by)
   }
-  
+
   const { data, error } = await query
-  
+
   if (error) return { data: null, error }
-  
-  // Aplanar el resultado para incluir created_by_nombre
-  const propuestas = data?.map((p) => ({
-    ...p,
-    created_by_nombre: (p.usuarios as { nombre: string } | null)?.nombre ?? null,
-    usuarios: undefined,
-  })) ?? []
-  
+
+  // Aplanar resultado: created_by_nombre + puntaje_admin (evaluación más reciente del admin)
+  const propuestas = data?.map((p) => {
+    const evals = (p.evaluaciones_admin as Array<{ puntaje_total: number; created_at: string }> | null) ?? []
+    const evalMasReciente = evals.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0]
+    return {
+      ...p,
+      created_by_nombre: (p.usuarios as { nombre: string } | null)?.nombre ?? null,
+      puntaje_admin: evalMasReciente?.puntaje_total ?? null,
+      usuarios: undefined,
+      evaluaciones_admin: undefined,
+    }
+  }) ?? []
+
   return { data: propuestas, error: null }
 }
 
@@ -680,7 +687,7 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado', 'preseleccionado'])
+    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'entrevistado', 'adjudicado', 'preseleccionado'])
 
   if (!propuestas || propuestas.length === 0) return []
 
@@ -705,10 +712,11 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
   const filtradas = propuestas
     .filter((p) => evalPorPropuesta.has(p.id))
     .sort((a, b) => {
-      // Preseleccionados van primero
-      const aPresel = a.estado === 'preseleccionado' ? 1 : 0
-      const bPresel = b.estado === 'preseleccionado' ? 1 : 0
-      if (bPresel !== aPresel) return bPresel - aPresel
+      // Preseleccionados → entrevistados → resto
+      const ORDEN: Record<string, number> = { preseleccionado: 0, entrevistado: 1 }
+      const aO = ORDEN[a.estado] ?? 2
+      const bO = ORDEN[b.estado] ?? 2
+      if (aO !== bO) return aO - bO
       // Luego ordenar por puntaje admin (fuente de verdad)
       const pa = evalPorPropuesta.get(a.id) ?? 0
       const pb = evalPorPropuesta.get(b.id) ?? 0
@@ -721,12 +729,19 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     const pf = Number(p.puntaje_final ?? 0)
 
     let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
-    if (puntajeAdmin >= 70) {
+    let clasificacion: string
+    if (puntajeAdmin >= 85) {
       estado_semaforo = 'verde'
+      clasificacion = 'destacado'
+    } else if (puntajeAdmin >= 70) {
+      estado_semaforo = 'verde'
+      clasificacion = 'apto'
     } else if (puntajeAdmin >= 55) {
       estado_semaforo = 'amarillo'
+      clasificacion = 'condicionado'
     } else {
       estado_semaforo = 'rojo'
+      clasificacion = 'no_apto'
     }
 
     return {
@@ -737,7 +752,7 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       puntaje_final: pf > 0 ? pf : puntajeAdmin,
       posicion: index + 1,
       estado_semaforo,
-      clasificacion: p.clasificacion ?? null,
+      clasificacion,
       preseleccionado_entrevista: p.estado === 'preseleccionado',
     }
   })
@@ -888,7 +903,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
 
   // Observaciones de entrevista (preseleccionado, descalificada, retirada) desde el historial de estados
   const idsConObservacion = (propuestas ?? [])
-    .filter((p: any) => ['descalificada', 'retirada', 'preseleccionado'].includes(p.estado))
+    .filter((p: any) => ['descalificada', 'retirada', 'preseleccionado', 'entrevistado'].includes(p.estado))
     .map((p: any) => p.id as string)
 
   const observacionesMap: Record<string, string> = {}
@@ -898,7 +913,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .from('historial_estados_propuesta')
       .select('propuesta_id, observacion, created_at')
       .in('propuesta_id', idsConObservacion)
-      .in('estado_nuevo', ['descalificada', 'retirada', 'preseleccionado'])
+      .in('estado_nuevo', ['descalificada', 'retirada', 'preseleccionado', 'entrevistado'])
       .order('created_at', { ascending: false })
 
     for (const h of historial ?? []) {

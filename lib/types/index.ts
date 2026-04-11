@@ -79,6 +79,7 @@ export type EstadoPropuesta =
   | 'destacado'
   | 'no_apto'
   // Entrevista
+  | 'entrevistado'
   | 'preseleccionado'
   // Terminales
   | 'adjudicado'
@@ -108,6 +109,7 @@ export const ESTADOS_ACTIVOS: EstadoPropuesta[] = [
   'condicionado',
   'apto',
   'destacado',
+  'entrevistado',
   'preseleccionado',
 ]
 
@@ -125,6 +127,7 @@ export const LABEL_ESTADO: Record<EstadoPropuesta, string> = {
   apto:            'Apto',
   destacado:       'Destacado',
   no_apto:         'No Apto',
+  entrevistado:    'Entrevistado',
   preseleccionado: 'Preseleccionado',
   adjudicado:      'Adjudicado',
   descalificada:   'Descalificado',
@@ -205,6 +208,7 @@ export interface Propuesta {
   puntaje_referencias: number
   puntaje_propuesta: number
   puntaje_evaluacion: number
+  puntaje_admin: number | null
   votos_recibidos: number
   puntaje_final: number
   created_by?: string

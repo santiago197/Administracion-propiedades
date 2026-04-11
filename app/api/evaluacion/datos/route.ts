@@ -77,9 +77,9 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabase
         .from('propuestas')
-        .select('id, razon_social, tipo_persona, nit_cedula, representante_legal, anios_experiencia, unidades_administradas, valor_honorarios')
+        .select('id, razon_social, tipo_persona, nit_cedula, representante_legal, anios_experiencia, unidades_administradas, valor_honorarios, estado')
         .eq('proceso_id', proceso_id)
-        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto']),
+        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto', 'entrevistado', 'preseleccionado']),
 
       supabase
         .from('criterios')
@@ -128,8 +128,37 @@ export async function GET(request: NextRequest) {
           .in('propuesta_id', propuestaIds)
       : { data: [] }
 
+    // Obtener observación de preselección desde el historial
+    const idsPresel = (propuestas ?? []).filter((p) => p.estado === 'preseleccionado' || p.estado === 'entrevistado').map((p) => p.id)
+    const observacionPreselMap: Record<string, string> = {}
+    if (idsPresel.length > 0) {
+      const { data: historial } = await supabase
+        .from('historial_estados_propuesta')
+        .select('propuesta_id, observacion, created_at')
+        .in('propuesta_id', idsPresel)
+        .in('estado_nuevo', ['preseleccionado', 'entrevistado'])
+        .order('created_at', { ascending: false })
+      for (const h of historial ?? []) {
+        if (!observacionPreselMap[h.propuesta_id] && h.observacion) {
+          observacionPreselMap[h.propuesta_id] = h.observacion
+        }
+      }
+    }
+
+    // Preseleccionados primero, luego entrevistados, luego alfabético
+    const ORDEN_ESTADO: Record<string, number> = { preseleccionado: 0, entrevistado: 1 }
+    const propuestasSorted = (propuestas ?? []).slice().sort((a, b) => {
+      const aP = ORDEN_ESTADO[a.estado] ?? 2
+      const bP = ORDEN_ESTADO[b.estado] ?? 2
+      if (aP !== bP) return aP - bP
+      return a.razon_social.localeCompare(b.razon_social, 'es')
+    })
+
     return NextResponse.json({
-      propuestas: propuestas ?? [],
+      propuestas: propuestasSorted.map((p) => ({
+        ...p,
+        observacion_entrevista: observacionPreselMap[p.id] ?? null,
+      })),
       criterios: criteriosFinal,
       evaluaciones: evaluaciones ?? [],
       documentos: documentos ?? [],

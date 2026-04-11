@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX, UserCheck } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX, UserCheck, ClipboardCheck } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -75,6 +75,7 @@ const ESTADO_CLS: Record<EstadoPropuesta, string> = {
   apto:            'bg-yellow-500/10 text-yellow-700',
   destacado:       'bg-green-500/10 text-green-700',
   no_apto:         'bg-destructive/10 text-destructive',
+  entrevistado:    'bg-cyan-500/10 text-cyan-700',
   preseleccionado: 'bg-violet-500/10 text-violet-700',
   adjudicado:      'bg-emerald-600/10 text-emerald-700',
   descalificada:   'bg-destructive/10 text-destructive',
@@ -202,6 +203,12 @@ export default function PropuestasPage() {
   const [entrevistaObs, setEntrevistaObs]           = useState('')
   const [rechazandoEntrevista, setRechazandoEntrevista] = useState(false)
   const [entrevistaError, setEntrevistaError]       = useState<string | null>(null)
+
+  // Entrevistado
+  const [entrevistadoTarget, setEntrevistadoTarget] = useState<Propuesta | null>(null)
+  const [entrevistadoObs, setEntrevistadoObs]       = useState('')
+  const [marcandoEntrevistado, setMarcandoEntrevistado] = useState(false)
+  const [entrevistadoError, setEntrevistadoError]   = useState<string | null>(null)
 
   // Preseleccionado por entrevista
   const [preselTarget, setPreselTarget]       = useState<Propuesta | null>(null)
@@ -525,6 +532,30 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handleMarcarEntrevistado() {
+    if (!entrevistadoTarget) return
+    setMarcandoEntrevistado(true)
+    setEntrevistadoError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${entrevistadoTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'entrevistado', observacion: entrevistadoObs.trim() || 'Entrevista realizada.' }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al actualizar')
+      }
+      setEntrevistadoTarget(null)
+      setEntrevistadoObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setEntrevistadoError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setMarcandoEntrevistado(false)
+    }
+  }
+
   async function handlePreseleccionarEntrevista() {
     if (!preselTarget) return
     setPreseleccionando(true)
@@ -660,7 +691,7 @@ export default function PropuestasPage() {
                       <TableHead>Empresa / persona</TableHead>
                       <TableHead className="hidden sm:table-cell">Tipo</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead className="hidden md:table-cell text-right">Puntaje</TableHead>
+                      <TableHead className="hidden md:table-cell text-right">Eval. admin</TableHead>
                       <TableHead className="hidden md:table-cell">Clasificación</TableHead>
                       <TableHead className="hidden lg:table-cell">Acceso Proponente</TableHead>
                       <TableHead className="hidden lg:table-cell">Cargado por</TableHead>
@@ -705,9 +736,18 @@ export default function PropuestasPage() {
                           })()}
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-right">
-                          <span className="font-semibold tabular-nums text-sm">
-                            {p.puntaje_final > 0 ? p.puntaje_final.toFixed(1) : '—'}
-                          </span>
+                          {p.puntaje_admin != null ? (
+                            <span className={`font-bold tabular-nums text-sm ${
+                              p.puntaje_admin >= 85 ? 'text-green-700' :
+                              p.puntaje_admin >= 70 ? 'text-yellow-700' :
+                              p.puntaje_admin >= 55 ? 'text-orange-600' :
+                              'text-destructive'
+                            }`}>
+                              {p.puntaje_admin.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           {p.clasificacion ? (
@@ -817,24 +857,41 @@ export default function PropuestasPage() {
                                 >
                                   <ShieldX className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-violet-600 hover:text-violet-700"
-                                  title="Preseleccionado por entrevista"
-                                  onClick={() => { setPreselTarget(p); setPreselObs(''); setPreselError(null) }}
-                                >
-                                  <UserCheck className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 text-rose-600 hover:text-rose-700"
-                                  title="No apto por entrevista"
-                                  onClick={() => { setEntrevistaTarget(p); setEntrevistaObs(''); setEntrevistaError(null) }}
-                                >
-                                  <UserX className="h-3.5 w-3.5" />
-                                </Button>
+                                {/* Entrevistado: disponible antes de la entrevista */}
+                                {!['entrevistado', 'preseleccionado'].includes(p.estado) && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-cyan-600 hover:text-cyan-700"
+                                    title="Marcar como Entrevistado"
+                                    onClick={() => { setEntrevistadoTarget(p); setEntrevistadoObs(''); setEntrevistadoError(null) }}
+                                  >
+                                    <ClipboardCheck className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                {/* Preseleccionado y No apto: solo desde Entrevistado */}
+                                {p.estado === 'entrevistado' && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7 text-violet-600 hover:text-violet-700"
+                                      title="Preseleccionado por entrevista"
+                                      onClick={() => { setPreselTarget(p); setPreselObs(''); setPreselError(null) }}
+                                    >
+                                      <UserCheck className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7 text-rose-600 hover:text-rose-700"
+                                      title="No apto por entrevista"
+                                      onClick={() => { setEntrevistaTarget(p); setEntrevistaObs(''); setEntrevistaError(null) }}
+                                    >
+                                      <UserX className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </>
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"
@@ -1134,6 +1191,57 @@ export default function PropuestasPage() {
             >
               {rechazandoEntrevista && <Loader2 className="h-4 w-4 animate-spin" />}
               Marcar como No apto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: entrevistado */}
+      <Dialog
+        open={entrevistadoTarget !== null}
+        onOpenChange={(open) => { if (!open) { setEntrevistadoTarget(null); setEntrevistadoObs(''); setEntrevistadoError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Marcar como Entrevistado</DialogTitle>
+            <DialogDescription>
+              Registra que <strong>{entrevistadoTarget?.razon_social}</strong> fue entrevistado.
+              Luego podrás marcarlo como Preseleccionado o No apto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {entrevistadoError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {entrevistadoError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="entrevistado-obs">Observaciones de la entrevista (opcional)</Label>
+              <Textarea
+                id="entrevistado-obs"
+                placeholder="Ej: Candidato puntual, domina normativa de propiedad horizontal, mostró propuesta clara de gestión..."
+                value={entrevistadoObs}
+                onChange={(e) => setEntrevistadoObs(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEntrevistadoTarget(null); setEntrevistadoObs(''); setEntrevistadoError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-cyan-600 hover:bg-cyan-700 text-white gap-2"
+              onClick={handleMarcarEntrevistado}
+              disabled={marcandoEntrevistado}
+            >
+              {marcandoEntrevistado && <Loader2 className="h-4 w-4 animate-spin" />}
+              <ClipboardCheck className="h-4 w-4" />
+              Confirmar entrevista
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -19,7 +19,7 @@ const ESTADOS_VALIDOS: EstadoPropuesta[] = [
   'registro', 'en_revision', 'incompleto', 'en_subsanacion',
   'en_validacion', 'no_apto_legal', 'habilitada', 'en_evaluacion',
   'condicionado', 'apto', 'destacado', 'no_apto',
-  'preseleccionado',
+  'entrevistado', 'preseleccionado',
   'adjudicado', 'descalificada', 'retirada',
 ]
 

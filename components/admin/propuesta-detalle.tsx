@@ -1146,16 +1146,25 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
         {/* Stats */}
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border bg-muted/40 p-3">
-            <p className="text-xs text-muted-foreground">Puntaje evaluación</p>
-            <p className="text-2xl font-bold tabular-nums">
-              {propuesta.puntaje_evaluacion > 0 ? propuesta.puntaje_evaluacion.toFixed(1) : '—'}
+            <p className="text-xs text-muted-foreground">Evaluación técnica (admin)</p>
+            <p className={`text-2xl font-bold tabular-nums ${
+              propuesta.puntaje_admin != null
+                ? propuesta.puntaje_admin >= 85 ? 'text-green-700'
+                : propuesta.puntaje_admin >= 70 ? 'text-yellow-700'
+                : propuesta.puntaje_admin >= 55 ? 'text-orange-600'
+                : 'text-destructive'
+                : ''
+            }`}>
+              {propuesta.puntaje_admin != null ? propuesta.puntaje_admin.toFixed(1) : '—'}
             </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Escala 0 – 100</p>
           </div>
           <div className="rounded-lg border bg-muted/40 p-3">
-            <p className="text-xs text-muted-foreground">Puntaje final</p>
+            <p className="text-xs text-muted-foreground">Puntaje final (eval + votos)</p>
             <p className="text-2xl font-bold tabular-nums">
               {propuesta.puntaje_final > 0 ? propuesta.puntaje_final.toFixed(2) : '—'}
             </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Escala 0 – 100</p>
           </div>
           <div className="rounded-lg border bg-muted/40 p-3">
             <p className="text-xs text-muted-foreground">Clasificación</p>
@@ -1207,7 +1216,7 @@ export function PropuestaDetalle({ propuesta, onChanged, procesoId, conjuntoId }
 
         {canEvaluar ? (
           <Button onClick={() => setEvalPanelOpen(true)} className="gap-2">
-            {propuesta.puntaje_evaluacion > 0 ? 'Editar calificación' : 'Abrir panel de evaluación'}
+            {propuesta.puntaje_admin != null ? 'Editar calificación' : 'Abrir panel de evaluación'}
             <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
