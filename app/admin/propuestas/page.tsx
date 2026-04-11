@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -164,10 +164,15 @@ export default function PropuestasPage() {
   const [selectedProceso, setSelectedProceso] = useState<string>('')
   const [conjuntoId, setConjuntoId] = useState<string>('')
   const [selectedPropuesta, setSelectedPropuesta] = useState<Propuesta | null>(null)
+  const selectedPropuestaRef = useRef<Propuesta | null>(null)
+  useEffect(() => { selectedPropuestaRef.current = selectedPropuesta }, [selectedPropuesta])
 
   // Usuario actual y rol
   const [userInfo, setUserInfo] = useState<{ id?: string; rol?: string; nombre?: string } | null>(null)
   const [filterMode, setFilterMode] = useState<'todas' | 'mias'>('todas')
+
+  // Filtro tipo persona
+  const [filterTipoPersona, setFilterTipoPersona] = useState<'todas' | 'juridica' | 'natural'>('todas')
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1)
@@ -178,6 +183,24 @@ export default function PropuestasPage() {
   const [retiroObs, setRetiroObs]         = useState('')
   const [retirando, setRetirando]         = useState(false)
   const [retiroError, setRetiroError]     = useState<string | null>(null)
+
+  // Rechazo por tope económico
+  const [topeTarget, setTopeTarget]   = useState<Propuesta | null>(null)
+  const [topeObs, setTopeObs]         = useState('')
+  const [rechazando, setRechazando]   = useState(false)
+  const [topeError, setTopeError]     = useState<string | null>(null)
+
+  // Rechazo por validación legal
+  const [legalTarget, setLegalTarget]     = useState<Propuesta | null>(null)
+  const [legalObs, setLegalObs]           = useState('')
+  const [rechazandoLegal, setRechazandoLegal] = useState(false)
+  const [legalError, setLegalError]       = useState<string | null>(null)
+
+  // No apto por entrevista
+  const [entrevistaTarget, setEntrevistaTarget]     = useState<Propuesta | null>(null)
+  const [entrevistaObs, setEntrevistaObs]           = useState('')
+  const [rechazandoEntrevista, setRechazandoEntrevista] = useState(false)
+  const [entrevistaError, setEntrevistaError]       = useState<string | null>(null)
 
   // Acceso Proponente
   const [accesosMap, setAccesosMap] = useState<Map<string, AccesoProponente>>(new Map())
@@ -197,32 +220,30 @@ export default function PropuestasPage() {
       const data: Propuesta[] = await res.json()
       setPropuestas(data)
 
-      // Cargar accesos guardados en paralelo
-      const accesos = await Promise.all(
-        data.map(async (p) => {
-          try {
-            const r = await fetch(`/api/propuestas/${p.id}/acceso`)
-            if (!r.ok) return null
-            const a = await r.json()
-            if (!a?.codigo) return null
-            const acceso: AccesoProponente = {
-              propuestaId: a.propuesta_id,
-              codigo: a.codigo,
-              fechaLimite: a.fecha_limite ? new Date(a.fecha_limite) : null,
-              activo: a.activo,
-              estado: 'inactivo',
+      // Cargar accesos en una sola query batch
+      try {
+        const r = await fetch(`/api/acceso-proponentes?proceso_id=${procesoId}`)
+        if (r.ok) {
+          const accesosRaw: { propuesta_id: string; codigo: string; activo: boolean; fecha_limite: string | null }[] = await r.json()
+          setAccesosMap(() => {
+            const map = new Map<string, AccesoProponente>()
+            for (const a of accesosRaw) {
+              if (!a.codigo) continue
+              const acceso: AccesoProponente = {
+                propuestaId: a.propuesta_id,
+                codigo: a.codigo,
+                fechaLimite: a.fecha_limite ? new Date(a.fecha_limite) : null,
+                activo: a.activo,
+                estado: 'inactivo',
+              }
+              map.set(a.propuesta_id, { ...acceso, estado: calcularEstadoAcceso(acceso) })
             }
-            return { ...acceso, estado: calcularEstadoAcceso(acceso) }
-          } catch {
-            return null
-          }
-        })
-      )
-      setAccesosMap(() => {
-        const map = new Map<string, AccesoProponente>()
-        accesos.forEach((a) => { if (a) map.set(a.propuestaId, a) })
-        return map
-      })
+            return map
+          })
+        }
+      } catch {
+        // no bloquear carga de propuestas si falla el batch de accesos
+      }
 
       return data
     } catch {
@@ -255,7 +276,7 @@ export default function PropuestasPage() {
         if (procesosData.length > 0) {
           const primerProceso = procesosData[0].id
           setSelectedProceso(primerProceso)
-          await loadPropuestas(primerProceso, filterMode)
+          await loadPropuestas(primerProceso, filterModeRef.current)
         }
       } catch (e) {
         console.error('Error fetching data:', e)
@@ -264,7 +285,9 @@ export default function PropuestasPage() {
       }
     }
     init()
-  }, [loadPropuestas, filterMode])
+  // loadPropuestas es estable (deps vacíos). filterMode se lee por ref para no re-ejecutar el init completo al cambiar el filtro.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadPropuestas])
 
   async function handleProcesoChange(procesoId: string) {
     setSelectedProceso(procesoId)
@@ -281,14 +304,21 @@ export default function PropuestasPage() {
     }
   }
 
-  // Refresca la lista y mantiene la selección actualizada
+  // Refresca la lista y mantiene la selección actualizada.
+  // Usa ref para selectedPropuesta para no recrear la función en cada cambio de selección.
+  const selectedProcesoRef = useRef(selectedProceso)
+  const filterModeRef = useRef(filterMode)
+  useEffect(() => { selectedProcesoRef.current = selectedProceso }, [selectedProceso])
+  useEffect(() => { filterModeRef.current = filterMode }, [filterMode])
+
   const handlePropuestaChanged = useCallback(async () => {
-    const data = await loadPropuestas(selectedProceso, filterMode)
-    if (selectedPropuesta) {
-      const fresh = data.find((p) => p.id === selectedPropuesta.id)
+    const data = await loadPropuestas(selectedProcesoRef.current, filterModeRef.current)
+    const current = selectedPropuestaRef.current
+    if (current) {
+      const fresh = data.find((p) => p.id === current.id)
       setSelectedPropuesta(fresh ?? null)
     }
-  }, [loadPropuestas, selectedProceso, selectedPropuesta, filterMode])
+  }, [loadPropuestas])
 
   // ---------------------------------------------------------------------------
   // Funciones de Acceso Proponente
@@ -413,6 +443,81 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handleRechazarTope() {
+    if (!topeTarget || !topeObs.trim()) return
+    setRechazando(true)
+    setTopeError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${topeTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'descalificada', observacion: topeObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al descalificar propuesta')
+      }
+      if (selectedPropuesta?.id === topeTarget.id) setSelectedPropuesta(null)
+      setTopeTarget(null)
+      setTopeObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setTopeError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazando(false)
+    }
+  }
+
+  async function handleRechazarLegal() {
+    if (!legalTarget || !legalObs.trim()) return
+    setRechazandoLegal(true)
+    setLegalError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${legalTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'no_apto_legal', observacion: legalObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al rechazar propuesta')
+      }
+      if (selectedPropuesta?.id === legalTarget.id) setSelectedPropuesta(null)
+      setLegalTarget(null)
+      setLegalObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setLegalError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazandoLegal(false)
+    }
+  }
+
+  async function handleRechazarEntrevista() {
+    if (!entrevistaTarget || !entrevistaObs.trim()) return
+    setRechazandoEntrevista(true)
+    setEntrevistaError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${entrevistaTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'descalificada', observacion: entrevistaObs.trim() }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al marcar propuesta')
+      }
+      if (selectedPropuesta?.id === entrevistaTarget.id) setSelectedPropuesta(null)
+      setEntrevistaTarget(null)
+      setEntrevistaObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setEntrevistaError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setRechazandoEntrevista(false)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -478,6 +583,25 @@ export default function PropuestasPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Filtro tipo persona */}
+          <div className="flex items-center gap-2">
+            <Label>Tipo:</Label>
+            <Select
+              value={filterTipoPersona}
+              onValueChange={(v) => {
+                setFilterTipoPersona(v as 'todas' | 'juridica' | 'natural')
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos</SelectItem>
+                <SelectItem value="juridica">Jurídica</SelectItem>
+                <SelectItem value="natural">Natural</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
@@ -514,7 +638,13 @@ export default function PropuestasPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {propuestas
+                    {[...propuestas]
+                      .filter((p) => filterTipoPersona === 'todas' || p.tipo_persona === filterTipoPersona)
+                      .sort((a, b) => {
+                        const pctA = pctCumplimientoLegal(a) ?? -1
+                        const pctB = pctCumplimientoLegal(b) ?? -1
+                        return pctB - pctA
+                      })
                       .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
                       .map((p) => (
                       <TableRow
@@ -637,15 +767,44 @@ export default function PropuestasPage() {
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                             {!ESTADOS_TERMINALES.includes(p.estado) && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 text-destructive hover:text-destructive/80"
-                                title="Retirar propuesta"
-                                onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-orange-600 hover:text-orange-700"
+                                  title="Rechazar por tope económico"
+                                  onClick={() => { setTopeTarget(p); setTopeObs(''); setTopeError(null) }}
+                                >
+                                  <CircleDollarSign className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-indigo-600 hover:text-indigo-700"
+                                  title="Rechazar por validación legal"
+                                  onClick={() => { setLegalTarget(p); setLegalObs(''); setLegalError(null) }}
+                                >
+                                  <ShieldX className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-rose-600 hover:text-rose-700"
+                                  title="No apto por entrevista"
+                                  onClick={() => { setEntrevistaTarget(p); setEntrevistaObs(''); setEntrevistaError(null) }}
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-destructive hover:text-destructive/80"
+                                  title="Retirar propuesta"
+                                  onClick={() => { setRetiroTarget(p); setRetiroObs(''); setRetiroError(null) }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
                             )}
                           </div>
                         </TableCell>
@@ -655,56 +814,63 @@ export default function PropuestasPage() {
                 </Table>
               </div>
               {/* Paginador */}
-              {propuestas.length > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Mostrando {Math.min((currentPage - 1) * PAGE_SIZE + 1, propuestas.length)} - {Math.min(currentPage * PAGE_SIZE, propuestas.length)} de {propuestas.length}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    {Array.from({ length: Math.ceil(propuestas.length / PAGE_SIZE) }, (_, i) => i + 1)
-                      .filter(page => {
-                        const totalPages = Math.ceil(propuestas.length / PAGE_SIZE)
-                        if (totalPages <= 5) return true
-                        if (page === 1 || page === totalPages) return true
-                        if (Math.abs(page - currentPage) <= 1) return true
-                        return false
-                      })
-                      .map((page, idx, arr) => (
-                        <span key={page} className="flex items-center">
-                          {idx > 0 && arr[idx - 1] !== page - 1 && (
-                            <span className="px-1 text-muted-foreground">...</span>
-                          )}
-                          <Button
-                            size="sm"
-                            variant={currentPage === page ? 'default' : 'outline'}
-                            className="h-8 w-8 p-0"
-                            onClick={() => setCurrentPage(page)}
-                          >
-                            {page}
-                          </Button>
-                        </span>
-                      ))}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setCurrentPage(p => Math.min(Math.ceil(propuestas.length / PAGE_SIZE), p + 1))}
-                      disabled={currentPage >= Math.ceil(propuestas.length / PAGE_SIZE)}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
+              {(() => {
+                const propuestasFiltradas = propuestas.filter(
+                  (p) => filterTipoPersona === 'todas' || p.tipo_persona === filterTipoPersona
+                )
+                const total = propuestasFiltradas.length
+                if (total === 0) return null
+                return (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2 mt-4">
+                    <p className="text-sm text-muted-foreground">
+                      Mostrando {Math.min((currentPage - 1) * PAGE_SIZE + 1, total)} - {Math.min(currentPage * PAGE_SIZE, total)} de {total}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      {Array.from({ length: Math.ceil(total / PAGE_SIZE) }, (_, i) => i + 1)
+                        .filter(page => {
+                          const totalPages = Math.ceil(total / PAGE_SIZE)
+                          if (totalPages <= 5) return true
+                          if (page === 1 || page === totalPages) return true
+                          if (Math.abs(page - currentPage) <= 1) return true
+                          return false
+                        })
+                        .map((page, idx, arr) => (
+                          <span key={page} className="flex items-center">
+                            {idx > 0 && arr[idx - 1] !== page - 1 && (
+                              <span className="px-1 text-muted-foreground">...</span>
+                            )}
+                            <Button
+                              size="sm"
+                              variant={currentPage === page ? 'default' : 'outline'}
+                              className="h-8 w-8 p-0"
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </Button>
+                          </span>
+                        ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.min(Math.ceil(total / PAGE_SIZE), p + 1))}
+                        disabled={currentPage >= Math.ceil(total / PAGE_SIZE)}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
               <p className="mt-2 text-xs text-muted-foreground">
                 Haz clic en una fila para ver el detalle. No avanza a Evaluación si la documentación es incompleta o la validación legal es No Apto.
               </p>
@@ -722,6 +888,65 @@ export default function PropuestasPage() {
           conjuntoId={conjuntoId}
         />
       )}
+
+      {/* Dialog: rechazo por tope económico */}
+      <Dialog
+        open={topeTarget !== null}
+        onOpenChange={(open) => { if (!open) { setTopeTarget(null); setTopeObs(''); setTopeError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar por tope económico</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{topeTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>Descalificada</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {topeTarget?.valor_honorarios && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Honorarios propuestos: </span>
+                <span className="tabular-nums">
+                  {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(topeTarget.valor_honorarios)}
+                </span>
+              </div>
+            )}
+            {topeError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {topeError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="tope-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="tope-obs"
+                placeholder="Ej: Honorarios propuestos superan el tope de $X definido en la convocatoria..."
+                value={topeObs}
+                onChange={(e) => setTopeObs(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setTopeTarget(null); setTopeObs(''); setTopeError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarTope}
+              disabled={rechazando || !topeObs.trim()}
+              className="gap-2"
+            >
+              {rechazando && <Loader2 className="h-4 w-4 animate-spin" />}
+              Descalificar propuesta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de retiro */}
       <Dialog
@@ -767,6 +992,108 @@ export default function PropuestasPage() {
             >
               {retirando && <Loader2 className="h-4 w-4 animate-spin" />}
               Retirar propuesta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: rechazo por validación legal */}
+      <Dialog
+        open={legalTarget !== null}
+        onOpenChange={(open) => { if (!open) { setLegalTarget(null); setLegalObs(''); setLegalError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rechazar por validación legal</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{legalTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>No apto legal</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {legalError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {legalError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="legal-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="legal-obs"
+                placeholder="Ej: No cumple con los requisitos legales: antecedentes disciplinarios activos en Procuraduría..."
+                value={legalObs}
+                onChange={(e) => setLegalObs(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setLegalTarget(null); setLegalObs(''); setLegalError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarLegal}
+              disabled={rechazandoLegal || !legalObs.trim()}
+              className="gap-2"
+            >
+              {rechazandoLegal && <Loader2 className="h-4 w-4 animate-spin" />}
+              Marcar como No apto legal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: no apto por entrevista */}
+      <Dialog
+        open={entrevistaTarget !== null}
+        onOpenChange={(open) => { if (!open) { setEntrevistaTarget(null); setEntrevistaObs(''); setEntrevistaError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>No apto por entrevista</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{entrevistaTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>Descalificada</em>. Esta acción es irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {entrevistaError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {entrevistaError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="entrevista-obs">Observación <span className="text-destructive">*</span></Label>
+              <Textarea
+                id="entrevista-obs"
+                placeholder="Ej: No demostró conocimiento suficiente en gestión de propiedad horizontal de alta densidad..."
+                value={entrevistaObs}
+                onChange={(e) => setEntrevistaObs(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEntrevistaTarget(null); setEntrevistaObs(''); setEntrevistaError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRechazarEntrevista}
+              disabled={rechazandoEntrevista || !entrevistaObs.trim()}
+              className="gap-2"
+            >
+              {rechazandoEntrevista && <Loader2 className="h-4 w-4 animate-spin" />}
+              Marcar como No apto
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -20,6 +20,7 @@ import type {
   ClasificacionPropuesta,
   Criterio,
   CriterioEvaluacion,
+  TipoCriterio,
   TipoDocumentoConfig,
   TipoPersona,
   ValidacionLegalItemConfig,
@@ -674,23 +675,51 @@ export async function getTransicionesDisponibles(estado_actual: EstadoPropuesta)
 export async function getResultadosFinales(proceso_id: string): Promise<ResultadoFinal[]> {
   const supabase = await createServerClient()
 
-  // Leer directamente de propuestas para incluir clasificacion (la vista no la expone)
+  // 1. Propuestas del proceso en estados relevantes
   const { data: propuestas } = await supabase
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
-    .order('puntaje_final', { ascending: false, nullsFirst: false })
+    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
 
-  if (!propuestas) return []
+  if (!propuestas || propuestas.length === 0) return []
 
-  return propuestas.map((p, index) => {
-    let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+  // 2. Leer evaluaciones_admin — fuente de verdad del puntaje del admin.
+  //    recalcular_resultados sobreescribe puntaje_evaluacion con el score de consejeros,
+  //    por eso se lee directo de evaluaciones_admin.puntaje_total.
+  const propuestaIds = propuestas.map((p) => p.id)
+  const { data: evaluadas } = await supabase
+    .from('evaluaciones_admin')
+    .select('propuesta_id, puntaje_total, created_at')
+    .in('propuesta_id', propuestaIds)
+    .order('created_at', { ascending: false })
+
+  // Por propuesta: quedarse con la evaluación más reciente
+  const evalPorPropuesta = new Map<string, number>()
+  for (const e of (evaluadas ?? [])) {
+    if (!evalPorPropuesta.has(e.propuesta_id)) {
+      evalPorPropuesta.set(e.propuesta_id, Number(e.puntaje_total ?? 0))
+    }
+  }
+
+  const filtradas = propuestas
+    .filter((p) => evalPorPropuesta.has(p.id))
+    .sort((a, b) => {
+      // Ordenar por puntaje admin (fuente de verdad)
+      const pa = evalPorPropuesta.get(a.id) ?? 0
+      const pb = evalPorPropuesta.get(b.id) ?? 0
+      return pb - pa
+    })
+
+  return filtradas.map((p, index) => {
+    const puntajeAdmin = evalPorPropuesta.get(p.id) ?? 0
+    // puntaje_final puede ser 0 si recalcular_resultados no se ha ejecutado con datos de admin
     const pf = Number(p.puntaje_final ?? 0)
 
-    if (pf >= 70) {
+    let estado_semaforo: 'verde' | 'amarillo' | 'rojo'
+    if (puntajeAdmin >= 70) {
       estado_semaforo = 'verde'
-    } else if (pf >= 55) {
+    } else if (puntajeAdmin >= 55) {
       estado_semaforo = 'amarillo'
     } else {
       estado_semaforo = 'rojo'
@@ -699,9 +728,9 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     return {
       propuesta_id: p.id,
       razon_social: p.razon_social,
-      puntaje_evaluacion: Number(p.puntaje_evaluacion ?? 0),
+      puntaje_evaluacion: puntajeAdmin,
       votos_recibidos: Number(p.votos_recibidos ?? 0),
-      puntaje_final: pf,
+      puntaje_final: pf > 0 ? pf : puntajeAdmin,
       posicion: index + 1,
       estado_semaforo,
       clasificacion: p.clasificacion ?? null,
@@ -795,7 +824,7 @@ export interface VotoDetallado {
 export interface DatosActa {
   proceso: { nombre: string; fecha_inicio: string; fecha_fin?: string; peso_evaluacion: number; peso_votacion: number }
   conjunto: { nombre: string; direccion: string; ciudad: string; logo_url?: string }
-  candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null }>
+  candidatos: Array<{ razon_social: string; tipo_persona: string; estado: string; clasificacion?: string | null; observaciones?: string }>
   matriz: FilaMatrizEvaluacion[]
   ranking: ResultadoFinal[]
   votos: VotoDetallado[]
@@ -818,7 +847,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
   // Candidatos del proceso
   const { data: propuestas } = await supabase
     .from('propuestas')
-    .select('razon_social, tipo_persona, estado, clasificacion')
+    .select('id, razon_social, tipo_persona, estado, clasificacion')
     .eq('proceso_id', proceso_id)
     .order('razon_social', { ascending: true })
 
@@ -852,6 +881,28 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       .eq('proceso_id', proceso_id),
   ])
 
+  // Observaciones de descalificación / retiro desde el historial de estados
+  const idsConObservacion = (propuestas ?? [])
+    .filter((p: any) => ['descalificada', 'retirada'].includes(p.estado))
+    .map((p: any) => p.id as string)
+
+  const observacionesMap: Record<string, string> = {}
+
+  if (idsConObservacion.length > 0) {
+    const { data: historial } = await supabase
+      .from('historial_estados_propuesta')
+      .select('propuesta_id, observacion, created_at')
+      .in('propuesta_id', idsConObservacion)
+      .in('estado_nuevo', ['descalificada', 'retirada'])
+      .order('created_at', { ascending: false })
+
+    for (const h of historial ?? []) {
+      if (!observacionesMap[h.propuesta_id] && h.observacion) {
+        observacionesMap[h.propuesta_id] = h.observacion
+      }
+    }
+  }
+
   const conjunto = (proceso as any)?.conjuntos
   const total = totalConsejeros ?? 0
   const votaronCount = votaron ?? 0
@@ -875,6 +926,7 @@ export async function getDatosActa(proceso_id: string, generado_por?: string): P
       tipo_persona: p.tipo_persona,
       estado: p.estado,
       clasificacion: p.clasificacion ?? null,
+      observaciones: observacionesMap[p.id] ?? undefined,
     })),
     matriz,
     ranking,
@@ -1342,14 +1394,15 @@ export async function getCriteriosProceso(procesoId: string): Promise<Criterio[]
   if (error) throw error
 
   return (data ?? []).map((row) => {
-    const catalogo = row.criterios_evaluacion
+    const catalogo = row.criterios_evaluacion as { id?: string; nombre?: string; descripcion?: string; tipo?: string; orden?: number; activo?: boolean } | null
     return {
       id: row.id,
       proceso_id: row.proceso_id,
       criterio_evaluacion_id: row.criterio_evaluacion_id,
+      codigo: row.criterio_evaluacion_id ?? row.id,
       nombre: catalogo?.nombre ?? 'Criterio',
       descripcion: catalogo?.descripcion ?? null,
-      tipo: catalogo?.tipo ?? 'escala',
+      tipo: (catalogo?.tipo ?? 'escala') as TipoCriterio,
       peso: row.peso,
       valor_minimo: row.valor_minimo,
       valor_maximo: row.valor_maximo,
@@ -1542,7 +1595,7 @@ export async function validarCodigoProponente(codigo: string) {
     .select(`
       *,
       propuestas:propuesta_id(
-        id, razon_social, nit_cedula, email, proceso_id
+        id, razon_social, nit_cedula, email, proceso_id, tipo_persona, checklist_legal
       )
     `)
     .eq('codigo', codigo)
@@ -1558,15 +1611,44 @@ export async function validarCodigoProponente(codigo: string) {
     return { data: null, error: new Error('Código expirado') }
   }
 
-  // Obtener documentos y tipos faltantes
-  const { faltantes, cubiertos } = await getDocumentosFaltantes(acceso.propuesta_id)
+  const tipoPersona = acceso.propuestas.tipo_persona as string | null
+
+  // Obtener documentos ya cargados
   const { data: documentos } = await getDocumentos(acceso.propuesta_id)
 
-  // Calcular estadísticas
-  const totalObligatorios = faltantes.length + cubiertos.filter(t => t.es_obligatorio).length
-  const completados = cubiertos.filter(t => t.es_obligatorio).length
-  const porcentaje = totalObligatorios > 0 
-    ? Math.round((completados / totalObligatorios) * 100)
+  // Ítems de validación legal activos filtrados por tipo de persona → se usan como tipos_faltantes
+  const { data: legalItems } = await supabase
+    .from('validacion_legal_items')
+    .select('id, codigo, seccion, nombre, descripcion, categoria, aplica_a, obligatorio, orden')
+    .eq('activo', true)
+    .order('orden', { ascending: true })
+
+  // Extraer IDs/códigos de ítems marcados como no_cumple en el checklist de la propuesta
+  const checklistLegal = (acceso.propuestas.checklist_legal ?? {}) as Record<string, { id: string; estado: string; observacion: string }>
+  const noCumpleKeys = new Set(
+    Object.entries(checklistLegal)
+      .filter(([, val]) => val.estado === 'no_cumple')
+      .map(([key]) => key)
+  )
+
+  const itemsFiltrados = (legalItems ?? []).filter((item) => {
+    const coincidePersona = item.aplica_a === 'ambos' || item.aplica_a === tipoPersona
+    // Si no hay ningún ítem marcado como no_cumple, no mostrar nada
+    if (noCumpleKeys.size === 0) return false
+    // Coincidir por UUID (id) o por código semántico (codigo)
+    const estaEnNoCumple = noCumpleKeys.has(item.id) || noCumpleKeys.has(item.codigo)
+    return coincidePersona && estaEnNoCumple
+  })
+
+  // Calcular estadísticas en base a todos los ítems filtrados (obligatorios y no obligatorios)
+  const totalItems = itemsFiltrados.length
+  const idsItemsFiltrados = new Set(itemsFiltrados.map((i) => i.id))
+  const completados = (documentos ?? []).filter((d) =>
+    d.observaciones?.startsWith('legal_item:') &&
+    idsItemsFiltrados.has(d.observaciones.replace('legal_item:', ''))
+  ).length
+  const porcentaje = totalItems > 0
+    ? Math.round((completados / totalItems) * 100)
     : 100
 
   // Verificar documentos vencidos
@@ -1576,6 +1658,16 @@ export async function validarCodigoProponente(codigo: string) {
     return new Date(d.fecha_vencimiento) < hoy
   }).length
 
+  // Obtener el motivo de rechazo más reciente del historial de estados
+  const { data: historialRechazo } = await supabase
+    .from('historial_estados_propuesta')
+    .select('observacion, estado_nuevo')
+    .eq('propuesta_id', acceso.propuesta_id)
+    .in('estado_nuevo', ['no_apto_legal', 'incompleto', 'en_subsanacion'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   return {
     data: {
       propuesta_id: acceso.propuesta_id,
@@ -1583,15 +1675,25 @@ export async function validarCodigoProponente(codigo: string) {
       nit_cedula: acceso.propuestas.nit_cedula,
       email: acceso.propuestas.email,
       estadisticas: {
-        total_obligatorios: totalObligatorios,
+        total_obligatorios: totalItems,
         completados,
-        faltantes: faltantes.length,
+        faltantes: itemsFiltrados.length,
         porcentaje,
         vencidos,
       },
-      tipos_faltantes: faltantes,
-      tipos_cubiertos: cubiertos,
+      tipos_faltantes: itemsFiltrados.map((item) => ({
+        id: item.id,
+        codigo: item.codigo,
+        seccion: item.seccion,
+        nombre: item.nombre,
+        descripcion: item.descripcion,
+        categoria: item.categoria,
+        aplica_a: item.aplica_a,
+        es_obligatorio: item.obligatorio,
+      })),
+      tipos_cubiertos: [],
       documentos: documentos ?? [],
+      motivo_rechazo_legal: historialRechazo?.observacion ?? null,
     },
     error: null,
   }
@@ -1699,6 +1801,21 @@ export async function obtenerAccesoProponente(propuesta_id: string) {
     .select('*')
     .eq('propuesta_id', propuesta_id)
     .maybeSingle()
+
+  return { data, error }
+}
+
+/**
+ * Obtiene todos los accesos de proponentes de un proceso en una sola query
+ */
+export async function obtenerAccesosPorProceso(proceso_id: string) {
+  const supabase = await createServerClient()
+
+  const { data, error } = await supabase
+    .from('acceso_proponentes')
+    .select('propuesta_id, codigo, activo, fecha_limite, propuestas!inner(proceso_id)')
+    .eq('propuestas.proceso_id', proceso_id)
+    .not('codigo', 'is', null)
 
   return { data, error }
 }

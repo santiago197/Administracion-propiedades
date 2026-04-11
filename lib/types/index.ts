@@ -255,6 +255,7 @@ export interface Criterio {
   id: string
   proceso_id: string
   criterio_evaluacion_id: string
+  codigo: string
   nombre: string
   descripcion?: string
   peso: number

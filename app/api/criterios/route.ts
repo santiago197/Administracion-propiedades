@@ -14,60 +14,8 @@ export async function GET(request: NextRequest) {
     const procesoId = searchParams.get('proceso_id')
 
     if (procesoId) {
-      try {
-        const criterios = await getCriteriosProceso(procesoId)
-        return NextResponse.json(criterios)
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : typeof error === 'object' && error && 'message' in error
-              ? String((error as { message?: unknown }).message)
-              : ''
-        const errorDetails =
-          typeof error === 'object' && error && 'details' in error
-            ? String((error as { details?: unknown }).details)
-            : ''
-        const errorCode =
-          typeof error === 'object' && error && 'code' in error
-            ? String((error as { code?: unknown }).code)
-            : ''
-        const lowerMessage = `${errorMessage} ${errorDetails}`.toLowerCase()
-        const isRlsError =
-          lowerMessage.includes('row-level security') || lowerMessage.includes('permission')
-        const isSchemaMismatch =
-          errorCode === 'PGRST200' ||
-          lowerMessage.includes('criterio_evaluacion_id') ||
-          lowerMessage.includes('criterios_evaluacion') ||
-          lowerMessage.includes('column') ||
-          lowerMessage.includes('does not exist')
-
-        const adminClient = createAdminClient()
-
-        if (isSchemaMismatch) {
-          const { data, error: adminError } = await adminClient
-            .from('criterios')
-            .select('id, proceso_id, nombre, descripcion, tipo, peso, valor_minimo, valor_maximo, orden, activo')
-            .eq('proceso_id', procesoId)
-            .order('orden', { ascending: true })
-
-          if (adminError) throw adminError
-          return NextResponse.json(data ?? [])
-        }
-
-        if (!isRlsError) throw error
-
-        const { data, error: adminError } = await adminClient
-          .from('criterios')
-          .select(
-            'id, proceso_id, criterio_evaluacion_id, peso, valor_minimo, valor_maximo, orden, activo, criterios_evaluacion:criterio_evaluacion_id (id, nombre, descripcion, tipo, orden, activo)'
-          )
-          .eq('proceso_id', procesoId)
-          .order('orden', { ascending: true })
-
-        if (adminError) throw adminError
-        return NextResponse.json(data ?? [])
-      }
+      const criterios = await getCriteriosProceso(procesoId)
+      return NextResponse.json(criterios)
     }
 
     try {
