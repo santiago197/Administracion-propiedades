@@ -680,7 +680,9 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .not('puntaje_evaluacion', 'is', null)
+    .gt('puntaje_evaluacion', 0)
     .order('puntaje_final', { ascending: false, nullsFirst: false })
 
   if (!propuestas) return []
