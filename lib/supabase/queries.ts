@@ -680,7 +680,7 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
     .from('propuestas')
     .select('id, razon_social, tipo_persona, nit_cedula, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
     .eq('proceso_id', proceso_id)
-    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado'])
+    .in('estado', ['habilitada', 'en_evaluacion', 'condicionado', 'apto', 'destacado', 'no_apto', 'adjudicado', 'preseleccionado'])
 
   if (!propuestas || propuestas.length === 0) return []
 
@@ -705,7 +705,11 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
   const filtradas = propuestas
     .filter((p) => evalPorPropuesta.has(p.id))
     .sort((a, b) => {
-      // Ordenar por puntaje admin (fuente de verdad)
+      // Preseleccionados van primero
+      const aPresel = a.estado === 'preseleccionado' ? 1 : 0
+      const bPresel = b.estado === 'preseleccionado' ? 1 : 0
+      if (bPresel !== aPresel) return bPresel - aPresel
+      // Luego ordenar por puntaje admin (fuente de verdad)
       const pa = evalPorPropuesta.get(a.id) ?? 0
       const pb = evalPorPropuesta.get(b.id) ?? 0
       return pb - pa
@@ -734,6 +738,7 @@ export async function getResultadosFinales(proceso_id: string): Promise<Resultad
       posicion: index + 1,
       estado_semaforo,
       clasificacion: p.clasificacion ?? null,
+      preseleccionado_entrevista: p.estado === 'preseleccionado',
     }
   })
 }

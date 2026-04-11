@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Trophy, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react'
+import { Loader2, Trophy, AlertCircle, RefreshCw, CheckCircle2, Star } from 'lucide-react'
 import { useActiveProceso } from '@/hooks/use-active-proceso'
 import type { ResultadoFinal } from '@/lib/types/index'
 
@@ -117,7 +117,7 @@ export default function RankingPage() {
           <p className="text-sm text-muted-foreground">Resultado ponderado</p>
           <h1 className="text-2xl tracking-tight">Ranking</h1>
           <p className="text-sm text-muted-foreground">
-            Clasificación automática por puntaje de evaluación + votos del consejo.
+            Clasificación automática por puntaje de evaluación + votos del consejo. Los candidatos preseleccionados por entrevista aparecen primero.
           </p>
           {ultimoCalculo && !ocupado && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
@@ -171,7 +171,15 @@ export default function RankingPage() {
                     {i === 0 ? <Trophy className="h-5 w-5" /> : `#${i + 1}`}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold truncate">{r.razon_social}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold truncate">{r.razon_social}</p>
+                      {r.preseleccionado_entrevista && (
+                        <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 shrink-0" variant="outline">
+                          <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
+                          Preseleccionado
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
                       <p className="text-2xl font-black text-primary tabular-nums">{r.puntaje_final.toFixed(1)}</p>
                       {r.clasificacion && (
@@ -239,7 +247,17 @@ export default function RankingPage() {
                         <span className="text-muted-foreground tabular-nums">{idx + 1}</span>
                       )}
                     </TableCell>
-                    <TableCell className="font-medium">{r.razon_social}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {r.razon_social}
+                        {r.preseleccionado_entrevista && (
+                          <Badge className="bg-violet-500/10 text-violet-700 border-violet-200" variant="outline">
+                            <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
+                            Preseleccionado
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="hidden sm:table-cell text-right tabular-nums">
                       {r.puntaje_evaluacion.toFixed(1)}
                     </TableCell>

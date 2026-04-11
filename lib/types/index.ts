@@ -78,6 +78,8 @@ export type EstadoPropuesta =
   | 'apto'
   | 'destacado'
   | 'no_apto'
+  // Entrevista
+  | 'preseleccionado'
   // Terminales
   | 'adjudicado'
   | 'descalificada'
@@ -106,6 +108,7 @@ export const ESTADOS_ACTIVOS: EstadoPropuesta[] = [
   'condicionado',
   'apto',
   'destacado',
+  'preseleccionado',
 ]
 
 /** Etiquetas legibles para mostrar en la UI */
@@ -122,6 +125,7 @@ export const LABEL_ESTADO: Record<EstadoPropuesta, string> = {
   apto:            'Apto',
   destacado:       'Destacado',
   no_apto:         'No Apto',
+  preseleccionado: 'Preseleccionado',
   adjudicado:      'Adjudicado',
   descalificada:   'Descalificado',
   retirada:        'Retirado',
@@ -323,6 +327,7 @@ export interface ResultadoFinal {
   posicion: number
   estado_semaforo: 'verde' | 'amarillo' | 'rojo'
   clasificacion?: string | null
+  preseleccionado_entrevista: boolean
 }
 
 /** Detalle de un criterio de la matriz de evaluación para una propuesta */

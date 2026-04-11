@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX } from 'lucide-react'
+import { Loader2, Eye, Trash2, AlertCircle, Paperclip, ScanSearch, X, Link2, Settings, Copy, Check, CalendarIcon, ChevronLeft, ChevronRight, CircleDollarSign, ShieldX, UserX, UserCheck } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import {
   Drawer,
@@ -75,6 +75,7 @@ const ESTADO_CLS: Record<EstadoPropuesta, string> = {
   apto:            'bg-yellow-500/10 text-yellow-700',
   destacado:       'bg-green-500/10 text-green-700',
   no_apto:         'bg-destructive/10 text-destructive',
+  preseleccionado: 'bg-violet-500/10 text-violet-700',
   adjudicado:      'bg-emerald-600/10 text-emerald-700',
   descalificada:   'bg-destructive/10 text-destructive',
   retirada:        'bg-muted/80 text-muted-foreground',
@@ -201,6 +202,12 @@ export default function PropuestasPage() {
   const [entrevistaObs, setEntrevistaObs]           = useState('')
   const [rechazandoEntrevista, setRechazandoEntrevista] = useState(false)
   const [entrevistaError, setEntrevistaError]       = useState<string | null>(null)
+
+  // Preseleccionado por entrevista
+  const [preselTarget, setPreselTarget]       = useState<Propuesta | null>(null)
+  const [preselObs, setPreselObs]             = useState('')
+  const [preseleccionando, setPreseleccionando] = useState(false)
+  const [preselError, setPreselError]         = useState<string | null>(null)
 
   // Acceso Proponente
   const [accesosMap, setAccesosMap] = useState<Map<string, AccesoProponente>>(new Map())
@@ -518,6 +525,30 @@ export default function PropuestasPage() {
     }
   }
 
+  async function handlePreseleccionarEntrevista() {
+    if (!preselTarget) return
+    setPreseleccionando(true)
+    setPreselError(null)
+    try {
+      const res = await fetch(`/api/propuestas/${preselTarget.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'preseleccionado', observacion: preselObs.trim() || 'Preseleccionado tras entrevista.' }),
+      })
+      if (!res.ok) {
+        const body = await res.json()
+        throw new Error(body.error ?? 'Error al preseleccionar propuesta')
+      }
+      setPreselTarget(null)
+      setPreselObs('')
+      await loadPropuestas(selectedProceso, filterMode)
+    } catch (e) {
+      setPreselError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setPreseleccionando(false)
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -785,6 +816,15 @@ export default function PropuestasPage() {
                                   onClick={() => { setLegalTarget(p); setLegalObs(''); setLegalError(null) }}
                                 >
                                   <ShieldX className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-violet-600 hover:text-violet-700"
+                                  title="Preseleccionado por entrevista"
+                                  onClick={() => { setPreselTarget(p); setPreselObs(''); setPreselError(null) }}
+                                >
+                                  <UserCheck className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
                                   size="icon"
@@ -1094,6 +1134,57 @@ export default function PropuestasPage() {
             >
               {rechazandoEntrevista && <Loader2 className="h-4 w-4 animate-spin" />}
               Marcar como No apto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: preseleccionado por entrevista */}
+      <Dialog
+        open={preselTarget !== null}
+        onOpenChange={(open) => { if (!open) { setPreselTarget(null); setPreselObs(''); setPreselError(null) } }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Preseleccionado por entrevista</DialogTitle>
+            <DialogDescription>
+              La propuesta de <strong>{preselTarget?.razon_social}</strong> pasará al estado{' '}
+              <em>Preseleccionado</em> y tendrá prioridad en el ranking.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {preselError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {preselError}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="presel-obs">Observación (opcional)</Label>
+              <Textarea
+                id="presel-obs"
+                placeholder="Ej: Demostró sólido conocimiento en gestión de propiedad horizontal de alta densidad..."
+                value={preselObs}
+                onChange={(e) => setPreselObs(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setPreselTarget(null); setPreselObs(''); setPreselError(null) }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
+              onClick={handlePreseleccionarEntrevista}
+              disabled={preseleccionando}
+            >
+              {preseleccionando && <Loader2 className="h-4 w-4 animate-spin" />}
+              <UserCheck className="h-4 w-4" />
+              Marcar como Preseleccionado
             </Button>
           </DialogFooter>
         </DialogContent>
