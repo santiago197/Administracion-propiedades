@@ -36,6 +36,7 @@ interface Propuesta {
   anios_experiencia: number
   unidades_administradas: number
   valor_honorarios?: number | null
+  estado?: string
 }
 
 interface EvaluacionFlat {
@@ -388,7 +389,10 @@ export default function VotacionPage() {
     })
   }
 
-  const todasEvaluadas = propuestas.length > 0 && propuestas.every((p) => isComplete(p.id))
+  const propuestasQueRequierenEvaluacion = propuestas.filter(
+    (p) => p.estado !== 'preseleccionado' && p.estado !== 'entrevistado'
+  )
+  const todasEvaluadas = propuestasQueRequierenEvaluacion.every((p) => isComplete(p.id))
 
   if (!todasEvaluadas) {
     return (

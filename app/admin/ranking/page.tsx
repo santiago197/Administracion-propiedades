@@ -26,7 +26,7 @@ const CLAS_LABEL: Record<string, string> = {
 }
 
 function ChipEntrevista({ r }: { r: ResultadoFinal }) {
-  if (r.preseleccionado_entrevista) {
+  if (r.preseleccionado_entrevista || r.estado === 'preseleccionado') {
     return (
       <Badge className="bg-violet-500/10 text-violet-700 border-violet-200 shrink-0" variant="outline">
         <Star className="h-3 w-3 mr-1 fill-violet-500 text-violet-500" />
@@ -34,7 +34,7 @@ function ChipEntrevista({ r }: { r: ResultadoFinal }) {
       </Badge>
     )
   }
-  if (r.entrevistado) {
+  if (r.entrevistado || r.estado === 'entrevistado') {
     return (
       <Badge className="bg-cyan-500/10 text-cyan-700 border-cyan-200 shrink-0" variant="outline">
         <ClipboardCheck className="h-3 w-3 mr-1" />
@@ -42,7 +42,7 @@ function ChipEntrevista({ r }: { r: ResultadoFinal }) {
       </Badge>
     )
   }
-  if (r.no_apto_entrevista) {
+  if (r.no_apto_entrevista || r.estado === 'descalificada') {
     return (
       <Badge className="bg-red-500/10 text-red-700 border-red-200 shrink-0" variant="outline">
         <XCircle className="h-3 w-3 mr-1" />
@@ -253,6 +253,7 @@ export default function RankingPage() {
                 <TableRow>
                   <TableHead className="w-10">#</TableHead>
                   <TableHead>Candidato</TableHead>
+                  <TableHead>Estado</TableHead>
                   <TableHead className="hidden sm:table-cell text-right">Eval. (0–100)</TableHead>
                   <TableHead className="hidden sm:table-cell text-right">Votos</TableHead>
                   <TableHead className="text-right">Puntaje final</TableHead>
@@ -282,6 +283,11 @@ export default function RankingPage() {
                         </span>
                         <ChipEntrevista r={r} />
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono text-[11px] lowercase">
+                        {r.estado}
+                      </Badge>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-right tabular-nums">
                       {r.puntaje_evaluacion.toFixed(1)}

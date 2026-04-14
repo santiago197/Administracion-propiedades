@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         .from('propuestas')
         .select('id, razon_social, tipo_persona, nit_cedula, anios_experiencia, unidades_administradas, valor_honorarios, estado, puntaje_evaluacion, votos_recibidos, puntaje_final, clasificacion')
         .eq('proceso_id', procesoId)
-        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto', 'adjudicado'])
+        .in('estado', ['en_evaluacion', 'apto', 'condicionado', 'destacado', 'no_apto', 'entrevistado', 'preseleccionado', 'adjudicado'])
         .order('puntaje_final', { ascending: false, nullsFirst: false }),
 
       supabase

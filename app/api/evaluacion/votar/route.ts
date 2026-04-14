@@ -86,12 +86,13 @@ export async function POST(request: NextRequest) {
     // 3. Validar propuesta pertenece al proceso
     const { data: propuesta } = await supabase
       .from('propuestas')
-      .select('proceso_id')
+      .select('proceso_id, estado')
       .eq('id', propuesta_id)
       .single()
 
-    if (!propuesta || propuesta.proceso_id !== proceso_id) {
-      return NextResponse.json({ error: 'La propuesta no pertenece al proceso' }, { status: 400 })
+    const estadosVotables = ['en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto', 'entrevistado', 'preseleccionado']
+    if (!propuesta || propuesta.proceso_id !== proceso_id || !estadosVotables.includes(propuesta.estado)) {
+      return NextResponse.json({ error: 'La propuesta no es elegible para votación en este proceso' }, { status: 400 })
     }
 
     // 4. Verificar voto previo
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
         .from('propuestas')
         .select('*', { count: 'exact', head: true })
         .eq('proceso_id', proceso_id)
-        .eq('estado', 'en_evaluacion'),
+        .in('estado', ['en_evaluacion', 'apto', 'destacado', 'condicionado', 'no_apto']),
       supabase
         .from('evaluaciones')
         .select('propuesta_id')
