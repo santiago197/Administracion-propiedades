@@ -55,7 +55,7 @@ import { es } from 'date-fns/locale'
 import { Spinner } from '@/components/ui/spinner'
 import { PropuestaDetalle } from '@/components/admin/propuesta-detalle'
 import { FormPropuesta } from '@/components/admin/form-propuesta'
-import { LABEL_ESTADO, ESTADOS_TERMINALES, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
+import { LABEL_ESTADO, ITEMS_VALIDACION_LEGAL } from '@/lib/types/index'
 import type { Propuesta, Proceso, EstadoPropuesta, ClasificacionPropuesta, TipoPersona, ChecklistLegal } from '@/lib/types/index'
 
 // ---------------------------------------------------------------------------
@@ -835,7 +835,7 @@ export default function PropuestasPage() {
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
-                            {!ESTADOS_TERMINALES.includes(p.estado) && (
+                            {!['adjudicado', 'descalificada', 'retirada'].includes(p.estado) && (
                               <>
                                 <Button
                                   size="icon"
