@@ -537,10 +537,14 @@ export default function PropuestasPage() {
     setMarcandoEntrevistado(true)
     setEntrevistadoError(null)
     try {
+      const observacionPorDefecto =
+        entrevistadoTarget.estado === 'no_apto_legal'
+          ? 'Entrevista permitida con observación: debe subsanar documentación legal.'
+          : 'Entrevista realizada.'
       const res = await fetch(`/api/propuestas/${entrevistadoTarget.id}/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'entrevistado', observacion: entrevistadoObs.trim() || 'Entrevista realizada.' }),
+        body: JSON.stringify({ estado: 'entrevistado', observacion: entrevistadoObs.trim() || observacionPorDefecto }),
       })
       if (!res.ok) {
         const body = await res.json()
@@ -1208,6 +1212,11 @@ export default function PropuestasPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            {entrevistadoTarget?.estado === 'no_apto_legal' && (
+              <div className="text-xs text-orange-700 bg-orange-500/10 border border-orange-300/40 rounded p-2">
+                Esta propuesta estaba en <strong>No apto legal</strong>. Registra la observación de subsanación documental.
+              </div>
+            )}
             {entrevistadoError && (
               <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
                 <AlertCircle className="h-4 w-4 shrink-0" />
